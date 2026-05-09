@@ -5,6 +5,7 @@
 ## 役割 (Role)
 
 - **リアルタイム監視**: 共有メモリ (SHM) を監視し、RTL シミュレータ上のレジスタ値をダッシュボードへブロードキャストします。
+- **GPIO インジェクション**: ダッシュボード上のトグルスイッチを操作することで、シミュレーション中の GPIO 入力状態をリアルタイムに変更できます。
 - **UART ブリッジ統合**: 複数の UART デバイス（PTY/TCP ブリッジ）を集約し、ブラウザ上のターミナルから操作可能にします。
 - **自動化 (Macros)**: `login:` 等の特定の文字列を検知して自動的にレスポンスを返すマクロ機能を備えています。
 
@@ -29,8 +30,10 @@ graph TD
 
     VLogic -- "Generates" --> Manifest
     VLogic -- "Updates" --> Map
+    Srv -- "Polls (Dynamic Reload)" --> Manifest
     Srv -- "Polls" --> SHM
     Srv -- "Broadcasts" --> Client
+    Client -- "GPIO Toggle (Injection)" --> Srv
     Client -- "Registers View" --> Client
     Client -- "UART Terminal" --> Client
 ```
@@ -51,6 +54,7 @@ graph TD
 ```bash
 cd dashboard
 npm install
+cd client && npm install && npm run build && cd ..
 node server.js
 ```
 

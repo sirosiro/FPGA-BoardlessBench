@@ -12,6 +12,10 @@
 ### 2.2 Strict Decoupling (厳格な疎結合)
 - **解析と生成の分離**: `DTSParser` によるパース結果は、`BoardModel` として完全に抽象化され、出力言語の構文から独立している。
 - **言語ジェネレータの独立**: `BaseGenerator` を継承した各言語ジェネレータ（Config, Shim, RTL, Simulator）は、互いに依存せず独立して実装される。
+- **シナリオ非依存**: ジェネレータは特定のテストシナリオ（例: `pattern_engine` 等のカスタム回路）に依存するコードを含まない。特定の回路が必要な場合は、生成された「ピュアなスケルトン」をシナリオ側でオーバライドする運用を徹底する。
+
+### 2.3 Universal Hardware Interface (118ピン標準化)
+- RTL トップの入出力ポートは、SoC 規模の設計に対応可能な **118ピン標準インターフェース** (`l_pins_i`, `l_pins_o`, `l_pins_t` [117:0]) を採用する。これにより、デバイス数やチャネル数に関わらず一貫した外部接続性を提供する。
 
 ### 2.3 Causality & Synchronization (因果律と同期)
 - シミュレータエンジンは、ハードウェアのバスプロトコルと因果律（Causality）を尊重する。
@@ -23,7 +27,9 @@
 DTS ファイルを読み込み、意味論的な検証を行った上で `BoardModel` オブジェクトを構築する。
 
 ### 3.2 Logic Layer (`BoardModel`, `Device`, `Register`)
-DTS の論理構造を抽象化したデータモデル。レジスタの属性やデバイスタイプに基づき、生成レイヤーが必要とするインテリジェンスを提供する。
+DTS の論理構造を抽象化したデータモデル。
+- **Device**: アドレス空間、チャネル構成（GPIO デュアルチャネル等）、レジスタセットを保持。
+- **Register**: オフセット、ビット幅、方向属性に加え、SHM 内でのバイトオフセット計算ロジックを内包する。
 
 ### 3.3 Generation Layer (`GeneratorOrchestrator`, `BaseGenerator`)
 `GeneratorOrchestrator` が `BoardModel` を各 `BaseGenerator` 実装へと配布し、一貫性のあるファイルセットを出力する。
