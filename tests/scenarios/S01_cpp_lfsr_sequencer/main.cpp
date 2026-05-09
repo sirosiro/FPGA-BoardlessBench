@@ -179,6 +179,9 @@ int main() {
         GpioPeripheral gpio(uio_gpio, 0x0000);
         LfsrEngine engine(uio_custom, 0x0000);
         
+        // GPIO を全ビット出力モードに設定 (TRI=0)
+        gpio.set_direction(0x00000000);
+        
         SystemShell shell(gpio, engine);
         shell.run();
 

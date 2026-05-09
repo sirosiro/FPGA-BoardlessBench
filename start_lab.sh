@@ -26,6 +26,7 @@ cleanup() {
     [ -n "$CONTROLLER_PID" ] && kill $CONTROLLER_PID 2>/dev/null
     [ -n "$SIM_PID" ] && kill $SIM_PID 2>/dev/null
     [ -n "$DASHBOARD_PID" ] && kill $DASHBOARD_PID 2>/dev/null
+    pkill -f "node dashboard/server.js" 2>/dev/null
     pkill test_bin 2>/dev/null
     
     # 共有メモリファイルとマニフェストの削除
@@ -47,6 +48,7 @@ echo "===================================================="
 # 1. 準備
 echo "[0/3] Cleaning up previous state..."
 rm -f dashboard/data/vfpga_uart_* 2>/dev/null
+pkill -f "node dashboard/server.js" 2>/dev/null
 make clean > /dev/null 2>&1
 
 # 2. 生成とビルド

@@ -80,9 +80,7 @@ function broadcastRegisters() {
 
 // 定期実行
 setInterval(() => {
-    if (Object.keys(manifest).length === 0) {
-        loadManifest();
-    }
+    loadManifest();
     updateShm();
 }, 200); // 200ms間隔で更新
 
@@ -161,11 +159,44 @@ io.on('connection', (socket) => {
             uartConnections[name].write(text);
         }
     });
+
+    // GPIO Injection Handler
+    socket.on('gpio-inject', ({ deviceName, bitIndex, value, dataRegName = 'DATA' }) => {
+        if (!shmBuffer || !manifest.devices) return;
+        const dev = manifest.devices.find(d => d.name === deviceName);
+        if (!dev) return;
+
+        // Find specific DATA register offset
+        const dataReg = dev.registers.find(r => r.name === dataRegName);
+        if (!dataReg) return;
+
+        const uioGpioDevs = manifest.devices.filter(d => d.type === 'uio' || d.type === 'gpio');
+        const shmBaseAddr = Math.min(...uioGpioDevs.map(d => d.base_addr || 0));
+        const physAddr = (dev.base_addr || 0) + parseInt(dataReg.offset, 0);
+        const shmOffset = physAddr - shmBaseAddr;
+
+        if (shmOffset >= 0 && shmOffset + 4 <= shmBuffer.length) {
+            let currentVal = shmBuffer.readUInt32LE(shmOffset);
+            if (value) {
+                currentVal |= (1 << bitIndex);
+            } else {
+                currentVal &= ~(1 << bitIndex);
+            }
+            shmBuffer.writeUInt32LE(currentVal, shmOffset);
+            
+            // Write back to file immediately
+            try {
+                fs.writeFileSync(manifest.shm_path, shmBuffer);
+            } catch (e) {
+                console.error(`[Backend] Failed to write SHM: ${e.message}`);
+            }
+        }
+    });
 });
 
 // 定期実行の更新
 setInterval(() => {
-    if (Object.keys(manifest).length === 0) loadManifest();
+    loadManifest();
     updateShm();
     syncUartConnections();
 }, 200);

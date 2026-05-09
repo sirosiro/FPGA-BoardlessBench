@@ -5,7 +5,13 @@ module vfpga_top (
     input  wire [31:0] addr,
     input  wire [31:0] w_data,
     input  wire        w_en,
-    output reg  [31:0] r_data
+    output reg  [31:0] r_data,
+    // 追加: 118-pin GPIO Interface
+    /* verilator lint_off UNUSED */
+    input  wire [117:0] l_pins_i,
+    /* verilator lint_on UNUSED */
+    output wire [117:0] l_pins_o,
+    output wire [117:0] l_pins_t
 );
 
     // GPIO Registers
@@ -56,5 +62,9 @@ module vfpga_top (
             default:      r_data = 32'hDEADBEEF;
         endcase
     end
+
+    // 118-pin GPIO output routing for S01
+    assign l_pins_o = {86'h0, engine_out};
+    assign l_pins_t = {86'hFFFFFFFFFFFFFFFFFFFFFF, TRI}; // TRI レジスタの値を下位32ビットに反映
 
 endmodule

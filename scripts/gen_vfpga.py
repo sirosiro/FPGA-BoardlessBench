@@ -136,6 +136,7 @@ class ConfigGenerator(BaseGenerator):
 #define SHM_NAME "%s"
 #define SHM_FILE "/tmp/%s"
 #define SHM_SIZE %d
+#define GPIO_COUNT 118
 #endif
 """ % (project_root, shm_name, shm_name, shm_size)
 
@@ -302,8 +303,22 @@ endmodule"""
         read_cases = "\n".join(["            32'h%08x: r_data = %s;" % (addr, name) for name, addr in all_regs])
         return """/* Auto-generated RTL Skeleton */
 module vfpga_top (
-    input wire clk, input wire rst_n, input wire [31:0] addr, input wire [31:0] w_data, input wire w_en, output reg [31:0] r_data%s
+    input wire clk,
+    input wire rst_n,
+    input wire [31:0] addr,
+    input wire [31:0] w_data,
+    input wire w_en,
+    output reg [31:0] r_data,
+    /* verilator lint_off UNUSED */
+    input wire [117:0] l_pins_i,
+    /* verilator lint_on UNUSED */
+    output wire [117:0] l_pins_o,
+    output wire [117:0] l_pins_t%s
 );
+    // GPIO Pin Mapping Logic (Generic Placeholder)
+    assign l_pins_o = 118'h0;
+    assign l_pins_t = 118'hFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF; // All inputs by default
+
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
 %s
@@ -371,39 +386,50 @@ void run_sim_loop(T* top, uint32_t* shm, uint32_t* old_shm, VerilatedVcdC* m_tra
     top->eval(); m_trace->dump(vtime++);
 
     printf("[Sim] Simulator Started (SHM: %%s)\\n", SHM_FILE); fflush(stdout);
-    while (!Verilated::gotFinish()) {
-        // Synchronize Write from SHM to RTL
-        for (int i = 0; i < %d; i++) {
-            uint32_t off = (registers[i].addr - SHM_BASE_ADDR) / 4;
-            if (shm[off] != old_shm[off]) {
-                if constexpr (has_addr<T>::value) top->addr = registers[i].addr;
-                if constexpr (has_w_data<T>::value) top->w_data = shm[off];
-                if constexpr (has_w_en<T>::value) top->w_en = 1;
-                
-                top->eval(); 
-                if constexpr (has_clk<T>::value) { top->clk = 1; top->eval(); top->clk = 0; top->eval(); }
-                
-                if constexpr (has_w_en<T>::value) top->w_en = 0;
-                old_shm[off] = shm[off];
-            }
-        }
-        // Synchronize Read from RTL to SHM
-        for (int i = 0; i < %d; i++) {
-            if constexpr (has_addr<T>::value) top->addr = registers[i].addr;
-            top->eval();
-            uint32_t off = (registers[i].addr - SHM_BASE_ADDR) / 4;
-            
-            if constexpr (has_r_data<T>::value) {
-                if (top->r_data != old_shm[off]) {
-                    shm[off] = top->r_data; old_shm[off] = top->r_data;
+        while (!Verilated::gotFinish()) {
+            // Synchronize Write from SHM to RTL
+            for (int i = 0; i < %d; i++) {
+                uint32_t off = (registers[i].addr - SHM_BASE_ADDR) / 4;
+                if (shm[off] != old_shm[off]) {
+                    if constexpr (has_addr<T>::value) top->addr = registers[i].addr;
+                    if constexpr (has_w_data<T>::value) top->w_data = shm[off];
+                    if constexpr (has_w_en<T>::value) top->w_en = 1;
+                    
+                    top->eval(); 
+                    if constexpr (has_clk<T>::value) { top->clk = 1; top->eval(); top->clk = 0; top->eval(); }
+                    
+                    if constexpr (has_w_en<T>::value) top->w_en = 0;
+                    old_shm[off] = shm[off];
                 }
             }
+
+            // UI Injection Handling for Input Pins
+            // If TRI bit is 1, apply SHM value to l_pins_i
+            // (Assuming last 4 words of SHM are injection area)
+            for (int b = 0; b < 118; b++) {
+                int word = b / 32;
+                int bit = b %% 32;
+                // Simplified: Mapping logic should match Dashboard's gpio-inject
+                // top->l_pins_i[b] = (shm[SHM_SIZE/4 - 4 + word] >> bit) & 0x1;
+            }
+
+            // Synchronize Read from RTL to SHM
+            for (int i = 0; i < %d; i++) {
+                if constexpr (has_addr<T>::value) top->addr = registers[i].addr;
+                top->eval();
+                uint32_t off = (registers[i].addr - SHM_BASE_ADDR) / 4;
+                
+                if constexpr (has_r_data<T>::value) {
+                    if (top->r_data != old_shm[off]) {
+                        shm[off] = top->r_data; old_shm[off] = top->r_data;
+                    }
+                }
+            }
+            top->eval(); 
+            if constexpr (has_clk<T>::value) { top->clk = 1; top->eval(); top->clk = 0; top->eval(); }
+            m_trace->dump(vtime++);
+            usleep(100);
         }
-        top->eval(); 
-        if constexpr (has_clk<T>::value) { top->clk = 1; top->eval(); top->clk = 0; top->eval(); }
-        m_trace->dump(vtime++);
-        usleep(100);
-    }
 }
 
 int main(int argc, char** argv) {
