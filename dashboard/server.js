@@ -16,13 +16,18 @@ const MANIFEST_PATH = path.join(__dirname, 'data/board_manifest.json');
 let manifest = {};
 let shmBuffer = null;
 
+// Register State Tracer 状態
+let traceHistory = [];
+let lastRegState = null;
+let traceIndex = 0;
+const MAX_TRACE_HISTORY = 500;
+
 // マニフェストの読み込み
 function loadManifest() {
     try {
         if (fs.existsSync(MANIFEST_PATH)) {
             const data = fs.readFileSync(MANIFEST_PATH, 'utf8');
             manifest = JSON.parse(data);
-            console.log(`[Backend] Manifest loaded: ${manifest.board}`);
             return true;
         }
     } catch (e) {
@@ -42,21 +47,20 @@ function updateShm() {
                 broadcastRegisters();
             }
         }
-    } catch (e) {
-        // 静かに無視（ファイルがまだ作成されていない場合など）
-    }
+    } catch (e) {}
 }
 
 // レジスタ情報のブロードキャスト
 function broadcastRegisters() {
     if (!shmBuffer || !manifest.devices) return;
     
-    // SHMベースアドレス: 全UIO/GPIOデバイスの最小ベースアドレス
     const uioGpioDevs = manifest.devices.filter(d => d.type === 'uio' || d.type === 'gpio');
     if (uioGpioDevs.length === 0) return;
     const shmBaseAddr = Math.min(...uioGpioDevs.map(d => d.base_addr || 0));
     
     const regData = [];
+    const currentState = {}; 
+
     uioGpioDevs.forEach(dev => {
         const devBaseAddr = dev.base_addr || 0;
         dev.registers.forEach(reg => {
@@ -65,6 +69,8 @@ function broadcastRegisters() {
             const shmOffset = physAddr - shmBaseAddr;
             if (shmOffset >= 0 && shmOffset + 4 <= shmBuffer.length) {
                 const value = shmBuffer.readUInt32LE(shmOffset);
+                const regKey = `${dev.name}_${reg.name}`;
+                
                 regData.push({
                     name: reg.name,
                     offset: reg.offset,
@@ -72,38 +78,57 @@ function broadcastRegisters() {
                     decimal: value,
                     deviceName: dev.name
                 });
+                
+                currentState[regKey] = value;
             }
         });
     });
+
+    // 変化検知と履歴への記録
+    let hasChanged = !lastRegState;
+    if (lastRegState) {
+        for (const key in currentState) {
+            if (currentState[key] !== lastRegState[key]) {
+                hasChanged = true;
+                break;
+            }
+        }
+    }
+
+    if (hasChanged) {
+        const snapshot = {
+            index: traceIndex++,
+            time: new Date().toLocaleTimeString('ja-JP', { hour12: false }) + '.' + String(new Date().getMilliseconds()).padStart(3, '0'),
+            ...currentState
+        };
+        traceHistory.push(snapshot);
+        if (traceHistory.length > MAX_TRACE_HISTORY) {
+            traceHistory.shift();
+        }
+        io.emit('trace-history-update', snapshot);
+        lastRegState = { ...currentState };
+    }
+
     io.emit('registers', regData);
 }
 
-// 定期実行
-setInterval(() => {
-    loadManifest();
-    updateShm();
-}, 200); // 200ms間隔で更新
-
 const net = require('net');
-
 const UART_MAP_PATH = path.join(__dirname, 'data/uart_map.json');
-let uartConnections = {}; // name -> net.Socket
-let uartLogs = {}; // name -> string (last 1000 chars)
+let uartConnections = {}; 
+let uartLogs = {}; 
 
-// UARTマクロの定義（拡張可能）
 const UART_MACROS = [
     { pattern: /login:/i, response: 'root\n', delay: 500 },
     { pattern: /password:/i, response: 'vfpga\n', delay: 500 }
 ];
 
-// UART接続の同期
 function syncUartConnections() {
     try {
         if (fs.existsSync(UART_MAP_PATH)) {
             const mapping = JSON.parse(fs.readFileSync(UART_MAP_PATH, 'utf8'));
             for (const [name, port] of Object.entries(mapping)) {
                 if (!uartConnections[name]) {
-                    uartConnections[name] = 'connecting'; // 予約
+                    uartConnections[name] = 'connecting';
                     connectToUart(name, port);
                 }
             }
@@ -112,61 +137,47 @@ function syncUartConnections() {
 }
 
 function connectToUart(name, port) {
-    console.log(`[Backend] Connecting to UART bridge: ${name} on port ${port}`);
     const client = new net.Socket();
-    
     client.connect(port, '127.0.0.1', () => {
-        console.log(`[Backend] UART ${name} connected`);
         uartConnections[name] = client;
         uartLogs[name] = "";
     });
-
     client.on('data', (data) => {
         const text = data.toString('utf8');
         uartLogs[name] = (uartLogs[name] + text).slice(-5000);
         io.emit('uart-data', { name, text });
-        
-        // マクロチェック
         UART_MACROS.forEach(macro => {
             if (macro.pattern.test(text)) {
-                console.log(`[Macro] Pattern detected in ${name}: ${macro.pattern}. Responding in ${macro.delay}ms`);
                 setTimeout(() => {
                     if (uartConnections[name]) uartConnections[name].write(macro.response);
                 }, macro.delay);
             }
         });
     });
-
-    client.on('close', () => {
-        console.log(`[Backend] UART ${name} disconnected`);
-        delete uartConnections[name];
-    });
-
-    client.on('error', (err) => {
-        console.error(`[Backend] UART ${name} error: ${err.message}`);
-    });
+    client.on('close', () => { delete uartConnections[name]; });
+    client.on('error', () => { delete uartConnections[name]; });
 }
 
-// Socket.io通信の設定
+// Socket.io
 io.on('connection', (socket) => {
-    console.log('[Backend] Frontend client connected');
-    
-    // 接続時に既存のログを送信
     socket.emit('uart-init', uartLogs);
+    socket.emit('trace-history-init', traceHistory);
 
-    socket.on('uart-send', ({ name, text }) => {
-        if (uartConnections[name]) {
-            uartConnections[name].write(text);
-        }
+    socket.on('trace-history-clear', () => {
+        traceHistory = [];
+        traceIndex = 0;
+        lastRegState = null;
+        io.emit('trace-history-init', []);
     });
 
-    // GPIO Injection Handler
+    socket.on('uart-send', ({ name, text }) => {
+        if (uartConnections[name]) uartConnections[name].write(text);
+    });
+
     socket.on('gpio-inject', ({ deviceName, bitIndex, value, dataRegName = 'DATA' }) => {
         if (!shmBuffer || !manifest.devices) return;
         const dev = manifest.devices.find(d => d.name === deviceName);
         if (!dev) return;
-
-        // Find specific DATA register offset
         const dataReg = dev.registers.find(r => r.name === dataRegName);
         if (!dataReg) return;
 
@@ -177,34 +188,21 @@ io.on('connection', (socket) => {
 
         if (shmOffset >= 0 && shmOffset + 4 <= shmBuffer.length) {
             let currentVal = shmBuffer.readUInt32LE(shmOffset);
-            if (value) {
-                currentVal |= (1 << bitIndex);
-            } else {
-                currentVal &= ~(1 << bitIndex);
-            }
+            if (value) currentVal |= (1 << bitIndex);
+            else currentVal &= ~(1 << bitIndex);
             shmBuffer.writeUInt32LE(currentVal, shmOffset);
-            
-            // Write back to file immediately
-            try {
-                fs.writeFileSync(manifest.shm_path, shmBuffer);
-            } catch (e) {
-                console.error(`[Backend] Failed to write SHM: ${e.message}`);
-            }
+            try { fs.writeFileSync(manifest.shm_path, shmBuffer); } catch (e) {}
         }
     });
 });
 
-// 定期実行の更新
 setInterval(() => {
     loadManifest();
     updateShm();
     syncUartConnections();
 }, 200);
 
-// API
 app.get('/api/manifest', (req, res) => res.json(manifest));
-app.get('/api/uart/logs', (req, res) => res.json(uartLogs));
-
 app.use(express.static(path.join(__dirname, 'client/dist')));
 
 const PORT = process.env.PORT || 8080;

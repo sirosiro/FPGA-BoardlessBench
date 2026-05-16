@@ -22,21 +22,21 @@
 - **責務**: 
     - マニフェストの管理（動的リロード）。
     - SHM の定期監視と WebSocket (Socket.io) へのブロードキャスト。
+    - **Register State Tracer**: レジスタ値の変化を検知し、最大500件のスナップショットを履歴として保持・配信。
     - フロントエンドからの **GPIO インジェクション**（トグル操作）のリクエストを SHM へ反映。
     - UART ブリッジ (PTY <-> TCP) の仲介。
 - **データ構造**:
     - `shmBuffer`: SHM ファイルのメモリマッピング。
+    - `traceHistory`: レジスタ状態の時系列スナップショット配列。
     - `uartConnections`: アクティブな UART ブリッジへの TCP ソケット。
-- **アルゴリズム**:
-    - **Physical-to-SHM Mapping**: `physAddr - minBaseAddr` を用いて、物理アドレスから SHM 内のバイトオフセットを算出する。
-    - **Multi-Channel GPIO Identification**: AXI GPIO のデュアルチャネル構成（DATA/DATA2 等）をレジスタ名ベースで識別し、正しいメモリオフセットへ書き込みを行う。
 
 ### 3.2 Dashboard Frontend (React)
-- **技術スタック**: Vite + React + Lucide-react (Icons) + Socket.io-client。
+- **技術スタック**: Vite + React + Lucide-react (Icons) + Socket.io-client + **recharts** (Charting)。
 - **特徴**: 
     - 118 チャネルの GPIO をグリッド表示し、`TRI` レジスタの値に基づき LED（出力）とトグルスイッチ（入力）を動的に切り替えて描画。
-    - CSS によるレスポンシブなサイドバー・ペインのリサイズ機能を備える。
+    - **Register State Tracer**: レジスタの変化履歴を正規化表示し、微小な変化も可視化。凡例クリックによる表示・非表示の切り替えをサポート。
+    - **IDE-style Resizing**: マウスドラッグにより各ペインのサイズを動的に調整。中央の GPIO パネルが伸縮することで、境界線がマウスに追従する直感的なリサイズを実現。
 
 ## 4. 既知の未解決課題 (Known Open Issues)
 - **多重接続時の競合**: 同一の UART に対して複数のブラウザタブから入力を試みた際の排他制御。
-- **ヒストリカル・トレース**: レジスタ値の変化履歴（波形表示）のフロントエンドでの永続化。
+- **波形エクスポート**: トレーサーで記録したデータの CSV/JSON 形式でのダウンロード機能。

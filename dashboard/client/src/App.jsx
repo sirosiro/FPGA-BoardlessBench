@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { io } from 'socket.io-client';
 import { Activity, Cpu, Hash, Clock, Box, Terminal as TerminalIcon, Send, AlertCircle, ToggleRight } from 'lucide-react';
+import RegisterTracer from './components/RegisterTracer';
 import './App.css';
 
 const socket = io('http://' + window.location.hostname + ':8080');
@@ -15,7 +16,10 @@ function App() {
   const [sidebarWidth, setSidebarWidth] = useState(350);
   const [isResizing, setIsResizing] = useState(false);
   const [registerHeight, setRegisterHeight] = useState(250);
+  const [traceHeight, setTraceHeight] = useState(350);
   const [isHResizing, setIsHResizing] = useState(false);
+  const [isTResizing, setIsTResizing] = useState(false);
+  const [traceHistory, setTraceHistory] = useState([]);
   const terminalViewportRef = useRef(null);
 
   useEffect(() => {
@@ -31,11 +35,17 @@ function App() {
       if (!activeUart) setActiveUart(name);
     });
 
+    socket.on('trace-history-init', (data) => setTraceHistory(data));
+    socket.on('trace-history-update', (snapshot) => {
+      setTraceHistory(prev => [...prev, snapshot].slice(-500));
+    });
+
     fetch('/api/manifest').then(res => res.json()).then(setManifest);
 
     return () => {
       socket.off('connect'); socket.off('disconnect');
       socket.off('registers'); socket.off('uart-data'); socket.off('uart-init');
+      socket.off('trace-history-init'); socket.off('trace-history-update');
     };
   }, [activeUart]);
 
@@ -60,29 +70,53 @@ function App() {
 
   const startHResizing = () => setIsHResizing(true);
   const stopHResizing = () => setIsHResizing(false);
+  const startTResizing = () => setIsTResizing(true);
+  const stopTResizing = () => setIsTResizing(false);
+
   const hResize = (e) => {
     if (isHResizing) {
       const sidebarElement = document.querySelector('.sidebar');
       if (sidebarElement) {
         const sidebarRect = sidebarElement.getBoundingClientRect();
         const newHeight = e.clientY - sidebarRect.top;
-        if (newHeight > 100 && newHeight < sidebarRect.height - 100) setRegisterHeight(newHeight);
+        if (newHeight > 100 && newHeight < sidebarRect.height - 200) setRegisterHeight(newHeight);
+      }
+    }
+    if (isTResizing) {
+      const sidebarElement = document.querySelector('.sidebar');
+      if (sidebarElement) {
+        const sidebarRect = sidebarElement.getBoundingClientRect();
+        const newHeight = sidebarRect.bottom - e.clientY;
+        if (newHeight > 80 && newHeight < sidebarRect.height - registerHeight - 100) setTraceHeight(newHeight);
       }
     }
   };
 
   useEffect(() => {
-    window.addEventListener('mousemove', resize);
-    window.addEventListener('mouseup', stopResizing);
-    window.addEventListener('mousemove', hResize);
-    window.addEventListener('mouseup', stopHResizing);
-    return () => {
-      window.removeEventListener('mousemove', resize);
-      window.removeEventListener('mouseup', stopResizing);
-      window.removeEventListener('mousemove', hResize);
-      window.removeEventListener('mouseup', stopHResizing);
+    const handleMouseMove = (e) => {
+      if (isResizing) resize(e);
+      if (isHResizing || isTResizing) hResize(e);
     };
-  }, [isResizing, isHResizing]);
+
+    const handleMouseUp = () => {
+      stopResizing();
+      stopHResizing();
+      stopTResizing();
+      document.body.style.userSelect = 'auto';
+    };
+
+    if (isResizing || isHResizing || isTResizing) {
+      document.body.style.userSelect = 'none';
+      window.addEventListener('mousemove', handleMouseMove);
+      window.addEventListener('mouseup', handleMouseUp);
+    }
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      document.body.style.userSelect = 'auto';
+    };
+  }, [isResizing, isHResizing, isTResizing]);
 
   const sendUart = (e) => {
     e.preventDefault();
@@ -94,6 +128,10 @@ function App() {
 
   const handleGpioToggle = (deviceName, bitIndex, currentOn, dataRegName = 'DATA') => {
     socket.emit('gpio-inject', { deviceName, bitIndex, value: !currentOn, dataRegName });
+  };
+
+  const handleClearTrace = () => {
+    socket.emit('trace-history-clear');
   };
 
   const gpioDevices = manifest?.devices?.filter(d => d.type === 'gpio' || d.type === 'uio') || [];
@@ -114,8 +152,8 @@ function App() {
       </header>
 
       <main className="content-layout">
-        <aside className="sidebar">
-          <div className="register-pane" style={{ height: `${registerHeight}px`, flexShrink: 0, display: 'flex', flexDirection: 'column' }}>
+        <aside className="sidebar" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
+          <div className="register-pane" style={{ height: `${registerHeight}px`, flexShrink: 0, display: 'flex', flexDirection: 'column', borderBottom: '1px solid #30363d' }}>
             <div className="panel-header"><Cpu size={16} /> Register Monitor</div>
             <div className="register-viewport">
               <table className="register-table">
@@ -137,7 +175,7 @@ function App() {
           
           <div className="h-resizer" onMouseDown={startHResizing}></div>
           
-          <div className="gpio-pane" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+          <div className="gpio-pane" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100px', overflow: 'hidden', borderBottom: '1px solid #30363d' }}>
             <div className="panel-header"><ToggleRight size={16} /> GPIO / Pin Array (118ch)</div>
             <div className="gpio-viewport">
             {gpioDevices.map((dev, i) => {
@@ -179,6 +217,12 @@ function App() {
               });
             })}
             </div>
+          </div>
+
+          <div className="h-resizer" onMouseDown={startTResizing}></div>
+          
+          <div className="trace-pane" style={{ flexShrink: 0, height: `${traceHeight}px`, padding: '0 10px 20px 10px', borderTop: '1px solid #333', display: 'flex', flexDirection: 'column' }}>
+            <RegisterTracer historyData={traceHistory} onClear={handleClearTrace} />
           </div>
         </aside>
 
