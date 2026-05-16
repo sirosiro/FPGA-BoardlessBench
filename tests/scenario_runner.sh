@@ -72,27 +72,10 @@ echo -e "\n[Runner] >>> Starting Scenario: ${SCENARIO_NAME} <<<"
 echo "[Runner] Generating code from ${DTS}..."
 python3 "${PROJECT_ROOT}/scripts/gen_vfpga.py" "${DTS}"
 
-# 2. Verilogの配置
-# シナリオディレクトリにある全ての .v ファイルを src/rtl/ にコピーする
-if ls "${SCENARIO_DIR}/"*.v >/dev/null 2>&1; then
-    echo "[Runner] Copying Verilog files from scenario..."
-    cp "${SCENARIO_DIR}/"*.v "${PROJECT_ROOT}/src/rtl/"
-fi
-
-# vfpga_top.v が存在しない場合はスケルトンを使用する
-if [ ! -f "${PROJECT_ROOT}/src/rtl/vfpga_top.v" ]; then
-    echo "[Runner] vfpga_top.v not found. Using default RTL skeleton."
-    cp "${PROJECT_ROOT}/src/rtl/vfpga_top_skeleton.v" "${PROJECT_ROOT}/src/rtl/vfpga_top.v"
-fi
-
-# 重複を避けるため、スケルトンファイルは削除しておく
-# (vfpga_top.v としてコピーされているか、あるいは不要なため)
-rm -f "${PROJECT_ROOT}/src/rtl/vfpga_top_skeleton.v"
-
 # 3. エンジンのビルド
 echo "[Runner] Building simulation engine (this may take a few seconds)..."
 cd "${PROJECT_ROOT}"
-make engine -j$(nproc) || exit 1
+make engine SCENARIO_DIR="${SCENARIO_DIR}" -j$(nproc) || exit 1
 
 # 4. バックグラウンドプロセスの起動
 echo "[Runner] Starting Backend Controller & RTL Simulator..."

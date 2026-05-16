@@ -5,8 +5,19 @@ LDFLAGS = -shared -ldl
 SHIM_SRC = src/shim/libfpgashim.c
 SHIM_OUT = libfpgashim.so
 GEN_SCRIPT = scripts/gen_vfpga.py
-RTL_TOP = src/rtl/vfpga_top.v
-RTL_SRCS = $(RTL_TOP) $(filter-out $(RTL_TOP), $(wildcard src/rtl/*.v))
+# RTL Sources: Check if the scenario provides its own vfpga_top.v
+SCENARIO_DIR ?=
+ifneq ($(wildcard $(SCENARIO_DIR)/vfpga_top.v),)
+    RTL_TOP = $(SCENARIO_DIR)/vfpga_top.v
+else
+    RTL_TOP = src/rtl/vfpga_top.v
+endif
+
+# Collect all scenario-specific Verilog files (excluding vfpga_top.v if already picked)
+SCENARIO_V_FILES = $(filter-out $(RTL_TOP), $(wildcard $(SCENARIO_DIR)/*.v))
+
+# Final RTL Source list
+RTL_SRCS = $(RTL_TOP) $(SCENARIO_V_FILES)
 
 # Verilator
 VERILATOR = verilator

@@ -74,21 +74,8 @@ start_environment() {
     # 1. Generate code from DTS
     python3 scripts/gen_vfpga.py ${dts}
     
-    # 2. Handle Verilog
-    # シナリオディレクトリにある全ての .v ファイルを src/rtl/ にコピーする
-    if ls "${scenario_dir}/"*.v >/dev/null 2>&1; then
-        echo "[Runner] Copying Verilog files from scenario..."
-        cp "${scenario_dir}/"*.v src/rtl/
-    fi
-
-    # vfpga_top.v が存在しない場合はエラー
-    if [ ! -f "src/rtl/vfpga_top.v" ]; then
-        echo "[Runner] Error: vfpga_top.v not generated."
-        exit 1
-    fi
-    
     make libfpgashim.so || exit 1
-    make engine || exit 1
+    make engine SCENARIO_DIR="${scenario_dir}" || exit 1
     
     # 3. Start Controller
     python3 -u ${CONTROLLER} ${dts} > "${scenario_dir}/controller.log" 2>&1 &

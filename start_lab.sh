@@ -57,13 +57,8 @@ echo "[1/3] Generating code and building artifacts..."
 # コード生成
 python3 scripts/gen_vfpga.py "${DTS_PATH}" || exit 1
 
-# シナリオ固有のVerilogファイルがあればsrc/rtlにコピーする
-if [ "$(ls ${SCENARIO_DIR}/*.v 2>/dev/null)" ]; then
-    cp ${SCENARIO_DIR}/*.v src/rtl/
-fi
-
 # シミュレータとShimのビルド
-make engine || { echo "[Error] Simulator build failed!"; exit 1; }
+make engine SCENARIO_DIR="${SCENARIO_DIR}" || { echo "[Error] Simulator build failed!"; exit 1; }
 
 # アプリケーションのビルド
 make -C "${SCENARIO_DIR}" || { echo "[Error] App build failed!"; exit 1; }
