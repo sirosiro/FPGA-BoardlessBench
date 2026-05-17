@@ -57,10 +57,13 @@ my_device@42000000 {
     label = "/dev/uio0";          /* ② FWアプリケーションがオープンするデバイス名を指定 */
     
     /* ③ レジスタマップ仕様書を元に、名前とオフセットを追記 (ダッシュボード表示 & シミュレータ同期用) */
-    registers = "CTRL @ 0x00, SPEED @ 0x04, STATUS @ 0x08"; 
+    registers = 
+        "CTRL   @ 0x00",
+        "SPEED  @ 0x04",
+        "STATUS @ 0x08";
 };
 ```
-*   **`registers` プロパティの書式**: `"レジスタ名 @ オフセット, レジスタ名 @ オフセット"` の形式でカンマ区切りで記述します。ここに追加した名前がそのままダッシュボードの履歴グラフやテーブルに反映されます。
+*   **`registers` プロパティの書式**: `"レジスタ名 @ オフセット"` の形式で、カンマ区切り（1行または複数行の文字列リスト）で記述します。ここに追加した名前がそのままダッシュボードの履歴グラフやテーブルに反映されます。
 
 #### DTSプロパティの「Linux標準」vs「F-BBオリジナル」分類
 
@@ -69,7 +72,7 @@ my_device@42000000 {
 | **`compatible`** | **Linux標準** | デバイスの身元（型番）を分類するキーワード。F-BBでは `"generic-uio"` などを指定することで、シミュレータにカスタムUIOデバイス（メモリ空間）として検出・バインドさせます。 |
 | **`reg`** | **Linux標準** | そのデバイスに割り当てる「物理ベースアドレス」と「メモリサイズ」を指定します。 |
 | **`label`** | **Linux標準** | FWアプリケーションが `open()` してアクセスするための仮想デバイス名（`/dev/uioX` など）。F-BBのフック機構（Shim）がこの名前を元に共有メモリのオフセットへ動的に結合します。 |
-| **`registers`** | **F-BBオリジナル** | 各オフセットに対応する人間向けのレジスタ名（`"CTRL @ 0x00, SPEED @ 0x04"`）。**100% ダッシュボードUIの表示および履歴グラフ用**であり、ダッシュボードを使用しない場合は完全に省略可能です。 |
+| **`registers`** | **F-BBオリジナル** | 各オフセットに対応する人間向けのレジスタ名（`"CTRL @ 0x00, SPEED @ 0x04"`）。**100% ダッシュボードUIの表示および履歴グラフ用**であり、ダッシュボードを使用しない場合は完全に省略可能です。PetaLinux側では無視されるので削除する必要もありません。 |
 
 ---
 
@@ -114,14 +117,19 @@ module vfpga_top (
 
 ### 3. 実機RTLを汚さない「ラッパー戦略」
 FPGAエンジニアが設計した本番用のIP（例: AXI-Liteバス搭載の回路）のコードを、F-BB向けに修正する必要は一切ありません。
-上記の強制ルールを満たす `vfpga_top.v` を **「ラッパー（中継器）」** として作成し、その内部で本番用IPを呼び出す（インスタンス化する）構造にします。
+上記の強制ルールを満たす `vfpga_top.v` を **「ラッパー（中継器）」** として作成し、その内部で本番用IPをインスタンス化する構造にします。
+
+> [!NOTE]
+> **【注意：このコードは概念的な疑似コードです】**
+> 以下のコードは、本番IPを統合する際の**接続イメージを示すサンプル**です。モジュール名 `your_production_ip` や、その中のポート名（`.axi_addr` 等）は、**あなたが検証したい実際のIP仕様に合わせて書き換えてください**。
+> そのままコピペするとコンパイルエラーになります。実際に独立して動作する完結した最上位モジュール（デモ回路）の記述は、[tests/scenarios/S01_cpp_lfsr_sequencer/vfpga_top.v](scenarios/S01_cpp_lfsr_sequencer/vfpga_top.v) を参考にしてください。
 
 ```verilog
 // ── vfpga_top.v (F-BB用の繋ぎ込みラッパー) ──
 module vfpga_top ( ... ); // 強制ルールに準拠したポート定義
 
     // F-BBのシンプルな仮想バスを、本番IP用の AXI-Lite バスへ中継・配線する
-    my_actual_production_ip u_ip (
+    your_production_ip u_ip (  // ★ あなたの本番IPモジュール名に書き換えます
         .clk      (clk),
         .rst_n    (rst_n),
         .axi_addr (addr),     // F-BBの物理アドレスをそのまま配線
@@ -131,12 +139,12 @@ module vfpga_top ( ... ); // 強制ルールに準拠したポート定義
     );
 
     // 118ピンGPIOの方向と出力を配線
-    assign l_pins_o = {86'h0, u_ip.led_output}; // 下位32ビットに本番のLED出力をマップ
-    assign l_pins_t = 118'hFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF; // 全て入力(1)または適宜TRIを配線
+    assign l_pins_o = {86'h0, u_ip.led_output}; // 例: 下位32ビットに本番のLED出力をマップ
+    assign l_pins_t = 118'hFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF; // 例: 全て入力(1)または適宜TRIを配線
 
 endmodule
 ```
-This wrapper design ensures that the **actual hardware IP core RTL (`my_actual_production_ip.v`) remains completely untouched** and devoid of any simulation-specific code. This maintains a clean and seamless bridge between physical deployment and boardless simulation.
+このラッパー設計を採用することで、**実機用の本番IPコアのRTL**にはシミュレーション専用のコードが1行も混入せず、完全にクリーンな状態を維持できます。これにより、物理ボードへの実機展開と、ボードレスシミュレーション環境との間の「非侵襲的でシームレスな架け橋」が美しく確立されます。
 
 ---
 
