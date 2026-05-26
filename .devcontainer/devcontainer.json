@@ -22,6 +22,6 @@
         "seccomp=unconfined",
         "--shm-size=512m"
     ],
-    "postCreateCommand": "echo 'Dev Container is ready!'",
+    "postCreateCommand": "npm --prefix dashboard install && npm --prefix dashboard/client install && npm --prefix dashboard/client run build",
     "forwardPorts": [8080]
 }
