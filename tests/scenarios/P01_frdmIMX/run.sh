@@ -1,0 +1,20 @@
+#!/bin/bash
+# F-BB Scenario Runner for P01_frdmIMX
+
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+
+# Determine SOC type (default is imx95)
+SOC_TYPE="imx95"
+if [ "$1" = "imx8mp" ]; then
+    SOC_TYPE="imx8mp"
+    shift
+elif [ "$1" = "imx95" ]; then
+    SOC_TYPE="imx95"
+    shift
+fi
+
+echo "[P01_frdmIMX] Preparing config.dts for SOC: ${SOC_TYPE}"
+cp "${SCRIPT_DIR}/${SOC_TYPE}_config.dts" "${SCRIPT_DIR}/config.dts"
+
+cd ../../../
+./start_lab.sh tests/scenarios/P01_frdmIMX/ "$@"

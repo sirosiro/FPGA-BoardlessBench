@@ -191,7 +191,13 @@ io.on('connection', (socket) => {
             if (value) currentVal |= (1 << bitIndex);
             else currentVal &= ~(1 << bitIndex);
             shmBuffer.writeUInt32LE(currentVal, shmOffset);
-            try { fs.writeFileSync(manifest.shm_path, shmBuffer); } catch (e) {}
+            try {
+                const fd = fs.openSync(manifest.shm_path, 'r+');
+                fs.writeSync(fd, shmBuffer, 0, shmBuffer.length, 0);
+                fs.closeSync(fd);
+            } catch (e) {
+                console.error(`[Backend] Failed to write SHM: ${e.message}`);
+            }
         }
     });
 });
