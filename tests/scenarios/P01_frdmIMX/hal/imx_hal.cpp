@@ -11,11 +11,16 @@
 #include <unistd.h>
 #include <unordered_map>
 #include <vector>
+#include <stdlib.h>
 
 // Standard base addresses and sizes
 constexpr unsigned long IMX8MP_GPIO1_BASE = 0x30200000;
 constexpr unsigned long IMX95_GPIO1_BASE = 0x47400000;
 constexpr size_t REG_SIZE = 4096;
+
+// GPIOポートあたりの最大ピン数 (SoCハードウェア仕様)
+constexpr int IMX8MP_GPIO1_MAX_PINS = 32; // i.MX 8M Plus GPIO1 ポートは最大32ピン
+constexpr int IMX95_GPIO1_MAX_PINS  = 16; // i.MX 95 GPIO1 ポート (AON) は最大16ピン
 
 // =============================================================================
 // UART Controllers (POSIX implementation)
@@ -65,29 +70,88 @@ class LpUartController : public PosixUartController {};
 // =============================================================================
 class GpioControllerBase : public IGpioController {
 protected:
-    unsigned long phys_addr_;            // GPIOコントローラのベース物理アドレス
-    int mem_fd_;                         // /dev/mem アクセス用のファイル記述子
-    volatile uint32_t* gpio_regs_;       // mmapされたレジスタ群の仮想メモリアドレスポインタ (最適化防止のためvolatile指定)
+  unsigned long phys_addr_;            // GPIOコントローラのベース物理アドレス
+  int mem_fd_;                         // /dev/mem アクセス用のファイル記述子
+  volatile uint32_t* gpio_regs_;       // mmapされたレジスタ群の仮想メモリアドレスポインタ (最適化防止のためvolatile指定)
+  const int max_pins_;                 // このポートがサポートする最大ピン数 (SoCハードウェア制限)
+  std::vector<IGpioController::Direction> pin_directions_; // 初期化されたピン方向設定の保持用配列
+  std::vector<bool> pin_registered_;                       // ピン初期化（登録）フラグ配列
+  volatile uint16_t wdog_heartbeat_;                       // 疑似WDT生存ハートビート用
+  std::vector<std::pair<int, int>> interlock_pairs_;       // 相互排他ペアリスト
+  uint32_t interlocked_pins_mask_;                         // インターロック対象ピンの32bitビットマスク
 
-    // ソフトウェア・デバウンスを伴うGPIO変化監視（擬似割り込み）用のコンテキスト構造体
-    struct InterruptHandler {
-        int pin_num;                             // 監視対象のGPIOピン番号
-        std::function<void(int, bool)> callback; // 状態遷移確定時に実行されるコールバック関数
-        bool last_stable_state;                  // デバウンス時間（20ms）安定して確定した最後のピン状態 (HIGH/LOW)
-        bool last_raw_state;                     // ポーリングで読み取った直近の生のピン状態
-        std::chrono::steady_clock::time_point last_change_time; // 生のピン状態に変化が発生した最後のタイムスタンプ
-    };
+  // 物理境界および方向の整合性を述語(Predicate)ラムダ式で検証する Fail-Fast テンプレートメソッド
+  template <typename Predicate>
+  void validatePin(int pin_num, Predicate&& validator, const char* error_reason) const {
+    // 1. 物理的な境界値チェック (0 〜 max_pins_ - 1)
+    if (pin_num < 0 || pin_num >= max_pins_) {
+      triggerFatalError(pin_num, 
+          "Pin number is out of range (Allowed: 0-" + std::to_string(max_pins_ - 1) + ").");
+    }
 
-    std::vector<InterruptHandler> interrupt_handlers_; // 登録された割り込みハンドラの一覧
-    std::thread watch_thread_;                         // バックグラウンドでピン状態をポーリング監視するスレッド
-    std::atomic<bool> thread_running_{false};          // 監視スレッドの実行ループを制御するアトミックフラグ
-    std::mutex handlers_mutex_;                        // ハンドラリストの登録・削除およびスレッド間データ競合を防ぐミューテックス
+    // 2. 登録状態と方向の取得
+    bool is_registered = pin_registered_[pin_num];
+    IGpioController::Direction dir = pin_directions_[pin_num];
+
+    // 3. 外部から渡された条件式（ラムダ）による検証
+    if (!validator(is_registered, dir)) {
+      triggerFatalError(pin_num, error_reason);
+    }
+  }
+
+  // 致命的エラー発生時のアボート処理
+  void triggerFatalError(int pin_num, const std::string& details) const {
+    fprintf(stderr, 
+            "\n[FATAL HAL ERROR] GPIO Pin %d failed validation.\n"
+            "Reason: %s\n"
+            "System is aborting immediately to prevent potential hardware/board damage.\n\n",
+            pin_num, details.c_str());
+    if (gpio_regs_) {
+      gpio_regs_[1] = 0x0; // 安全のため全ピンを入力化
+    }
+    abort();
+  }
+
+  // ソフトウェア・デバウンスを伴うGPIO変化監視（擬似割り込み）用のコンテキスト構造体
+  struct InterruptHandler {
+    int pin_num;                             // 監視対象 of GPIOピン番号
+    std::function<void(int, bool)> callback; // 状態遷移確定時に実行されるコールバック関数
+    bool last_stable_state;                  // デバウンス時間（20ms）安定して確定した最後のピン状態 (HIGH/LOW)
+    bool last_raw_state;                     // ポーリングで読み取った直近の生のピン状態
+    std::chrono::steady_clock::time_point last_change_time; // 生のピン状態に変化が発生した最後のタイムスタンプ
+    bool use_filter;                         // デジタルノイズフィルタ（Glitch Filter）を使用するかどうか
+    int filter_counter;                      // デジタルノイズフィルタの連続一致判定用カウンタ
+  };
+
+  std::vector<InterruptHandler>
+      interrupt_handlers_; // 登録された割り込みハンドラの一覧
+  std::thread
+      watch_thread_; // バックグラウンドでピン状態をポーリング監視するスレッド
+  std::atomic<bool> thread_running_{
+      false}; // 監視スレッドの実行ループを制御するアトミックフラグ
+  std::mutex
+      handlers_mutex_; // ハンドラリストの登録・削除およびスレッド間データ競合を防ぐミューテックス
+
+  // ガードチェックを一切行わない、内部用の高速な生レジスタ読み込みメソッド (インライン展開用)
+  inline bool readPinRaw(int pin_num) const {
+    return (gpio_regs_[0] & (1 << pin_num)) != 0;
+  }
+
+  // ガードチェックを一切行わない、内部用の高速な生レジスタ書き込みメソッド (インライン展開用)
+  inline void writePinRaw(int pin_num, bool value) {
+    uint32_t dr = gpio_regs_[0];
+    if (value) {
+      dr |= (1 << pin_num);
+    } else {
+      dr &= ~(1 << pin_num);
+    }
+    gpio_regs_[0] = dr;
+  }
 
   // 登録されたすべてのピンを単一のスレッドで一括監視（イベントマルチプレクシング）するループ。
   // ピンごとに個別にスレッドを生成する設計を避け、コンテキストスイッチのオーバーヘッドとシステムリソース消費を最小限に抑えます。
   void watchLoop() {
     constexpr auto poll_interval = std::chrono::milliseconds(5);
-    constexpr auto debounce_time = std::chrono::milliseconds(20);
 
     while (thread_running_) {
       std::this_thread::sleep_for(poll_interval);
@@ -97,21 +161,39 @@ protected:
       if (!gpio_regs_)
         continue;
 
-      auto now = std::chrono::steady_clock::now();
-      for (auto &handler : interrupt_handlers_) {
-        // 生のピン状態を読み取る
-        bool current_raw_state = readPin(handler.pin_num);
+      // 疑似WDTキック処理 (交互に生存シグナルを書き込む)
+      wdog_heartbeat_ = (wdog_heartbeat_ == 0x5555) ? 0xAAAA : 0x5555;
 
-        if (current_raw_state != handler.last_raw_state) {
-          // 生の値が変化した場合：チャタリングの最中か新たな変化の始まりなので、タイマーをリセットする
-          handler.last_raw_state = current_raw_state;
-          handler.last_change_time = now;
-        } else if (current_raw_state != handler.last_stable_state) {
-          // 生の値は前回から安定しているが、確定済みの「安定状態」とは異なる状態が続いている場合：
-          // 設定されたデバウンス時間 (20ms)
-          // 以上同じ値が維持されていれば、変化確定とみなす
-          if (now - handler.last_change_time >= debounce_time) {
+      for (auto &handler : interrupt_handlers_) {
+        // 生のピン状態を読み取る (内部監視ループでは検証済みのピンしか走査しないため、ガードなしのRawアクセスを使用)
+        bool current_raw_state = readPinRaw(handler.pin_num);
+
+        if (handler.use_filter) {
+          // デジタルノイズフィルタ（Glitch Filter）:
+          // 5msポーリングで4回連続して同じ変化後状態が安定検知されたら変化確定
+          if (current_raw_state != handler.last_stable_state) {
+            if (current_raw_state == handler.last_raw_state) {
+              handler.filter_counter++;
+              if (handler.filter_counter >= 4) { // 5ms * 4 = 20ms
+                handler.last_stable_state = current_raw_state;
+                handler.filter_counter = 0;
+                if (handler.callback) {
+                  handler.callback(handler.pin_num, handler.last_stable_state);
+                }
+              }
+            } else {
+              handler.last_raw_state = current_raw_state;
+              handler.filter_counter = 0;
+            }
+          } else {
+            handler.filter_counter = 0;
+            handler.last_raw_state = current_raw_state;
+          }
+        } else {
+          // 低遅延応答モード（デバウンスなし、即時応答）
+          if (current_raw_state != handler.last_stable_state) {
             handler.last_stable_state = current_raw_state;
+            handler.last_raw_state = current_raw_state;
             if (handler.callback) {
               handler.callback(handler.pin_num, handler.last_stable_state);
             }
@@ -122,8 +204,15 @@ protected:
   }
 
 public:
-  GpioControllerBase(unsigned long phys_addr)
-      : phys_addr_(phys_addr), mem_fd_(-1), gpio_regs_(nullptr) {}
+  GpioControllerBase(unsigned long phys_addr, int max_pins)
+      : phys_addr_(phys_addr),
+        mem_fd_(-1),
+        gpio_regs_(nullptr),
+        max_pins_(max_pins),
+        pin_directions_(max_pins, IGpioController::Direction::INPUT),
+        pin_registered_(max_pins, false),
+        wdog_heartbeat_(0),
+        interlocked_pins_mask_(0) {}
 
   virtual ~GpioControllerBase() {
     // 監視スレッドの実行ループを終了させる
@@ -138,6 +227,15 @@ public:
 
   bool
   init(const std::unordered_map<int, IGpioController::Direction> &pin_config) {
+    // 初期設定されたすべてのピンの境界チェック (登録前なので常にtrueを返すラムダを使用)
+    for (const auto &[pin_num, dir] : pin_config) {
+      validatePin(pin_num, [](bool, IGpioController::Direction) { return true; }, "");
+    }
+    // ピンの方向と登録フラグを配列に設定
+    for (const auto &[pin_num, dir] : pin_config) {
+      pin_directions_[pin_num] = dir;
+      pin_registered_[pin_num] = true;
+    }
     mem_fd_ = open("/dev/mem", O_RDWR | O_SYNC);
     if (mem_fd_ == -1) {
       perror("[HAL GpioController] Failed to open /dev/mem");
@@ -163,7 +261,6 @@ public:
       }
       gpio_regs_[1] = gdir;
     }
-
     return true;
   }
 
@@ -179,6 +276,9 @@ public:
   }
 
   bool readPin(int pin_num) override {
+    validatePin(pin_num, 
+                [](bool is_reg, IGpioController::Direction) { return is_reg; }, 
+                "readPin(): Pin was not declared in the initialization map.");
     if (!gpio_regs_)
       return false;
     // DR (Data Register) is at offset 0x00 (index 0)
@@ -186,21 +286,82 @@ public:
     return (dr & (1 << pin_num)) != 0;
   }
 
-  void writePin(int pin_num, bool value) override {
-    if (!gpio_regs_)
-      return;
-    // DR (Data Register) is at offset 0x00 (index 0)
-    uint32_t dr = gpio_regs_[0];
-    if (value) {
-      dr |= (1 << pin_num);
-    } else {
-      dr &= ~(1 << pin_num);
+  void writePin(int pin_num, IGpioController::PinState state, IGpioController::Verification verify = IGpioController::Verification::Disable) override {
+    validatePin(pin_num, 
+                [](bool is_reg, IGpioController::Direction dir) { 
+                    return is_reg && dir == IGpioController::Direction::OUTPUT; 
+                }, 
+                "writePin(): Pin direction mismatch: expected OUTPUT pin.");
+    
+    // インターロック登録されているピンの通常の writePin による誤操作を防止
+    if (interlocked_pins_mask_ & (1 << pin_num)) {
+      triggerFatalError(pin_num, "writePin(): Cannot write to an interlocked pin using normal writePin. Use writePinIL instead.");
     }
-    gpio_regs_[0] = dr;
+
+    bool value = (state == IGpioController::PinState::High);
+    writePinRaw(pin_num, value);
+
+    // 書き込み確認オプション
+    if (verify == IGpioController::Verification::Enable) {
+      if (readPinRaw(pin_num) != value) {
+        triggerFatalError(pin_num, "writePin(): Write verification failed.");
+      }
+    }
+  }
+
+  void writePinIL(int pin_num, IGpioController::PinState state, IGpioController::Verification verify = IGpioController::Verification::Disable) override {
+    validatePin(pin_num, 
+                [](bool is_reg, IGpioController::Direction dir) { 
+                    return is_reg && dir == IGpioController::Direction::OUTPUT; 
+                }, 
+                "writePinIL(): Pin direction mismatch: expected OUTPUT pin.");
+    
+    // インターロックペアとして登録されているかマスクで最速確認
+    if (!(interlocked_pins_mask_ & (1 << pin_num))) {
+      triggerFatalError(pin_num, "writePinIL(): Pin is not registered as an interlock pair. Use registerInterlockPair first.");
+    }
+
+    bool value = (state == IGpioController::PinState::High);
+    // 衝突チェック (ONにしようとする場合)
+    if (value) {
+      std::lock_guard<std::mutex> lock(handlers_mutex_);
+      for (const auto& pair : interlock_pairs_) {
+        if (pair.first == pin_num) {
+          if (readPinRaw(pair.second)) {
+            // 相手がすでにONの場合、両ピンを安全状態(OFF)にしてアボート
+            writePinRaw(pair.first, false);
+            writePinRaw(pair.second, false);
+            triggerFatalError(pin_num, "writePinIL(): Interlock conflict detected! Mutually exclusive pin is already ON.");
+          }
+        } else if (pair.second == pin_num) {
+          if (readPinRaw(pair.first)) {
+            // 相手がすでにONの場合、両ピンを安全状態(OFF)にしてアボート
+            writePinRaw(pair.first, false);
+            writePinRaw(pair.second, false);
+            triggerFatalError(pin_num, "writePinIL(): Interlock conflict detected! Mutually exclusive pin is already ON.");
+          }
+        }
+      }
+    }
+
+    writePinRaw(pin_num, value);
+
+    // 書き込み確認オプション
+    if (verify == IGpioController::Verification::Enable) {
+      if (readPinRaw(pin_num) != value) {
+        triggerFatalError(pin_num, "writePinIL(): Write verification failed.");
+      }
+    }
   }
 
   void registerInterrupt(int pin_num,
-                         std::function<void(int, bool)> callback) override {
+                         std::function<void(int, bool)> callback,
+                         bool use_filter = false) override {
+    validatePin(pin_num, 
+                [](bool is_reg, IGpioController::Direction dir) { 
+                    return is_reg && dir == IGpioController::Direction::INPUT; 
+                }, 
+                "registerInterrupt(): Pin direction mismatch: expected INPUT pin.");
     std::lock_guard<std::mutex> lock(handlers_mutex_);
 
     bool exists = false;
@@ -211,6 +372,8 @@ public:
         handler.last_stable_state = initial_state;
         handler.last_raw_state = initial_state;
         handler.last_change_time = std::chrono::steady_clock::now();
+        handler.use_filter = use_filter;
+        handler.filter_counter = 0;
         exists = true;
         break;
       }
@@ -219,26 +382,47 @@ public:
     if (!exists) {
       interrupt_handlers_.push_back({pin_num, callback, initial_state,
                                      initial_state,
-                                     std::chrono::steady_clock::now()});
+                                     std::chrono::steady_clock::now(),
+                                     use_filter, 0});
     }
 
-    // 初めて割り込みハンドラが登録された際に、監視スレッドを遅延起動(Lazy
-    // Start)する
+    // 初めて割り込みハンドラが登録された際に、監視スレッドを遅延起動(Lazy Start)する
     if (!thread_running_) {
       thread_running_ = true;
       watch_thread_ = std::thread(&GpioControllerBase::watchLoop, this);
     }
   }
+
+  volatile uint32_t* getRawRegisterAddress() override {
+    return gpio_regs_;
+  }
+
+  void registerInterlockPair(int pin_a, int pin_b) override {
+    validatePin(pin_a, 
+                [](bool is_reg, IGpioController::Direction dir) { 
+                    return is_reg && dir == IGpioController::Direction::OUTPUT; 
+                }, 
+                "registerInterlockPair(): Pin A must be registered as OUTPUT.");
+    validatePin(pin_b, 
+                [](bool is_reg, IGpioController::Direction dir) { 
+                    return is_reg && dir == IGpioController::Direction::OUTPUT; 
+                }, 
+                "registerInterlockPair(): Pin B must be registered as OUTPUT.");
+
+    std::lock_guard<std::mutex> lock(handlers_mutex_);
+    interlock_pairs_.push_back({pin_a, pin_b});
+    interlocked_pins_mask_ |= (1 << pin_a) | (1 << pin_b);
+  }
 };
 
 class Imx8mpGpioController : public GpioControllerBase {
 public:
-  Imx8mpGpioController() : GpioControllerBase(IMX8MP_GPIO1_BASE) {}
+  Imx8mpGpioController() : GpioControllerBase(IMX8MP_GPIO1_BASE, IMX8MP_GPIO1_MAX_PINS) {}
 };
 
 class Imx95RgpioController : public GpioControllerBase {
 public:
-  Imx95RgpioController() : GpioControllerBase(IMX95_GPIO1_BASE) {}
+  Imx95RgpioController() : GpioControllerBase(IMX95_GPIO1_BASE, IMX95_GPIO1_MAX_PINS) {}
 };
 
 // =============================================================================
