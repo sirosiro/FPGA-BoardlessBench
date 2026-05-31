@@ -1,5 +1,7 @@
 /dts-v1/;
 / {
+    compatible = "fsl,imx8mp-evk", "fsl,imx8mp";
+    model = "NXP i.MX8MPlus EVK board";
     /* 
      * i.MX8MP GPIO1
      * Base physical address: 0x30200000, Size: 0x1000

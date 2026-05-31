@@ -1,5 +1,7 @@
 /dts-v1/;
 / {
+    compatible = "fsl,imx95-15x15-frdm", "fsl,imx95";
+    model = "NXP i.MX95 15X15 FRDM board";
     /* 
      * i.MX95 GPIO1 (AON Domain)
      * Base physical address: 0x47400000, Size: 0x1000

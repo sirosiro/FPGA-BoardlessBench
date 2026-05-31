@@ -99,7 +99,24 @@ class DTSParser:
             gpio = next((d for d in devices if d.type == 'gpio'), None)
             if gpio: board_name = gpio.name
         
-        return BoardModel(devices, name=board_name)
+        # 最上位ノードの compatible を抽出してヌル文字区切りのバイト列にする
+        compatible_bytes = b"generic,fbb-vfpga\x00"
+        root_compat_match = re.search(r'/\s*\{[^{]*?compatible\s*=\s*([^;]+);', content, re.DOTALL)
+        if root_compat_match:
+            raw_compat = root_compat_match.group(1).strip()
+            parts = [p.strip().strip('"').strip() for p in raw_compat.split(',')]
+            compatible_bytes = b"".join([p.encode('utf-8') + b"\x00" for p in parts if p])
+
+        # 最上位ノードの model を抽出
+        model_name = "generic-vfpga"
+        root_model_match = re.search(r'/\s*\{[^{]*?model\s*=\s*"([^"]+)";', content, re.DOTALL)
+        if root_model_match:
+            model_name = root_model_match.group(1).strip()
+
+        model = BoardModel(devices, name=board_name)
+        model.compatible_bytes = compatible_bytes
+        model.model_name = model_name
+        return model
 
 # =============================================================================
 # 3. Generators
@@ -176,6 +193,9 @@ class ShimGenerator(BaseGenerator):
 static int virtual_fd_route_idx[MAX_FDS] = {0};
 
 static int (*original_open)(const char *pathname, int flags, mode_t mode) = NULL;
+static int (*original_open64)(const char *pathname, int flags, mode_t mode) = NULL;
+static int (*original_openat)(int dirfd, const char *pathname, int flags, mode_t mode) = NULL;
+static int (*original_openat64)(int dirfd, const char *pathname, int flags, mode_t mode) = NULL;
 static int (*original_ioctl)(int fd, unsigned long request, void *argp) = NULL;
 static void* (*original_mmap)(void *addr, size_t length, int prot, int flags, int fd, off_t offset) = NULL;
 
@@ -196,6 +216,12 @@ static int is_uart_device(const char *pathname) { (void)pathname; %s return 0; }
 int open(const char *pathname, int flags, ...) {
     mode_t mode = 0; if (flags & O_CREAT) { va_list arg; va_start(arg, flags); mode = va_arg(arg, mode_t); va_end(arg); }
     if (!original_open) original_open = dlsym(RTLD_NEXT, "open");
+    if (pathname != NULL && strcmp(pathname, "/sys/firmware/devicetree/base/compatible") == 0) {
+        pathname = "/tmp/fbb_compatible";
+    }
+    if (pathname != NULL && strcmp(pathname, "/sys/firmware/devicetree/base/model") == 0) {
+        pathname = "/tmp/fbb_model";
+    }
     int route_idx = find_route_by_path(pathname);
     if (route_idx != 0) {
         int fd = original_open("/dev/null", flags, mode);
@@ -228,6 +254,135 @@ int open(const char *pathname, int flags, ...) {
         return master_fd;
     }
     return original_open(pathname, flags, mode);
+}
+
+int open64(const char *pathname, int flags, ...) {
+    mode_t mode = 0; if (flags & O_CREAT) { va_list arg; va_start(arg, flags); mode = va_arg(arg, mode_t); va_end(arg); }
+    if (!original_open64) original_open64 = dlsym(RTLD_NEXT, "open64");
+    if (pathname != NULL && strcmp(pathname, "/sys/firmware/devicetree/base/compatible") == 0) {
+        pathname = "/tmp/fbb_compatible";
+    }
+    if (pathname != NULL && strcmp(pathname, "/sys/firmware/devicetree/base/model") == 0) {
+        pathname = "/tmp/fbb_model";
+    }
+    int route_idx = find_route_by_path(pathname);
+    if (route_idx != 0) {
+        int fd = original_open64("/dev/null", flags, mode);
+        if (fd != -1 && fd < MAX_FDS) virtual_fd_route_idx[fd] = route_idx;
+        return fd;
+    }
+    int i2c_bus_id = is_i2c_device(pathname);
+    if (i2c_bus_id != 0) {
+        int fd = original_open64("/dev/null", flags, mode);
+        if (fd != -1 && fd < MAX_FDS) virtual_fd_route_idx[fd] = -100 - i2c_bus_id;
+        return fd;
+    }
+    int uart_id = is_uart_device(pathname);
+    if (uart_id != 0) {
+        int master_fd = posix_openpt(O_RDWR | O_NOCTTY);
+        if (master_fd != -1) {
+            grantpt(master_fd); unlockpt(master_fd);
+            char *slave_name = ptsname(master_fd);
+            if (slave_name) {
+                char map_path[512];
+                snprintf(map_path, sizeof(map_path), "%%s/dashboard/data/vfpga_uart_%%d", PROJECT_ROOT, uart_id);
+                int map_fd = original_open64(map_path, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+                if (map_fd != -1) {
+                    write(map_fd, slave_name, strlen(slave_name));
+                    close(map_fd);
+                }
+            }
+            if (master_fd < MAX_FDS) virtual_fd_route_idx[master_fd] = -200;
+        }
+        return master_fd;
+    }
+    return original_open64(pathname, flags, mode);
+}
+
+int openat(int dirfd, const char *pathname, int flags, ...) {
+    mode_t mode = 0; if (flags & O_CREAT) { va_list arg; va_start(arg, flags); mode = va_arg(arg, mode_t); va_end(arg); }
+    if (!original_openat) original_openat = dlsym(RTLD_NEXT, "openat");
+    if (pathname != NULL && strcmp(pathname, "/sys/firmware/devicetree/base/compatible") == 0) {
+        pathname = "/tmp/fbb_compatible";
+    }
+    if (pathname != NULL && strcmp(pathname, "/sys/firmware/devicetree/base/model") == 0) {
+        pathname = "/tmp/fbb_model";
+    }
+    int route_idx = find_route_by_path(pathname);
+    if (route_idx != 0) {
+        int fd = original_openat(dirfd, "/dev/null", flags, mode);
+        if (fd != -1 && fd < MAX_FDS) virtual_fd_route_idx[fd] = route_idx;
+        return fd;
+    }
+    int i2c_bus_id = is_i2c_device(pathname);
+    if (i2c_bus_id != 0) {
+        int fd = original_openat(dirfd, "/dev/null", flags, mode);
+        if (fd != -1 && fd < MAX_FDS) virtual_fd_route_idx[fd] = -100 - i2c_bus_id;
+        return fd;
+    }
+    int uart_id = is_uart_device(pathname);
+    if (uart_id != 0) {
+        int master_fd = posix_openpt(O_RDWR | O_NOCTTY);
+        if (master_fd != -1) {
+            grantpt(master_fd); unlockpt(master_fd);
+            char *slave_name = ptsname(master_fd);
+            if (slave_name) {
+                char map_path[512];
+                snprintf(map_path, sizeof(map_path), "%%s/dashboard/data/vfpga_uart_%%d", PROJECT_ROOT, uart_id);
+                int map_fd = original_openat(AT_FDCWD, map_path, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+                if (map_fd != -1) {
+                    write(map_fd, slave_name, strlen(slave_name));
+                    close(map_fd);
+                }
+            }
+            if (master_fd < MAX_FDS) virtual_fd_route_idx[master_fd] = -200;
+        }
+        return master_fd;
+    }
+    return original_openat(dirfd, pathname, flags, mode);
+}
+
+int openat64(int dirfd, const char *pathname, int flags, ...) {
+    mode_t mode = 0; if (flags & O_CREAT) { va_list arg; va_start(arg, flags); mode = va_arg(arg, mode_t); va_end(arg); }
+    if (!original_openat64) original_openat64 = dlsym(RTLD_NEXT, "openat64");
+    if (pathname != NULL && strcmp(pathname, "/sys/firmware/devicetree/base/compatible") == 0) {
+        pathname = "/tmp/fbb_compatible";
+    }
+    if (pathname != NULL && strcmp(pathname, "/sys/firmware/devicetree/base/model") == 0) {
+        pathname = "/tmp/fbb_model";
+    }
+    int route_idx = find_route_by_path(pathname);
+    if (route_idx != 0) {
+        int fd = original_openat64(dirfd, "/dev/null", flags, mode);
+        if (fd != -1 && fd < MAX_FDS) virtual_fd_route_idx[fd] = route_idx;
+        return fd;
+    }
+    int i2c_bus_id = is_i2c_device(pathname);
+    if (i2c_bus_id != 0) {
+        int fd = original_openat64(dirfd, "/dev/null", flags, mode);
+        if (fd != -1 && fd < MAX_FDS) virtual_fd_route_idx[fd] = -100 - i2c_bus_id;
+        return fd;
+    }
+    int uart_id = is_uart_device(pathname);
+    if (uart_id != 0) {
+        int master_fd = posix_openpt(O_RDWR | O_NOCTTY);
+        if (master_fd != -1) {
+            grantpt(master_fd); unlockpt(master_fd);
+            char *slave_name = ptsname(master_fd);
+            if (slave_name) {
+                char map_path[512];
+                snprintf(map_path, sizeof(map_path), "%%s/dashboard/data/vfpga_uart_%%d", PROJECT_ROOT, uart_id);
+                int map_fd = original_openat64(AT_FDCWD, map_path, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+                if (map_fd != -1) {
+                    write(map_fd, slave_name, strlen(slave_name));
+                    close(map_fd);
+                }
+            }
+            if (master_fd < MAX_FDS) virtual_fd_route_idx[master_fd] = -200;
+        }
+        return master_fd;
+    }
+    return original_openat64(dirfd, pathname, flags, mode);
 }
 
 void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset) {
@@ -465,6 +620,7 @@ class ManifestGenerator(BaseGenerator):
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../"))
         manifest = {
             "board": shm_name,
+            "model": getattr(model, "model_name", "generic-vfpga"),
             "shm_path": f"/tmp/{shm_name}",
             "shm_size": shm_size,
             "project_root": project_root,
@@ -506,6 +662,30 @@ class GeneratorOrchestrator:
                 os.makedirs(dir_name, exist_ok=True)
             with open(abs_path, "w") as f:
                 f.write(content)
+        
+        # /tmp/fbb_compatible を生成
+        compatible_path = "/tmp/fbb_compatible"
+        compatible_bytes = b"generic,fbb-vfpga\x00"
+        if hasattr(self.model, "compatible_bytes"):
+            compatible_bytes = self.model.compatible_bytes
+
+        try:
+            with open(compatible_path, "wb") as f:
+                f.write(compatible_bytes)
+        except Exception as e:
+            print(f"[Warning] Failed to write {compatible_path}: {e}", file=sys.stderr)
+
+        # /tmp/fbb_model を生成
+        model_path = "/tmp/fbb_model"
+        model_bytes = b"generic-vfpga\x00"
+        if hasattr(self.model, "model_name"):
+            model_bytes = self.model.model_name.encode('utf-8') + b"\x00"
+
+        try:
+            with open(model_path, "wb") as f:
+                f.write(model_bytes)
+        except Exception as e:
+            print(f"[Warning] Failed to write {model_path}: {e}", file=sys.stderr)
 
 if __name__ == "__main__":
     if len(sys.argv) < 2: sys.exit(1)

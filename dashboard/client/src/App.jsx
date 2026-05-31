@@ -117,7 +117,7 @@ function DashboardInner() {
             Reset Layout
           </button>
           <div className="meta-item" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', color: '#c9d1d9' }}>
-            <Box size={14} /> {manifest?.board || 'Loading...'}
+            <Box size={14} /> {manifest?.model || manifest?.board || 'Loading...'}
           </div>
           <div className={`conn-status ${connected ? 'online' : 'offline'}`} style={{ fontSize: '0.85rem', fontWeight: 600 }}>
             {connected ? '● LIVE' : '○ DISCONNECTED'}

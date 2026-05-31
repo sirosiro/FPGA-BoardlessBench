@@ -12,6 +12,9 @@
 #include <unordered_map>
 #include <vector>
 #include <stdlib.h>
+#include <fstream>
+#include <string>
+#include <cerrno>
 
 // Standard base addresses and sizes
 constexpr unsigned long IMX8MP_GPIO1_BASE = 0x30200000;
@@ -429,19 +432,38 @@ public:
 // HalFactory implementation
 // =============================================================================
 SocType HalFactory::detectSocType() {
-  // Detect which device is present by trying to open them (since access() is
-  // not intercepted by F-BB shim)
-  int fd = ::open("/dev/ttyLP0", O_RDONLY | O_NOCTTY | O_NDELAY);
+  // 1. デバイスツリーの compatible 情報を読み込んで SoC を自動判別
+  int fd = ::open("/sys/firmware/devicetree/base/compatible", O_RDONLY);
   if (fd != -1) {
+    char buf[256];
+    memset(buf, 0, sizeof(buf));
+    ssize_t bytes_read = ::read(fd, buf, sizeof(buf) - 1);
     ::close(fd);
+
+    if (bytes_read > 0) {
+      // ヌル文字区切りを std::string の find でスキャンするために文字列オブジェクト化
+      std::string content(buf, bytes_read);
+      if (content.find("imx95") != std::string::npos) {
+        return SocType::IMX95;
+      }
+      if (content.find("imx8mp") != std::string::npos) {
+        return SocType::IMX8MP;
+      }
+    }
+  }
+
+  // 2. [フォールバック] 環境変数による明示的な指定をチェック (デバッグ・シミュレーション支援用)
+  const char* env_soc = std::getenv("FBB_SOC_TYPE");
+  if (env_soc != nullptr) {
+    std::string soc_str(env_soc);
+    if (soc_str == "imx8mp" || soc_str == "IMX8MP") {
+      return SocType::IMX8MP;
+    }
     return SocType::IMX95;
   }
-  fd = ::open("/dev/ttymxc0", O_RDONLY | O_NOCTTY | O_NDELAY);
-  if (fd != -1) {
-    ::close(fd);
-    return SocType::IMX8MP;
-  }
-  // Default to i.MX95 context
+
+  // 3. [最終フォールバック] 安全のためデフォルト値を返す
+  fprintf(stderr, "[HAL WARNING] Failed to detect SoC type from device tree. Defaulting to i.MX95 context.\n");
   return SocType::IMX95;
 }
 
