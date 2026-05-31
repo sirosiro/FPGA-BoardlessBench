@@ -31,11 +31,29 @@
     - `uartConnections`: アクティブな UART ブリッジへの TCP ソケット。
 
 ### 3.2 Dashboard Frontend (React)
-- **技術スタック**: Vite + React + Lucide-react (Icons) + Socket.io-client + **recharts** (Charting)。
+- **技術スタック**: Vite + React + Lucide-react (Icons) + Socket.io-client + **recharts** (Charting) + **dockview-react** (Docking Layout)。
 - **特徴**: 
     - 118 チャネルの GPIO をグリッド表示し、`TRI` レジスタの値に基づき LED（出力）とトグルスイッチ（入力）を動的に切り替えて描画。
     - **Register State Tracer**: レジスタの変化履歴を正規化表示し、微小な変化も可視化。凡例クリックによる表示・非表示の切り替えをサポート。
-    - **IDE-style Resizing**: マウスドラッグにより各ペインのサイズを動的に調整。中央の GPIO パネルが伸縮することで、境界線がマウスに追従する直感的なリサイズを実現。
+    - **IDE-style Docking Layout (Dockview)**: VS Code互換のドッキングレイアウトを採用。パネルのドラッグ＆ドロップによる分割・結合・タブ化・フローティング化をネイティブサポートし、UI全体の配置リセット機能（Reset Layout）も完備。レレガシーな手動リサイズコードを撤去し、高精度なリサイズ体験を提供。
+
+### 3.3 UIレイアウトライブラリ選定意思決定ログ (UI Layout Library Decision Log)
+F-BBのダッシュボード刷新にあたり、3つの選択肢（GoldenLayout, FlexLayout-React, Dockview）を比較・検討し、**Dockview**を採用しました。
+
+#### 比較・評価のまとめ:
+1. **GoldenLayout (評価: B - 非推奨)**:
+   - *メリット*: 定番であり、ポップアウト（別ウィンドウ化）機能が強力。
+   - *デメリット*: Vanilla JS向けコアのためReact 19と描画競合を起こしやすく、jQuery依存脱却の過程でバグが多く残っている。
+2. **FlexLayout-React (評価: A- - 堅牢性重視)**:
+   - *メリット*: 金融取引ツールでの実績が豊富。React専用設計で状態同期が完璧、堅牢で安定。
+   - *デメリット*: デザインや操作性が少しクラシックであり、柔軟なアニメーションやVS Codeライクな直感性は劣る。
+3. **Dockview (評価: A+ - 将来性・デザイン重視 / 採用)**:
+   - *メリット*: HTML5のドラッグ＆ドロップAPIベースで、VS Codeとほぼ同等の非常に滑らかで洗練されたUXを実現。Vite + React 19のモダン環境に公式サポート。
+   - *デメリット*: 比較的新しいライブラリであるため、超長期の枯れた安定性ではFlexLayoutに劣る。
+
+#### 採用理由と将来へのトレードオフ:
+F-BBは個人開発および教育的意義（お勉強）を持つプロダクトであり、「物理開発をソフトウェアに変革する」というモダンかつ先進的なコンセプトを掲げています。そのため、カチッとした堅牢性（FlexLayout）よりも、**VS Codeと同一の使用感・未来的なデザイン性（Dockview）がもたらす開発体験（DX）と学習のモチベーション**を最優先としました。
+将来的にプロダクトのエンタープライズ化などで絶対的な堅牢性が求められる場合、またはReactの状態同期の完全性を高める場合は、コンポーネント構成はコンテキスト（`DashboardContext`）を介して既に抽象化・分離されているため、ドックのラッパー部分を **FlexLayout-React** へ移行するトレードオフが検討可能です。
 
 ## 4. 既知の未解決課題 (Known Open Issues)
 - **多重接続時の競合**: 同一の UART に対して複数のブラウザタブから入力を試みた際の排他制御。

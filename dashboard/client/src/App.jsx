@@ -1,303 +1,145 @@
-import React, { useState, useEffect, useRef } from 'react';
-import { io } from 'socket.io-client';
-import { Activity, Cpu, Hash, Clock, Box, Terminal as TerminalIcon, Send, AlertCircle, ToggleRight } from 'lucide-react';
+import { useRef } from 'react';
+import { Box } from 'lucide-react';
+import { DockviewReact } from 'dockview-react';
+import { DashboardProvider, useDashboard } from './components/DashboardContext';
+import RegisterMonitor from './components/RegisterMonitor';
+import GpioPanel from './components/GpioPanel';
+import UartTerminal from './components/UartTerminal';
 import RegisterTracer from './components/RegisterTracer';
 import './App.css';
 
-const socket = io('http://' + window.location.hostname + ':8080');
+// Components mapping for Dockview
+const components = {
+  registerMonitor: () => <RegisterMonitor />,
+  gpioPanel: () => <GpioPanel />,
+  registerTracer: () => <RegisterTracer />,
+  uartTerminal: () => <UartTerminal />,
+};
 
-function App() {
-  const [registers, setRegisters] = useState([]);
-  const [connected, setConnected] = useState(false);
-  const [manifest, setManifest] = useState(null);
-  const [uartLogs, setUartLogs] = useState({});
-  const [activeUart, setActiveUart] = useState(null);
-  const [uartInput, setUartInput] = useState("");
-  const [sidebarWidth, setSidebarWidth] = useState(350);
-  const [isResizing, setIsResizing] = useState(false);
-  const [registerHeight, setRegisterHeight] = useState(250);
-  const [traceHeight, setTraceHeight] = useState(350);
-  const [isHResizing, setIsHResizing] = useState(false);
-  const [isTResizing, setIsTResizing] = useState(false);
-  const [traceHistory, setTraceHistory] = useState([]);
-  const terminalViewportRef = useRef(null);
+function DashboardInner() {
+  const { connected, manifest } = useDashboard();
+  const apiRef = useRef(null);
 
-  useEffect(() => {
-    socket.on('connect', () => setConnected(true));
-    socket.on('disconnect', () => setConnected(false));
-    socket.on('registers', (data) => setRegisters(data));
-    socket.on('uart-init', (data) => {
-      setUartLogs(data);
-      if (!activeUart && Object.keys(data).length > 0) setActiveUart(Object.keys(data)[0]);
-    });
-    socket.on('uart-data', ({ name, text }) => {
-      setUartLogs(prev => ({ ...prev, [name]: (prev[name] || "") + text }));
-      if (!activeUart) setActiveUart(name);
-    });
+  // Initialize the default layout:
+  // - Register Monitor, GPIO Panel, and Register Tracer in a vertical stack on the left (width 30%)
+  // - UART Terminal on the right (width 70%)
+  const onReady = (event) => {
+    apiRef.current = event.api;
+    initLayout(event.api);
+  };
 
-    socket.on('trace-history-init', (data) => setTraceHistory(data));
-    socket.on('trace-history-update', (snapshot) => {
-      setTraceHistory(prev => [...prev, snapshot].slice(-500));
+  const initLayout = (api) => {
+    api.clear();
+
+    // 1. Add uartTerminal on the right (takes whole space initially)
+    const uartPanel = api.addPanel({
+      id: 'uartTerminal',
+      component: 'uartTerminal',
+      title: 'UART Console',
     });
 
-    fetch('/api/manifest').then(res => res.json()).then(setManifest);
+    // 2. Add registerMonitor to the left of uartTerminal
+    const regPanel = api.addPanel({
+      id: 'registerMonitor',
+      component: 'registerMonitor',
+      title: 'Registers',
+      position: {
+        referencePanel: 'uartTerminal',
+        direction: 'left',
+      },
+    });
 
-    return () => {
-      socket.off('connect'); socket.off('disconnect');
-      socket.off('registers'); socket.off('uart-data'); socket.off('uart-init');
-      socket.off('trace-history-init'); socket.off('trace-history-update');
-    };
-  }, [activeUart]);
+    // 3. Add gpioPanel below registerMonitor
+    const gpioPanel = api.addPanel({
+      id: 'gpioPanel',
+      component: 'gpioPanel',
+      title: 'GPIO / Pin Array',
+      position: {
+        referencePanel: 'registerMonitor',
+        direction: 'below',
+      },
+    });
 
-  useEffect(() => {
-    const viewport = terminalViewportRef.current;
-    if (viewport) viewport.scrollTop = viewport.scrollHeight;
-  }, [uartLogs, activeUart]);
+    // 4. Add registerTracer below gpioPanel
+    const tracerPanel = api.addPanel({
+      id: 'registerTracer',
+      component: 'registerTracer',
+      title: 'Tracer',
+      position: {
+        referencePanel: 'gpioPanel',
+        direction: 'below',
+      },
+    });
 
-  // Resizing logic (Vanilla JS)
-  const startResizing = () => setIsResizing(true);
-  const stopResizing = () => setIsResizing(false);
-  const resize = (e) => {
-    if (isResizing) {
-      const sidebarElement = document.querySelector('.sidebar');
-      if (sidebarElement) {
-        const sidebarRect = sidebarElement.getBoundingClientRect();
-        const newWidth = e.clientX - sidebarRect.left;
-        if (newWidth > 200 && newWidth < 800) setSidebarWidth(newWidth);
-      }
-    }
+    // Programmatic adjustment of sizes to match default ratios
+    // Set widths
+    regPanel.api.setSize({ width: 400 });
+    // Set heights on the left column panels
+    regPanel.api.setSize({ height: 250 });
+    tracerPanel.api.setSize({ height: 350 });
+
+    // Set panel constraints to prevent breaking layout
+    regPanel.api.setConstraints({ minimumWidth: 200, minimumHeight: 100 });
+    gpioPanel.api.setConstraints({ minimumWidth: 200, minimumHeight: 100 });
+    tracerPanel.api.setConstraints({ minimumWidth: 200, minimumHeight: 100 });
+    uartPanel.api.setConstraints({ minimumWidth: 300 });
   };
 
-  const startHResizing = () => setIsHResizing(true);
-  const stopHResizing = () => setIsHResizing(false);
-  const startTResizing = () => setIsTResizing(true);
-  const stopTResizing = () => setIsTResizing(false);
-
-  const hResize = (e) => {
-    if (isHResizing) {
-      const sidebarElement = document.querySelector('.sidebar');
-      if (sidebarElement) {
-        const sidebarRect = sidebarElement.getBoundingClientRect();
-        const newHeight = e.clientY - sidebarRect.top;
-        if (newHeight > 100 && newHeight < sidebarRect.height - 200) setRegisterHeight(newHeight);
-      }
-    }
-    if (isTResizing) {
-      const sidebarElement = document.querySelector('.sidebar');
-      if (sidebarElement) {
-        const sidebarRect = sidebarElement.getBoundingClientRect();
-        const newHeight = sidebarRect.bottom - e.clientY;
-        if (newHeight > 80 && newHeight < sidebarRect.height - registerHeight - 100) setTraceHeight(newHeight);
-      }
+  const handleResetLayout = () => {
+    if (apiRef.current) {
+      initLayout(apiRef.current);
     }
   };
-
-  useEffect(() => {
-    const handleMouseMove = (e) => {
-      if (isResizing) resize(e);
-      if (isHResizing || isTResizing) hResize(e);
-    };
-
-    const handleMouseUp = () => {
-      stopResizing();
-      stopHResizing();
-      stopTResizing();
-      document.body.style.userSelect = 'auto';
-    };
-
-    if (isResizing || isHResizing || isTResizing) {
-      document.body.style.userSelect = 'none';
-      window.addEventListener('mousemove', handleMouseMove);
-      window.addEventListener('mouseup', handleMouseUp);
-    }
-
-    return () => {
-      window.removeEventListener('mousemove', handleMouseMove);
-      window.removeEventListener('mouseup', handleMouseUp);
-      document.body.style.userSelect = 'auto';
-    };
-  }, [isResizing, isHResizing, isTResizing]);
-
-  const sendUart = (e) => {
-    e.preventDefault();
-    if (activeUart && uartInput) {
-      socket.emit('uart-send', { name: activeUart, text: uartInput + '\n' });
-      setUartInput("");
-    }
-  };
-
-  const handleGpioToggle = (deviceName, bitIndex, currentOn, dataRegName = 'DATA') => {
-    socket.emit('gpio-inject', { deviceName, bitIndex, value: !currentOn, dataRegName });
-  };
-
-  const handleClearTrace = () => {
-    socket.emit('trace-history-clear');
-  };
-
-  const gpioDevices = manifest?.devices?.filter(d => d.type === 'gpio' || d.type === 'uio') || [];
 
   return (
-    <div className="dashboard-container" style={{'--sidebar-width': `${sidebarWidth}px`}}>
-      <header className="main-header">
-        <div className="brand">
-          <span className="logo-text">FPGA-BoardlessBench (F-BB)</span>
-          <span className="version-tag">v3.0 Premium</span>
+    <div className="dashboard-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', overflow: 'hidden' }}>
+      <header className="main-header" style={{ flex: '0 0 60px', padding: '0 2rem', background: '#161b22', borderBottom: '1px solid #30363d', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div className="brand" style={{ display: 'flex', alignItems: 'center' }}>
+          <span className="logo-text" style={{ fontWeight: 800, fontSize: '1.2rem', color: '#58a6ff' }}>FPGA-BoardlessBench (F-BB)</span>
+          <span className="version-tag" style={{ marginLeft: '0.5rem', fontSize: '0.7rem', color: '#8b949e', border: '1px solid #30363d', padding: '2px 6px', borderRadius: '4px' }}>v3.0 Premium</span>
         </div>
-        <div className="system-meta">
-          <div className="meta-item"><Box size={14} /> {manifest?.board || 'Loading...'}</div>
-          <div className={`conn-status ${connected ? 'online' : 'offline'}`}>
+        <div className="system-meta" style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+          <button 
+            className="reset-layout-btn"
+            onClick={handleResetLayout}
+            style={{
+              backgroundColor: '#21262d',
+              color: '#c9d1d9',
+              border: '1px solid #30363d',
+              padding: '6px 12px',
+              fontSize: '0.75rem',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontWeight: '600',
+              transition: 'background 0.2s'
+            }}
+          >
+            Reset Layout
+          </button>
+          <div className="meta-item" style={{ display: 'flex', alignItems: 'center', gap: '0.4rem', fontSize: '0.85rem', color: '#c9d1d9' }}>
+            <Box size={14} /> {manifest?.board || 'Loading...'}
+          </div>
+          <div className={`conn-status ${connected ? 'online' : 'offline'}`} style={{ fontSize: '0.85rem', fontWeight: 600 }}>
             {connected ? '● LIVE' : '○ DISCONNECTED'}
           </div>
         </div>
       </header>
 
-      <main className="content-layout">
-        <aside className="sidebar" style={{ display: 'flex', flexDirection: 'column', height: '100%', overflow: 'hidden' }}>
-          <div className="register-pane" style={{ height: `${registerHeight}px`, flexShrink: 0, display: 'flex', flexDirection: 'column', borderBottom: '1px solid #30363d' }}>
-            <div className="panel-header"><Cpu size={16} /> Register Monitor</div>
-            <div className="register-viewport">
-              <table className="register-table">
-                <thead>
-                  <tr><th>Name</th><th>Offset</th><th>Value (Hex)</th></tr>
-                </thead>
-                <tbody>
-                  {registers.map((reg, i) => (
-                    <tr key={i}>
-                      <td className="reg-cell-name" style={{ fontWeight: 600 }}>{reg.name}</td>
-                      <td className="reg-offset">{reg.offset}</td>
-                      <td className="reg-val">{reg.value}</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-          
-          <div className="h-resizer" onMouseDown={startHResizing}></div>
-          
-          <div className="gpio-pane" style={{ flex: 1, display: 'flex', flexDirection: 'column', minHeight: '100px', overflow: 'hidden', borderBottom: '1px solid #30363d' }}>
-            <div className="panel-header"><ToggleRight size={16} /> GPIO / Pin Array (118ch)</div>
-            <div className="gpio-viewport">
-            {gpioDevices.map((dev, i) => {
-              const devDataRegs = registers.filter(r => r.deviceName === dev.name && r.name.startsWith('DATA'));
-              
-              if (devDataRegs.length === 0) return null;
-
-              return devDataRegs.map((dataReg, chIndex) => {
-                // Find matching TRI register (e.g., DATA -> TRI, DATA2 -> TRI2)
-                const suffix = dataReg.name.replace('DATA', '');
-                const triReg = registers.find(r => r.deviceName === dev.name && r.name === `TRI${suffix}`);
-                
-                const dataVal = dataReg?.decimal || 0;
-                const triVal = triReg?.decimal || 0;
-                const labelName = devDataRegs.length > 1 ? `${dev.name} (${dataReg.name})` : dev.name;
-                
-                return (
-                  <div key={`gpio-${i}-ch${chIndex}`} className="gpio-dev-group">
-                    <div className="gpio-dev-label">{labelName}</div>
-                    <div className="gpio-grid">
-                      {Array.from({ length: 32 }).map((_, bitIndex) => {
-                        const isInput = (triVal & (1 << bitIndex)) !== 0;
-                        const isOn = (dataVal & (1 << bitIndex)) !== 0;
-                        return (
-                          <div 
-                            key={bitIndex} 
-                            className={`gpio-bit ${isInput ? 'input' : 'output'} ${isOn ? 'on' : 'off'}`}
-                            onClick={() => isInput && handleGpioToggle(dev.name, bitIndex, isOn, dataReg.name)}
-                            title={`${labelName} Bit ${bitIndex} (${isInput ? 'Input' : 'Output'})`}
-                          >
-                            <div className="gpio-indicator"></div>
-                            <span className="gpio-label">B{bitIndex}</span>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-                );
-              });
-            })}
-            </div>
-          </div>
-
-          <div className="h-resizer" onMouseDown={startTResizing}></div>
-          
-          <div className="trace-pane" style={{ flexShrink: 0, height: `${traceHeight}px`, padding: '0 10px 20px 10px', borderTop: '1px solid #333', display: 'flex', flexDirection: 'column' }}>
-            <RegisterTracer historyData={traceHistory} onClear={handleClearTrace} />
-          </div>
-        </aside>
-
-        <div className="resizer" onMouseDown={startResizing}></div>
-
-        <section className="terminal-section">
-          <div className="panel-header">
-            <div className="tab-group">
-              <TerminalIcon size={16} />
-              {Object.keys(uartLogs).map(name => (
-                <button key={name} className={`tab ${activeUart === name ? 'active' : ''}`} onClick={() => setActiveUart(name)}>
-                  {name.replace('vfpga_uart_', 'UART ')}
-                </button>
-              ))}
-            </div>
-          </div>
-          
-          <div className="terminal-viewport" ref={terminalViewportRef}>
-            <pre className="terminal-output">
-              {activeUart ? uartLogs[activeUart] : 'Waiting for connection...'}
-            </pre>
-          </div>
-
-          <form className="terminal-prompt" onSubmit={sendUart}>
-            <Send size={16} className="prompt-icon" />
-            <input type="text" placeholder="Send command..." value={uartInput} onChange={e => setUartInput(e.target.value)} disabled={!activeUart} />
-          </form>
-        </section>
+      <main className="content-layout dockview-theme-dark" style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+        <DockviewReact
+          components={components}
+          onReady={onReady}
+        />
       </main>
-
-      <style>{`
-        .dashboard-container { height: 100vh; width: 100vw; box-sizing: border-box; display: flex; flex-direction: column; background: #0d1117; color: #c9d1d9; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Helvetica, Arial, sans-serif; }
-        .main-header { flex: 0 0 60px; padding: 0 2rem; background: #161b22; border-bottom: 1px solid #30363d; display: flex; justify-content: space-between; align-items: center; }
-        .logo-text { font-weight: 800; font-size: 1.2rem; color: #58a6ff; }
-        .version-tag { margin-left: 0.5rem; font-size: 0.7rem; color: #8b949e; border: 1px solid #30363d; padding: 2px 6px; border-radius: 4px; }
-        .conn-status.online { color: #3fb950; }
-        
-        .content-layout { flex: 1; display: flex; overflow: hidden; }
-        .sidebar { width: var(--sidebar-width); flex-shrink: 0; background: #0d1117; display: flex; flex-direction: column; border-right: 1px solid #30363d; }
-        .resizer { width: 4px; cursor: col-resize; background: transparent; transition: background 0.2s; z-index: 10; }
-        .resizer:hover { background: #58a6ff; }
-        .h-resizer { height: 4px; cursor: row-resize; background: #21262d; border-top: 1px solid #30363d; border-bottom: 1px solid #30363d; transition: background 0.2s; flex-shrink: 0; z-index: 10; }
-        .h-resizer:hover { background: #58a6ff; border-color: #58a6ff; }
-        
-        .register-viewport, .gpio-viewport { flex: 1; overflow-y: auto; padding: 1rem; }
-        .register-table { width: 100%; border-collapse: collapse; font-size: 0.75rem; }
-        .register-table th { text-align: left; color: #8b949e; border-bottom: 1px solid #30363d; padding: 8px; }
-        .register-table td { padding: 8px; border-bottom: 1px solid #0d1117; }
-        .reg-val { font-family: 'JetBrains Mono', monospace; color: #58a6ff; }
-        
-        .gpio-dev-group { margin-bottom: 1.5rem; }
-        .gpio-dev-label { font-size: 0.7rem; font-weight: 700; color: #8b949e; margin-bottom: 0.5rem; text-transform: uppercase; }
-        .gpio-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(36px, 1fr)); gap: 8px; }
-        .gpio-bit { display: flex; flex-direction: column; align-items: center; cursor: default; }
-        .gpio-bit.input { cursor: pointer; }
-        
-        /* Output is a round LED */
-        .gpio-bit.output .gpio-indicator { width: 14px; height: 14px; border-radius: 50%; border: 2px solid #30363d; margin-bottom: 4px; transition: all 0.2s; }
-        .gpio-bit.on.output .gpio-indicator { background: #3fb950; border-color: #3fb950; box-shadow: 0 0 8px rgba(63, 185, 80, 0.5); }
-        
-        /* Input is a pill toggle switch */
-        .gpio-bit.input .gpio-indicator { width: 24px; height: 14px; border-radius: 7px; background: #30363d; position: relative; margin-bottom: 4px; transition: background 0.2s; border: 1px solid #161b22; box-sizing: border-box; }
-        .gpio-bit.input .gpio-indicator::after { content: ''; position: absolute; top: 1px; left: 1px; width: 10px; height: 10px; background: #8b949e; border-radius: 50%; transition: left 0.2s; }
-        .gpio-bit.on.input .gpio-indicator { background: #58a6ff; border-color: #58a6ff; box-shadow: 0 0 8px rgba(88, 166, 255, 0.3); }
-        .gpio-bit.on.input .gpio-indicator::after { left: 11px; background: #ffffff; }
-        
-        .gpio-label { font-size: 0.6rem; color: #8b949e; }
-        
-        .terminal-section { flex: 1; display: flex; flex-direction: column; min-width: 0; background: #010409; }
-        .terminal-viewport { flex: 1; overflow-y: auto; padding: 1.5rem; }
-        .terminal-output { margin: 0; font-family: 'JetBrains Mono', monospace; font-size: 0.9rem; line-height: 1.5; white-space: pre-wrap; }
-        .terminal-prompt { flex: 0 0 60px; padding: 0 1rem; background: #161b22; display: flex; align-items: center; gap: 1rem; }
-        .terminal-prompt input { flex: 1; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; padding: 8px 12px; color: white; outline: none; }
-      `}</style>
     </div>
+  );
+}
+
+function App() {
+  return (
+    <DashboardProvider>
+      <DashboardInner />
+    </DashboardProvider>
   );
 }
 

@@ -1,4 +1,4 @@
-import React, { useMemo, useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   LineChart,
   Line,
@@ -9,8 +9,10 @@ import {
   Legend,
   ResponsiveContainer
 } from 'recharts';
+import { useDashboard } from './DashboardContext';
 
-const RegisterTracer = ({ historyData, onClear }) => {
+const RegisterTracer = () => {
+  const { traceHistory: historyData, handleClearTrace: onClear } = useDashboard();
   // 非表示にするレジスタを管理する状態
   const [hiddenKeys, setHiddenKeys] = useState({});
 
@@ -62,14 +64,11 @@ const RegisterTracer = ({ historyData, onClear }) => {
 
   return (
     <div style={{ 
-      marginTop: '10px', 
       padding: '12px', 
-      backgroundColor: '#0d1117', 
-      borderRadius: '8px',
-      border: '1px solid #30363d',
       display: 'flex',
       flexDirection: 'column',
-      height: '100%'
+      height: '100%',
+      boxSizing: 'border-box'
     }}>
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
