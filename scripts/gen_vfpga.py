@@ -173,6 +173,7 @@ class ShimGenerator(BaseGenerator):
         
         return """
 #define _GNU_SOURCE
+#pragma GCC diagnostic ignored "-Wnonnull-compare"
 #include <stdio.h>
 #include <dlfcn.h>
 #include <string.h>
