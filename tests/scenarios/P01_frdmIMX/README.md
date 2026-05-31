@@ -2,8 +2,6 @@
 
 このディレクトリは、i.MX95 FRDM評価ボードおよびi.MX 8M Plus評価ボードを模擬し、C++ HAL（ハードウェア抽象化レイヤー）を用いたデバイス制御アプリケーションの開発・テストを行うシナリオです。
 
-詳細なシステム要件やクラス設計、マルチメディアパイプラインの設計については、設計図ドキュメントである [FRDM-IMX95-Firmware-Blueprint.md](file:///workspaces/FPGA-BoardlessBench-main/tests/scenarios/P01_frdmIMX/FRDM-IMX95-Firmware-Blueprint.md) を参照してください。
-
 ---
 
 ## 実行方法 (Execution)
