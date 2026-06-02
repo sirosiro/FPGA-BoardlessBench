@@ -51,6 +51,28 @@ rm -f dashboard/data/vfpga_uart_* 2>/dev/null
 pkill -f "node dashboard/server.js" 2>/dev/null
 make clean > /dev/null 2>&1
 
+# ダッシュボードの依存関係とビルドチェック
+if [ ! -d "dashboard/node_modules" ] || [ ! -d "dashboard/client/dist" ]; then
+    if ! command -v npm &> /dev/null; then
+        echo "[Warning] 'npm' command not found. Skipping dashboard initialization."
+        echo "          Please ensure Node.js/npm is installed to use the Web Dashboard."
+    else
+        echo "[Dashboard] Installing dependencies or building frontend..."
+        if [ ! -d "dashboard/node_modules" ]; then
+            echo "[Dashboard] Installing backend dependencies..."
+            npm --prefix dashboard install || echo "[Warning] Failed to install dashboard backend dependencies!"
+        fi
+        if [ ! -d "dashboard/client/dist" ]; then
+            if [ ! -d "dashboard/client/node_modules" ]; then
+                echo "[Dashboard] Installing frontend dependencies..."
+                npm --prefix dashboard/client install || echo "[Warning] Failed to install dashboard frontend dependencies!"
+            fi
+            echo "[Dashboard] Building frontend..."
+            npm --prefix dashboard/client run build || echo "[Warning] Failed to build dashboard frontend!"
+        fi
+    fi
+fi
+
 # 2. 生成とビルド
 echo "[1/3] Generating code and building artifacts..."
 
