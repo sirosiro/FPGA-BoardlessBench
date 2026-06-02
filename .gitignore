@@ -31,8 +31,8 @@ tests/scenarios/*/test_bin
 DESIGN_PHILOSOPHY.md
 
 # Test
-/sandbox/*
-!/sandbox/.gitkeep
+sandbox/
+!**/sandbox/.gitkeep
 dashboard/data/
 dashboard/node_modules/
 dashboard/client/node_modules/
