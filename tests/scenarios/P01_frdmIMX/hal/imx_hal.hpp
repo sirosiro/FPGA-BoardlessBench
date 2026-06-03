@@ -45,6 +45,22 @@ public:
   virtual void registerInterlockPair(int pin_a, int pin_b) = 0;
 };
 
+struct CalibrationData {
+  float distortion_k1;
+  float distortion_k2;
+  float affine_matrix[16];
+  float color_balance[4]; // R, G, B, Gamma offset/scale
+};
+
+class IVideoProcessor {
+public:
+  virtual ~IVideoProcessor() = default;
+  virtual bool initialize() = 0;
+  virtual void setCalibrationParams(int camera_index, const CalibrationData& params) = 0;
+  virtual bool processFrame(const uint8_t* in_frames[4], uint8_t* out_data, int width, int height) = 0;
+  virtual void terminate() = 0;
+};
+
 class HalFactory {
 public:
   static SocType detectSocType();
@@ -54,6 +70,7 @@ public:
   static std::unique_ptr<IGpioController> createGpioController(
       SocType soc_type,
       const std::unordered_map<int, IGpioController::Direction> &pin_config);
+  static std::unique_ptr<IVideoProcessor> createVideoProcessor(SocType soc_type);
 };
 
 #endif // IMX_HAL_HPP

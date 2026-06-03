@@ -1,14 +1,14 @@
 /dts-v1/;
 / {
-    compatible = "fsl,imx8mp-evk", "fsl,imx8mp";
-    model = "NXP i.MX8MPlus EVK board";
+    compatible = "fsl,imx95-15x15-frdm", "fsl,imx95";
+    model = "NXP i.MX95 15X15 FRDM board";
     /* 
-     * i.MX8MP GPIO1
-     * Base physical address: 0x30200000, Size: 0x1000
+     * i.MX95 GPIO1 (AON Domain)
+     * Base physical address: 0x47400000, Size: 0x1000
      */
-    gpio1: gpio@30200000 {
-        compatible = "fsl,imx8mp-gpio";
-        reg = <0x30200000 0x1000>;
+    gpio1: gpio@47400000 {
+        compatible = "fsl,imx95-gpio";
+        reg = <0x47400000 0x1000>;
         label = "/dev/uio0";
         registers = 
             "DATA @ 0x00",
@@ -17,12 +17,12 @@
     };
 
     /* 
-     * i.MX8MP UART1
-     * Base physical address: 0x30860000, Size: 0x1000
+     * i.MX95 LPUART1
+     * Base physical address: 0x44380000, Size: 0x1000
      */
-    uart1: serial@30860000 {
-        compatible = "fsl,imx8mp-uart";
-        reg = <0x30860000 0x1000>;
-        label = "/dev/ttymxc0";
+    lpuart1: serial@44380000 {
+        compatible = "fsl,imx95-lpuart";
+        reg = <0x44380000 0x1000>;
+        label = "/dev/ttyLP0";
     };
 };

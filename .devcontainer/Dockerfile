@@ -7,6 +7,9 @@ ENV DEBIAN_FRONTEND=noninteractive
 RUN apt-get update && apt-get install -y \
     build-essential \
     cmake \
+    libegl1-mesa-dev \
+    libgles2-mesa-dev \
+    libgbm-dev \
     git \
     curl \
     wget \

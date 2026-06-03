@@ -81,6 +81,7 @@ public:
   void run() {
     if (!gpio_ || !serial_) {
       fprintf(stderr, "[App] Initialization incomplete. Aborting run.\n");
+      stop();
       return;
     }
 
@@ -190,11 +191,12 @@ public:
 
     // 4.2. getRawRegisterAddress test (生アドレス直接アクセス)
     printf("[App] Testing getRawRegisterAddress (direct MMIO read/write)...\n");
-    volatile uint32_t* raw_regs = gpio_->getRawRegisterAddress();
+    volatile uint32_t *raw_regs = gpio_->getRawRegisterAddress();
     if (raw_regs) {
       printf("[App] Direct writing HIGH to Pin 0 via raw register...\n");
       raw_regs[0] |= (1 << 0); // DRレジスタはオフセット0x00(インデックス0)
-      printf("[App] Verified Pin 0 state directly: %d\n", (raw_regs[0] & (1 << 0)) ? 1 : 0);
+      printf("[App] Verified Pin 0 state directly: %d\n",
+             (raw_regs[0] & (1 << 0)) ? 1 : 0);
     }
 
     // 4.3. Mutual Interlock Guard test
@@ -209,12 +211,17 @@ public:
     gpio_->writePinIL(4, PSTS::Low);
 
     // 4.4. 外部シミュレーションピンによるセーフティ＆正常終了デモのトリガー登録
-    printf("[App] Registering interactive demo triggers on Pin 11, 12, 13...\n");
+    printf(
+        "[App] Registering interactive demo triggers on Pin 11, 12, 13...\n");
 
-    // Pin 11: デモ1（インターロックピンへの通常書き込みによる誤操作ガード・アボート）
+    // Pin 11:
+    // デモ1（インターロックピンへの通常書き込みによる誤操作ガード・アボート）
     gpio_->registerInterrupt(11, [this](int pin, bool state) {
       if (state) {
-        printf("\n[App] [DEMO 1 Triggered on Pin %d] Attempting to write to interlocked Pin 4 using normal writePin (expecting immediate abort)...\n", pin);
+        printf("\n[App] [DEMO 1 Triggered on Pin %d] Attempting to write to "
+               "interlocked Pin 4 using normal writePin (expecting immediate "
+               "abort)...\n",
+               pin);
         gpio_->writePin(4, IGpioController::PinState::High);
       }
     });
@@ -222,7 +229,10 @@ public:
     // Pin 12: デモ2（排他ピンの同時ONによる競合防止ガード・アボート）
     gpio_->registerInterrupt(12, [this](int pin, bool state) {
       if (state) {
-        printf("\n[App] [DEMO 2 Triggered on Pin %d] Attempting to turn ON both Pin 4 and Pin 5 via writePinIL (expecting immediate abort)...\n", pin);
+        printf(
+            "\n[App] [DEMO 2 Triggered on Pin %d] Attempting to turn ON both "
+            "Pin 4 and Pin 5 via writePinIL (expecting immediate abort)...\n",
+            pin);
         gpio_->writePinIL(4, IGpioController::PinState::High);
         gpio_->writePinIL(5, IGpioController::PinState::High);
       }
@@ -231,12 +241,134 @@ public:
     // Pin 13: 正常終了デモ
     gpio_->registerInterrupt(13, [this](int pin, bool state) {
       if (state) {
-        printf("\n[App] [DEMO 3 Triggered on Pin %d] Requesting clean application shutdown...\n", pin);
+        printf("\n[App] [DEMO 3 Triggered on Pin %d] Requesting clean "
+               "application shutdown...\n",
+               pin);
         stop();
       }
     });
+    // 5. Test OpenGL ES via HAL (Distortion Correction Simulation)
+    printf("\n--- 5. Testing OpenGL ES (Image Processing) via HAL ---\n");
+    auto processor = HalFactory::createVideoProcessor(soc_type_);
+    if (processor && processor->initialize()) {
+      uint8_t camera_frames[4][64 * 64 * 4];
+      const uint8_t *in_frames[4];
+      uint8_t out_img[64 * 64 * 4];
 
-    printf("[App] Setup complete. Waiting for Pin 8, 9, 10 (UART notify) or Pin 11, 12, 13 (Demo triggers)...\n");
+      for (int i = 0; i < 4; i++) {
+        in_frames[i] = camera_frames[i];
+        memset(camera_frames[i], 0, sizeof(camera_frames[i]));
+      }
+
+      // Camera 0: Red (R=255, G=0, B=0, A=255)
+      // Camera 1: Green (R=0, G=255, B=0, A=255)
+      // Camera 2: Blue (R=0, G=0, B=255, A=255)
+      // Camera 3: Yellow (R=255, G=255, B=0, A=255)
+      for (int p = 0; p < 64 * 64; p++) {
+        camera_frames[0][p * 4 + 0] = 255;
+        camera_frames[0][p * 4 + 3] = 255;
+
+        camera_frames[1][p * 4 + 1] = 255;
+        camera_frames[1][p * 4 + 3] = 255;
+
+        camera_frames[2][p * 4 + 2] = 255;
+        camera_frames[2][p * 4 + 3] = 255;
+
+        camera_frames[3][p * 4 + 0] = 255;
+        camera_frames[3][p * 4 + 1] = 255;
+        camera_frames[3][p * 4 + 3] = 255;
+      }
+
+      // Configure Calibration parameters for 4 cameras individually
+      for (int i = 0; i < 4; i++) {
+        CalibrationData params;
+        params.distortion_k1 = 0.0f;
+        params.distortion_k2 = 0.0f;
+        memset(params.affine_matrix, 0, sizeof(params.affine_matrix));
+        params.affine_matrix[0] = 1.0f;
+        params.affine_matrix[5] = 1.0f;
+        params.affine_matrix[10] = 1.0f;
+        params.affine_matrix[15] = 1.0f;
+        params.color_balance[0] = 1.0f;
+        params.color_balance[1] = 1.0f;
+        params.color_balance[2] = 1.0f;
+        params.color_balance[3] = 1.0f; // Gamma
+
+        processor->setCalibrationParams(i, params);
+      }
+
+      printf("[App] Processing 4x 64x64 input frames via GPU processor "
+             "(Stitching)...\n");
+      if (processor->processFrame(in_frames, out_img, 64, 64)) {
+        bool success = true;
+        for (int y = 0; y < 64; y++) {
+          for (int x = 0; x < 64; x++) {
+            int pixel_idx = (y * 64 + x) * 4;
+            uint8_t r = out_img[pixel_idx + 0];
+            uint8_t g = out_img[pixel_idx + 1];
+            uint8_t b = out_img[pixel_idx + 2];
+            uint8_t a = out_img[pixel_idx + 3];
+
+            uint8_t exp_r = 0, exp_g = 0, exp_b = 0;
+            if (y < 32) {
+              if (x < 32) { // Bottom-Left (Cam 0: Red -> Inverted: Cyan)
+                exp_r = 0;
+                exp_g = 255;
+                exp_b = 255;
+              } else { // Bottom-Right (Cam 1: Green -> Inverted: Magenta)
+                exp_r = 255;
+                exp_g = 0;
+                exp_b = 255;
+              }
+            } else {
+              if (x < 32) { // Top-Left (Cam 2: Blue -> Inverted: Yellow)
+                exp_r = 255;
+                exp_g = 255;
+                exp_b = 0;
+              } else { // Top-Right (Cam 3: Yellow -> Inverted: Blue)
+                exp_r = 0;
+                exp_g = 0;
+                exp_b = 255;
+              }
+            }
+
+            if (r != exp_r || g != exp_g || b != exp_b || a != 255) {
+              success = false;
+              break;
+            }
+          }
+          if (!success)
+            break;
+        }
+
+        if (success) {
+          printf("[App] OpenGL ES 4-Cam Stitching verification: SUCCESS! "
+                 "(Stitched & inverted correctly)\n");
+        } else {
+          printf("[App] OpenGL ES 4-Cam Stitching verification: FAILURE! "
+                 "(Pixel values mismatch)\n");
+        }
+      } else {
+        printf("[App] OpenGL ES processing failed.\n");
+      }
+      processor->terminate();
+    } else {
+      printf("[App] Error: Failed to initialize VideoProcessor.\n");
+    }
+
+    // VFPGA_INTERACTIVE
+    // 環境変数を確認し、非インタラクティブ時は自動で終了させる
+    const char *interactive_env = std::getenv("VFPGA_INTERACTIVE");
+    bool is_interactive =
+        (interactive_env != nullptr && interactive_env[0] == '1');
+    if (!is_interactive) {
+      printf("[App] Non-interactive automated test mode. Shutting down "
+             "automatically...\n");
+      stop();
+    } else {
+      printf("[App] Setup complete. Waiting for Pin 8, 9, 10 (UART notify) or "
+             "Pin 11, 12, 13 (Demo triggers)...\n");
+    }
   }
 };
 

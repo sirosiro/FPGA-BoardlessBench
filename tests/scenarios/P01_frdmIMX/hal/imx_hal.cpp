@@ -16,6 +16,12 @@
 #include <string>
 #include <cerrno>
 
+// OpenGL ES and EGL headers
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
+#include <GLES2/gl2.h>
+#include <GLES2/gl2ext.h>
+
 // Standard base addresses and sizes
 constexpr unsigned long IMX8MP_GPIO1_BASE = 0x30200000;
 constexpr unsigned long IMX95_GPIO1_BASE = 0x47400000;
@@ -509,4 +515,476 @@ std::unique_ptr<IGpioController> HalFactory::createGpioController(
     }
   }
   return nullptr;
+}
+
+// =============================================================================
+// VideoProcessor implementations (OpenGL ES / EGL)
+// =============================================================================
+
+class HostGlesProcessor : public IVideoProcessor {
+private:
+  EGLDisplay egl_dpy_ = EGL_NO_DISPLAY;
+  EGLContext egl_ctx_ = EGL_NO_CONTEXT;
+  GLuint program_ = 0;
+  GLuint fbo_ = 0;
+  GLuint tex_in_[4] = {0, 0, 0, 0};
+  GLuint tex_out_ = 0;
+  CalibrationData calib_params_[4];
+
+  GLuint compileShader(GLenum type, const char *source) {
+    GLuint shader = glCreateShader(type);
+    glShaderSource(shader, 1, &source, NULL);
+    glCompileShader(shader);
+    GLint compiled;
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
+    if (!compiled) {
+      char infoLog[512];
+      glGetShaderInfoLog(shader, 512, NULL, infoLog);
+      fprintf(stderr, "[HostGlesProcessor] Shader compile error: %s\n", infoLog);
+      glDeleteShader(shader);
+      return 0;
+    }
+    return shader;
+  }
+
+public:
+  HostGlesProcessor() {
+    for (int i = 0; i < 4; i++) {
+      calib_params_[i].distortion_k1 = 0.0f;
+      calib_params_[i].distortion_k2 = 0.0f;
+      memset(calib_params_[i].affine_matrix, 0, sizeof(calib_params_[i].affine_matrix));
+      calib_params_[i].affine_matrix[0] = 1.0f;
+      calib_params_[i].affine_matrix[5] = 1.0f;
+      calib_params_[i].affine_matrix[10] = 1.0f;
+      calib_params_[i].affine_matrix[15] = 1.0f;
+      calib_params_[i].color_balance[0] = 1.0f;
+      calib_params_[i].color_balance[1] = 1.0f;
+      calib_params_[i].color_balance[2] = 1.0f;
+      calib_params_[i].color_balance[3] = 1.0f; // Gamma
+    }
+  }
+  virtual ~HostGlesProcessor() { terminate(); }
+
+  void setCalibrationParams(int camera_index, const CalibrationData& params) override {
+    if (camera_index >= 0 && camera_index < 4) {
+      calib_params_[camera_index] = params;
+    }
+  }
+
+  bool initialize() override {
+    printf("[HAL] Initializing Mesa Surfaceless EGL...\n");
+
+    PFNEGLGETPLATFORMDISPLAYEXTPROC eglGetPlatformDisplayEXT =
+        (PFNEGLGETPLATFORMDISPLAYEXTPROC)eglGetProcAddress("eglGetPlatformDisplayEXT");
+
+    if (eglGetPlatformDisplayEXT) {
+      egl_dpy_ = eglGetPlatformDisplayEXT(EGL_PLATFORM_SURFACELESS_MESA, EGL_DEFAULT_DISPLAY, NULL);
+    }
+
+    if (egl_dpy_ == EGL_NO_DISPLAY) {
+      printf("[HAL] Falling back to default eglGetDisplay...\n");
+      egl_dpy_ = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    }
+
+    if (egl_dpy_ == EGL_NO_DISPLAY) {
+      fprintf(stderr, "[HAL ERROR] Failed to get EGL display.\n");
+      return false;
+    }
+
+    EGLint major, minor;
+    if (!eglInitialize(egl_dpy_, &major, &minor)) {
+      fprintf(stderr, "[HAL ERROR] eglInitialize failed.\n");
+      return false;
+    }
+    printf("[HAL] EGL version %d.%d initialized.\n", major, minor);
+
+    EGLint config_attribs[] = {
+        EGL_SURFACE_TYPE, EGL_DONT_CARE,
+        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+        EGL_BLUE_SIZE, 8,
+        EGL_GREEN_SIZE, 8,
+        EGL_RED_SIZE, 8,
+        EGL_ALPHA_SIZE, 8,
+        EGL_NONE
+    };
+
+    EGLConfig config;
+    EGLint num_configs;
+    if (!eglChooseConfig(egl_dpy_, config_attribs, &config, 1, &num_configs) || num_configs == 0) {
+      fprintf(stderr, "[HAL ERROR] eglChooseConfig failed.\n");
+      return false;
+    }
+
+    EGLint context_attribs[] = {
+        EGL_CONTEXT_CLIENT_VERSION, 2,
+        EGL_NONE
+    };
+
+    egl_ctx_ = eglCreateContext(egl_dpy_, config, EGL_NO_CONTEXT, context_attribs);
+    if (egl_ctx_ == EGL_NO_CONTEXT) {
+      fprintf(stderr, "[HAL ERROR] eglCreateContext failed.\n");
+      return false;
+    }
+
+    if (!eglMakeCurrent(egl_dpy_, EGL_NO_SURFACE, EGL_NO_SURFACE, egl_ctx_)) {
+      fprintf(stderr, "[HAL ERROR] eglMakeCurrent failed.\n");
+      return false;
+    }
+
+    printf("[HAL] EGL Surfaceless Context bound successfully.\n");
+    printf("[HAL] GL Vendor: %s, Renderer: %s, Version: %s\n",
+           glGetString(GL_VENDOR), glGetString(GL_RENDERER), glGetString(GL_VERSION));
+
+    const char *vs_src =
+        "attribute vec4 position;\n"
+        "attribute vec2 texcoord;\n"
+        "varying vec2 v_texcoord;\n"
+        "void main() {\n"
+        "  gl_Position = position;\n"
+        "  v_texcoord = texcoord;\n"
+        "}\n";
+
+    const char *fs_src =
+        "precision mediump float;\n"
+        "varying vec2 v_texcoord;\n"
+        "uniform sampler2D s_tex0;\n"
+        "uniform sampler2D s_tex1;\n"
+        "uniform sampler2D s_tex2;\n"
+        "uniform sampler2D s_tex3;\n"
+        "uniform vec2 u_distortion[4];\n"
+        "uniform mat4 u_affine_matrix[4];\n"
+        "uniform vec4 u_color_balance[4];\n"
+        "\n"
+        "vec2 apply_distortion(vec2 uv, vec2 k) {\n"
+        "  vec2 d = uv - vec2(0.5, 0.5);\n"
+        "  float r2 = dot(d, d);\n"
+        "  float f = 1.0 + k.x * r2 + k.y * r2 * r2;\n"
+        "  return vec2(0.5, 0.5) + d * f;\n"
+        "}\n"
+        "\n"
+        "vec2 apply_affine(vec2 uv, mat4 mat) {\n"
+        "  vec4 pos = vec4(uv.x * 2.0 - 1.0, uv.y * 2.0 - 1.0, 0.0, 1.0);\n"
+        "  vec4 trans = mat * pos;\n"
+        "  return vec2((trans.x / trans.w + 1.0) * 0.5, (trans.y / trans.w + 1.0) * 0.5);\n"
+        "}\n"
+        "\n"
+        "void main() {\n"
+        "  vec2 uv = v_texcoord;\n"
+        "  int cam_idx = 0;\n"
+        "  vec2 sub_uv = vec2(0.0);\n"
+        "  vec4 color = vec4(0.0);\n"
+        "  if (uv.x < 0.5 && uv.y < 0.5) {\n"
+        "    cam_idx = 0;\n"
+        "    sub_uv = uv * 2.0;\n"
+        "  } else if (uv.x >= 0.5 && uv.y < 0.5) {\n"
+        "    cam_idx = 1;\n"
+        "    sub_uv = vec2(uv.x - 0.5, uv.y) * 2.0;\n"
+        "  } else if (uv.x < 0.5 && uv.y >= 0.5) {\n"
+        "    cam_idx = 2;\n"
+        "    sub_uv = vec2(uv.x, uv.y - 0.5) * 2.0;\n"
+        "  } else {\n"
+        "    cam_idx = 3;\n"
+        "    sub_uv = (uv - vec2(0.5, 0.5)) * 2.0;\n"
+        "  }\n"
+        "  vec2 corr_uv = apply_affine(sub_uv, u_affine_matrix[cam_idx]);\n"
+        "  corr_uv = apply_distortion(corr_uv, u_distortion[cam_idx]);\n"
+        "  if (corr_uv.x < 0.0 || corr_uv.x > 1.0 || corr_uv.y < 0.0 || corr_uv.y > 1.0) {\n"
+        "    gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);\n"
+        "    return;\n"
+        "  }\n"
+        "  if (cam_idx == 0) {\n"
+        "    color = texture2D(s_tex0, corr_uv);\n"
+        "  } else if (cam_idx == 1) {\n"
+        "    color = texture2D(s_tex1, corr_uv);\n"
+        "  } else if (cam_idx == 2) {\n"
+        "    color = texture2D(s_tex2, corr_uv);\n"
+        "  } else {\n"
+        "    color = texture2D(s_tex3, corr_uv);\n"
+        "  }\n"
+        "  vec3 adjusted_rgb = pow(color.rgb * u_color_balance[cam_idx].rgb, vec3(u_color_balance[cam_idx].a));\n"
+        "  gl_FragColor = vec4(1.0 - adjusted_rgb, color.a);\n"
+        "}\n";
+
+    GLuint vs = compileShader(GL_VERTEX_SHADER, vs_src);
+    GLuint fs = compileShader(GL_FRAGMENT_SHADER, fs_src);
+    if (!vs || !fs) return false;
+
+    program_ = glCreateProgram();
+    glAttachShader(program_, vs);
+    glAttachShader(program_, fs);
+    glLinkProgram(program_);
+    GLint linked;
+    glGetProgramiv(program_, GL_LINK_STATUS, &linked);
+    if (!linked) {
+      char infoLog[512];
+      glGetProgramInfoLog(program_, 512, NULL, infoLog);
+      fprintf(stderr, "[HostGlesProcessor] Program link error: %s\n", infoLog);
+      return false;
+    }
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+
+    glGenTextures(4, tex_in_);
+    glGenTextures(1, &tex_out_);
+    glGenFramebuffers(1, &fbo_);
+
+    return true;
+  }
+
+  bool processFrame(const uint8_t* in_frames[4], uint8_t* out_data, int width, int height) override {
+    if (egl_dpy_ == EGL_NO_DISPLAY || egl_ctx_ == EGL_NO_CONTEXT) {
+      fprintf(stderr, "[HAL ERROR] VideoProcessor not initialized.\n");
+      return false;
+    }
+
+    for (int i = 0; i < 4; i++) {
+      if (!in_frames[i]) {
+        fprintf(stderr, "[HAL ERROR] Input frame %d is null.\n", i);
+        return false;
+      }
+      glBindTexture(GL_TEXTURE_2D, tex_in_[i]);
+      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, in_frames[i]);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+    }
+
+    glBindTexture(GL_TEXTURE_2D, tex_out_);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, fbo_);
+    glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex_out_, 0);
+
+    if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+      fprintf(stderr, "[HAL ERROR] Framebuffer incomplete.\n");
+      return false;
+    }
+
+    glViewport(0, 0, width, height);
+    glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+    glClear(GL_COLOR_BUFFER_BIT);
+
+    glUseProgram(program_);
+
+    GLint dist_loc = glGetUniformLocation(program_, "u_distortion");
+    GLint affine_loc = glGetUniformLocation(program_, "u_affine_matrix");
+    GLint color_loc = glGetUniformLocation(program_, "u_color_balance");
+
+    float distortions[8];
+    float color_balances[16];
+    for (int i = 0; i < 4; i++) {
+      distortions[i * 2] = calib_params_[i].distortion_k1;
+      distortions[i * 2 + 1] = calib_params_[i].distortion_k2;
+      color_balances[i * 4] = calib_params_[i].color_balance[0];
+      color_balances[i * 4 + 1] = calib_params_[i].color_balance[1];
+      color_balances[i * 4 + 2] = calib_params_[i].color_balance[2];
+      color_balances[i * 4 + 3] = calib_params_[i].color_balance[3];
+    }
+    glUniform2fv(dist_loc, 4, distortions);
+    glUniform4fv(color_loc, 4, color_balances);
+
+    float matrices[64];
+    for (int i = 0; i < 4; i++) {
+      memcpy(&matrices[i * 16], calib_params_[i].affine_matrix, sizeof(float) * 16);
+    }
+    glUniformMatrix4fv(affine_loc, 4, GL_FALSE, matrices);
+
+    GLfloat vertices[] = {
+        -1.0f, -1.0f, 0.0f,
+         1.0f, -1.0f, 0.0f,
+        -1.0f,  1.0f, 0.0f,
+         1.0f,  1.0f, 0.0f,
+    };
+    GLfloat texcoords[] = {
+        0.0f, 0.0f,
+        1.0f, 0.0f,
+        0.0f, 1.0f,
+        1.0f, 1.0f,
+    };
+
+    GLint pos_attr = glGetAttribLocation(program_, "position");
+    GLint tex_attr = glGetAttribLocation(program_, "texcoord");
+
+    glEnableVertexAttribArray(pos_attr);
+    glVertexAttribPointer(pos_attr, 3, GL_FLOAT, GL_FALSE, 0, vertices);
+
+    glEnableVertexAttribArray(tex_attr);
+    glVertexAttribPointer(tex_attr, 2, GL_FLOAT, GL_FALSE, 0, texcoords);
+
+    for (int i = 0; i < 4; i++) {
+      glActiveTexture(GL_TEXTURE0 + i);
+      glBindTexture(GL_TEXTURE_2D, tex_in_[i]);
+      char tex_name[16];
+      snprintf(tex_name, sizeof(tex_name), "s_tex%d", i);
+      glUniform1i(glGetUniformLocation(program_, tex_name), i);
+    }
+
+    glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+    glDisableVertexAttribArray(pos_attr);
+    glDisableVertexAttribArray(tex_attr);
+
+    glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, out_data);
+
+    glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    return true;
+  }
+
+  void terminate() override {
+    if (program_) {
+      glDeleteProgram(program_);
+      program_ = 0;
+    }
+    if (fbo_) {
+      glDeleteFramebuffers(1, &fbo_);
+      fbo_ = 0;
+    }
+    for (int i = 0; i < 4; i++) {
+      if (tex_in_[i]) {
+        glDeleteTextures(1, &tex_in_[i]);
+        tex_in_[i] = 0;
+      }
+    }
+    if (tex_out_) {
+      glDeleteTextures(1, &tex_out_);
+      tex_out_ = 0;
+    }
+    if (egl_dpy_ != EGL_NO_DISPLAY) {
+      eglMakeCurrent(egl_dpy_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+      if (egl_ctx_ != EGL_NO_CONTEXT) {
+        eglDestroyContext(egl_dpy_, egl_ctx_);
+        egl_ctx_ = EGL_NO_CONTEXT;
+      }
+      eglTerminate(egl_dpy_);
+      egl_dpy_ = EGL_NO_DISPLAY;
+    }
+    printf("[HAL] Mesa Surfaceless EGL terminated.\n");
+  }
+};
+
+class ImxGlesProcessorBase : public IVideoProcessor {
+protected:
+  SocType type_;
+  EGLDisplay egl_dpy_ = EGL_NO_DISPLAY;
+  EGLContext egl_ctx_ = EGL_NO_CONTEXT;
+  CalibrationData calib_params_[4];
+
+  // Extension API pointers for physical hardware
+  PFNEGLCREATEIMAGEKHRPROC eglCreateImageKHR_ = nullptr;
+  PFNEGLDESTROYIMAGEKHRPROC eglDestroyImageKHR_ = nullptr;
+  PFNGLEGLIMAGETARGETTEXTURE2DOESPROC glEGLImageTargetTexture2DOES_ = nullptr;
+
+public:
+  ImxGlesProcessorBase(SocType type) : type_(type) {
+    for (int i = 0; i < 4; i++) {
+      calib_params_[i].distortion_k1 = 0.0f;
+      calib_params_[i].distortion_k2 = 0.0f;
+      memset(calib_params_[i].affine_matrix, 0, sizeof(calib_params_[i].affine_matrix));
+      calib_params_[i].affine_matrix[0] = 1.0f;
+      calib_params_[i].affine_matrix[5] = 1.0f;
+      calib_params_[i].affine_matrix[10] = 1.0f;
+      calib_params_[i].affine_matrix[15] = 1.0f;
+      calib_params_[i].color_balance[0] = 1.0f;
+      calib_params_[i].color_balance[1] = 1.0f;
+      calib_params_[i].color_balance[2] = 1.0f;
+      calib_params_[i].color_balance[3] = 1.0f; // Gamma
+    }
+  }
+  virtual ~ImxGlesProcessorBase() { terminate(); }
+
+  void setCalibrationParams(int camera_index, const CalibrationData& params) override {
+    if (camera_index >= 0 && camera_index < 4) {
+      calib_params_[camera_index] = params;
+    }
+  }
+
+  bool initialize() override {
+    printf("[HAL] [Production] Initializing Hardware EGL/GLES for %s...\n",
+           (type_ == SocType::IMX95) ? "i.MX95 (Mali)" : "i.MX8MP (Vivante)");
+
+    // Production code path (GBM and native window initialization)
+    egl_dpy_ = eglGetDisplay(EGL_DEFAULT_DISPLAY);
+    if (egl_dpy_ == EGL_NO_DISPLAY) {
+      fprintf(stderr, "[HAL ERROR] [Production] Failed to get EGL Display.\n");
+      return false;
+    }
+
+    EGLint major, minor;
+    if (!eglInitialize(egl_dpy_, &major, &minor)) {
+      return false;
+    }
+
+    // Load extensions dynamically to support standard compilation on both Mesa and Board GLES SDK
+    eglCreateImageKHR_ = (PFNEGLCREATEIMAGEKHRPROC)eglGetProcAddress("eglCreateImageKHR");
+    eglDestroyImageKHR_ = (PFNEGLDESTROYIMAGEKHRPROC)eglGetProcAddress("eglDestroyImageKHR");
+    glEGLImageTargetTexture2DOES_ = (PFNGLEGLIMAGETARGETTEXTURE2DOESPROC)eglGetProcAddress("glEGLImageTargetTexture2DOES");
+
+    EGLint config_attribs[] = {
+        EGL_SURFACE_TYPE, EGL_WINDOW_BIT,
+        EGL_RENDERABLE_TYPE, EGL_OPENGL_ES2_BIT,
+        EGL_NONE
+    };
+    EGLConfig config;
+    EGLint num_configs;
+    eglChooseConfig(egl_dpy_, config_attribs, &config, 1, &num_configs);
+
+    EGLint ctx_attribs[] = {
+        EGL_CONTEXT_CLIENT_VERSION, 2,
+        EGL_NONE
+    };
+    egl_ctx_ = eglCreateContext(egl_dpy_, config, EGL_NO_CONTEXT, ctx_attribs);
+    if (egl_ctx_ == EGL_NO_CONTEXT) return false;
+
+    // Production build expects eglCreateWindowSurface and eglMakeCurrent setup here
+    
+    printf("[HAL] [Production] Hardware GPU context established successfully.\n");
+    return true;
+  }
+
+  bool processFrame(const uint8_t* in_frames[4], uint8_t* out_data, int width, int height) override {
+    // Production zero-copy pipeline using DMA-BUF and EGL Image Target binding:
+    // 1. Create EGLImageKHR from DMA-BUF fd
+    // 2. Bind to GL_TEXTURE_2D target via glEGLImageTargetTexture2DOES_
+    // 3. Process frame with OpenGL ES shaders directly on the hardware plane
+    printf("[HAL] [Production] GPU hardware processing frame (Zero-Copy dummy implementation)\n");
+    if (in_frames[0]) {
+      memcpy(out_data, in_frames[0], width * height * 4); // Dummy copy for non-hardware execution fallback
+    }
+    return true;
+  }
+
+  void terminate() override {
+    if (egl_dpy_ != EGL_NO_DISPLAY) {
+      eglMakeCurrent(egl_dpy_, EGL_NO_SURFACE, EGL_NO_SURFACE, EGL_NO_CONTEXT);
+      if (egl_ctx_ != EGL_NO_CONTEXT) eglDestroyContext(egl_dpy_, egl_ctx_);
+      eglTerminate(egl_dpy_);
+      egl_dpy_ = EGL_NO_DISPLAY;
+    }
+  }
+};
+
+class Imx95GlesProcessor : public ImxGlesProcessorBase {
+public:
+  Imx95GlesProcessor() : ImxGlesProcessorBase(SocType::IMX95) {}
+};
+
+class Imx8mpGlesProcessor : public ImxGlesProcessorBase {
+public:
+  Imx8mpGlesProcessor() : ImxGlesProcessorBase(SocType::IMX8MP) {}
+};
+
+std::unique_ptr<IVideoProcessor> HalFactory::createVideoProcessor(SocType soc_type) {
+  // Check FORCE_MESA_FALLBACK first
+  const char *force_mesa = std::getenv("FORCE_MESA_FALLBACK");
+  if (force_mesa != nullptr && (strcmp(force_mesa, "1") == 0 || strcmp(force_mesa, "true") == 0)) {
+    printf("[HAL] FORCE_MESA_FALLBACK detected. Forcing Mesa software renderer fallback.\n");
+    return std::make_unique<HostGlesProcessor>();
+  }
+
+  if (soc_type == SocType::IMX8MP) {
+    return std::make_unique<Imx8mpGlesProcessor>();
+  } else {
+    return std::make_unique<Imx95GlesProcessor>();
+  }
 }
