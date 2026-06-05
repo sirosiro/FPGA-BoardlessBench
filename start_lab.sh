@@ -125,6 +125,7 @@ echo "Press Ctrl+C to stop the lab (after app exits)."
 echo ""
 echo "   Starting firmware application..."
 export VFPGA_INTERACTIVE=1
+export FORCE_MESA_FALLBACK=1
 LD_PRELOAD="$PWD/libfpgashim.so" "${SCENARIO_DIR}/test_bin"
 
 # アプリ終了後もバックエンドの状態を監視し続ける

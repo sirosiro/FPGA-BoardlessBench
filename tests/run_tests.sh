@@ -30,6 +30,7 @@ cleanup_processes() {
 # --- Argument Parsing ---
 CLEAN=false
 INTERACTIVE=false
+export FORCE_MESA_FALLBACK=1
 
 for arg in "$@"; do
     case $arg in

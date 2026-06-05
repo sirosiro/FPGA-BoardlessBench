@@ -1,20 +1,19 @@
 #include "imx_hal.hpp"
 #include <atomic>
+#include <cerrno>
 #include <chrono>
 #include <fcntl.h>
 #include <mutex>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
+#include <string>
 #include <sys/mman.h>
 #include <thread>
 #include <unistd.h>
 #include <unordered_map>
 #include <vector>
-#include <stdlib.h>
-#include <fstream>
-#include <string>
-#include <cerrno>
 
 // OpenGL ES and EGL headers
 #include <EGL/egl.h>
