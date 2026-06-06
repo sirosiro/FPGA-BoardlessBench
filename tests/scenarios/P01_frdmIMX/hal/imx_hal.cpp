@@ -928,6 +928,11 @@ protected:
   PFNGBMBOGETFD gbm_bo_get_fd_ = nullptr;
   PFNGBMBOGETSTRIDE gbm_bo_get_stride_ = nullptr;
 
+  // OpenGL ES Objects for hardware rendering
+  GLuint program_ = 0;
+  GLuint fbo_ = 0;
+  GLuint tex_out_ = 0;
+
   bool loadGbmApis() {
     gbm_lib_handle_ = dlopen("libgbm.so", RTLD_LAZY);
     if (!gbm_lib_handle_) {
@@ -953,6 +958,22 @@ protected:
       return false;
     }
     return true;
+  }
+
+  GLuint compileShader(GLenum type, const char *source) {
+    GLuint shader = glCreateShader(type);
+    glShaderSource(shader, 1, &source, NULL);
+    glCompileShader(shader);
+    GLint compiled;
+    glGetShaderiv(shader, GL_COMPILE_STATUS, &compiled);
+    if (!compiled) {
+      char infoLog[512];
+      glGetShaderInfoLog(shader, 512, NULL, infoLog);
+      fprintf(stderr, "[HAL ERROR] [Production] Shader compile error: %s\n", infoLog);
+      glDeleteShader(shader);
+      return 0;
+    }
+    return shader;
   }
 
 public:
@@ -1043,9 +1064,107 @@ public:
     egl_ctx_ = eglCreateContext(egl_dpy_, config, EGL_NO_CONTEXT, ctx_attribs);
     if (egl_ctx_ == EGL_NO_CONTEXT) return false;
 
-    // Production build expects eglCreateWindowSurface and eglMakeCurrent setup here
-    
+    // bind offscreen target context
+    if (!eglMakeCurrent(egl_dpy_, EGL_NO_SURFACE, EGL_NO_SURFACE, egl_ctx_)) {
+      fprintf(stderr, "[HAL ERROR] [Production] eglMakeCurrent failed.\n");
+      return false;
+    }
+
     printf("[HAL] [Production] Hardware GPU context established successfully.\n");
+
+    // Initialize shaders
+    const char *vs_src =
+        "attribute vec4 position;\n"
+        "attribute vec2 texcoord;\n"
+        "varying vec2 v_texcoord;\n"
+        "void main() {\n"
+        "  gl_Position = position;\n"
+        "  v_texcoord = texcoord;\n"
+        "}\n";
+
+    const char *fs_src =
+        "precision mediump float;\n"
+        "varying vec2 v_texcoord;\n"
+        "uniform sampler2D s_tex0;\n"
+        "uniform sampler2D s_tex1;\n"
+        "uniform sampler2D s_tex2;\n"
+        "uniform sampler2D s_tex3;\n"
+        "uniform vec2 u_distortion[4];\n"
+        "uniform mat4 u_affine_matrix[4];\n"
+        "uniform vec4 u_color_balance[4];\n"
+        "\n"
+        "vec2 apply_distortion(vec2 uv, vec2 k) {\n"
+        "  vec2 d = uv - vec2(0.5, 0.5);\n"
+        "  float r2 = dot(d, d);\n"
+        "  float f = 1.0 + k.x * r2 + k.y * r2 * r2;\n"
+        "  return vec2(0.5, 0.5) + d * f;\n"
+        "}\n"
+        "\n"
+        "vec2 apply_affine(vec2 uv, mat4 mat) {\n"
+        "  vec4 pos = vec4(uv.x * 2.0 - 1.0, uv.y * 2.0 - 1.0, 0.0, 1.0);\n"
+        "  vec4 trans = mat * pos;\n"
+        "  return vec2((trans.x / trans.w + 1.0) * 0.5, (trans.y / trans.w + 1.0) * 0.5);\n"
+        "}\n"
+        "\n"
+        "void main() {\n"
+        "  vec2 uv = v_texcoord;\n"
+        "  int cam_idx = 0;\n"
+        "  vec2 sub_uv = vec2(0.0);\n"
+        "  vec4 color = vec4(0.0);\n"
+        "  if (uv.x < 0.5 && uv.y < 0.5) {\n"
+        "    cam_idx = 0;\n"
+        "    sub_uv = uv * 2.0;\n"
+        "  } else if (uv.x >= 0.5 && uv.y < 0.5) {\n"
+        "    cam_idx = 1;\n"
+        "    sub_uv = vec2(uv.x - 0.5, uv.y) * 2.0;\n"
+        "  } else if (uv.x < 0.5 && uv.y >= 0.5) {\n"
+        "    cam_idx = 2;\n"
+        "    sub_uv = vec2(uv.x, uv.y - 0.5) * 2.0;\n"
+        "  } else {\n"
+        "    cam_idx = 3;\n"
+        "    sub_uv = (uv - vec2(0.5, 0.5)) * 2.0;\n"
+        "  }\n"
+        "  vec2 corr_uv = apply_affine(sub_uv, u_affine_matrix[cam_idx]);\n"
+        "  corr_uv = apply_distortion(corr_uv, u_distortion[cam_idx]);\n"
+        "  if (corr_uv.x < 0.0 || corr_uv.x > 1.0 || corr_uv.y < 0.0 || corr_uv.y > 1.0) {\n"
+        "    gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);\n"
+        "    return;\n"
+        "  }\n"
+        "  if (cam_idx == 0) {\n"
+        "    color = texture2D(s_tex0, corr_uv);\n"
+        "  } else if (cam_idx == 1) {\n"
+        "    color = texture2D(s_tex1, corr_uv);\n"
+        "  } else if (cam_idx == 2) {\n"
+        "    color = texture2D(s_tex2, corr_uv);\n"
+        "  } else {\n"
+        "    color = texture2D(s_tex3, corr_uv);\n"
+        "  }\n"
+        "  vec3 adjusted_rgb = pow(color.rgb * u_color_balance[cam_idx].rgb, vec3(u_color_balance[cam_idx].a));\n"
+        "  gl_FragColor = vec4(1.0 - adjusted_rgb, color.a);\n"
+        "}\n";
+
+    GLuint vs = compileShader(GL_VERTEX_SHADER, vs_src);
+    GLuint fs = compileShader(GL_FRAGMENT_SHADER, fs_src);
+    if (!vs || !fs) return false;
+
+    program_ = glCreateProgram();
+    glAttachShader(program_, vs);
+    glAttachShader(program_, fs);
+    glLinkProgram(program_);
+    GLint linked;
+    glGetProgramiv(program_, GL_LINK_STATUS, &linked);
+    if (!linked) {
+      char infoLog[512];
+      glGetProgramInfoLog(program_, 512, NULL, infoLog);
+      fprintf(stderr, "[HAL ERROR] [Production] Program link error: %s\n", infoLog);
+      return false;
+    }
+    glDeleteShader(vs);
+    glDeleteShader(fs);
+
+    glGenTextures(1, &tex_out_);
+    glGenFramebuffers(1, &fbo_);
+
     return true;
   }
 
@@ -1053,7 +1172,7 @@ public:
     printf("[HAL] [Production] GPU hardware processing frame\n");
 
     // Real physical hardware Zero-Copy zero-latency logic path
-    if (gbm_dev_ && eglCreateImageKHR_ && glEGLImageTargetTexture2DOES_) {
+    if (gbm_dev_ && eglCreateImageKHR_ && glEGLImageTargetTexture2DOES_ && program_ && fbo_ && tex_out_) {
       for (int i = 0; i < 4; i++) {
         if (!in_frames[i]) continue;
         
@@ -1102,23 +1221,120 @@ public:
         }
         glBindTexture(GL_TEXTURE_2D, tex_in_[i]);
         glEGLImageTargetTexture2DOES_(GL_TEXTURE_2D, egl_img_in_[i]);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
       }
 
-      // 4. (GLSL shader distortion/stitching operations on physical hardware)
-      // ...
+      // Bind output texture
+      glBindTexture(GL_TEXTURE_2D, tex_out_);
+      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+      glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+
+      glBindFramebuffer(GL_FRAMEBUFFER, fbo_);
+      glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, tex_out_, 0);
+
+      if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE) {
+        fprintf(stderr, "[HAL ERROR] [Production] Framebuffer incomplete.\n");
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        return false;
+      }
+
+      glViewport(0, 0, width, height);
+      glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+      glClear(GL_COLOR_BUFFER_BIT);
+
+      glUseProgram(program_);
+
+      GLint dist_loc = glGetUniformLocation(program_, "u_distortion");
+      GLint affine_loc = glGetUniformLocation(program_, "u_affine_matrix");
+      GLint color_loc = glGetUniformLocation(program_, "u_color_balance");
+
+      float distortions[8];
+      float color_balances[16];
+      for (int i = 0; i < 4; i++) {
+        distortions[i * 2] = calib_params_[i].distortion_k1;
+        distortions[i * 2 + 1] = calib_params_[i].distortion_k2;
+        color_balances[i * 4] = calib_params_[i].color_balance[0];
+        color_balances[i * 4 + 1] = calib_params_[i].color_balance[1];
+        color_balances[i * 4 + 2] = calib_params_[i].color_balance[2];
+        color_balances[i * 4 + 3] = calib_params_[i].color_balance[3];
+      }
+      glUniform2fv(dist_loc, 4, distortions);
+      glUniform4fv(color_loc, 4, color_balances);
+
+      float matrices[64];
+      for (int i = 0; i < 4; i++) {
+        memcpy(&matrices[i * 16], calib_params_[i].affine_matrix, sizeof(float) * 16);
+      }
+      glUniformMatrix4fv(affine_loc, 4, GL_FALSE, matrices);
+
+      GLfloat vertices[] = {
+          -1.0f, -1.0f, 0.0f,
+           1.0f, -1.0f, 0.0f,
+          -1.0f,  1.0f, 0.0f,
+           1.0f,  1.0f, 0.0f,
+      };
+      GLfloat texcoords[] = {
+          0.0f, 0.0f,
+          1.0f, 0.0f,
+          0.0f, 1.0f,
+          1.0f, 1.0f,
+      };
+
+      GLint pos_attr = glGetAttribLocation(program_, "position");
+      GLint tex_attr = glGetAttribLocation(program_, "texcoord");
+
+      glEnableVertexAttribArray(pos_attr);
+      glVertexAttribPointer(pos_attr, 3, GL_FLOAT, GL_FALSE, 0, vertices);
+
+      glEnableVertexAttribArray(tex_attr);
+      glVertexAttribPointer(tex_attr, 2, GL_FLOAT, GL_FALSE, 0, texcoords);
+
+      for (int i = 0; i < 4; i++) {
+        glActiveTexture(GL_TEXTURE0 + i);
+        glBindTexture(GL_TEXTURE_2D, tex_in_[i]);
+        char tex_name[16];
+        snprintf(tex_name, sizeof(tex_name), "s_tex%d", i);
+        glUniform1i(glGetUniformLocation(program_, tex_name), i);
+      }
+
+      glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+      glDisableVertexAttribArray(pos_attr);
+      glDisableVertexAttribArray(tex_attr);
+
+      glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, out_data);
+
+      glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
       printf("[HAL] [Production] OpenGL ES hardware zero-copy pipelines loaded and bound successfully.\n");
     } else {
       // Mock fallback execution path (No native GBM)
       printf("[HAL] [Production] GBM/DMA-BUF mock fallback mode active.\n");
+      if (in_frames[0]) {
+        memcpy(out_data, in_frames[0], width * height * 4); // Dummy copy for non-hardware execution fallback
+      }
     }
 
-    if (in_frames[0]) {
-      memcpy(out_data, in_frames[0], width * height * 4); // Dummy copy for non-hardware execution fallback
-    }
     return true;
   }
 
   void terminate() override {
+    // Release GL program and rendering resources
+    if (program_) {
+      glDeleteProgram(program_);
+      program_ = 0;
+    }
+    if (fbo_) {
+      glDeleteFramebuffers(1, &fbo_);
+      fbo_ = 0;
+    }
+    if (tex_out_) {
+      glDeleteTextures(1, &tex_out_);
+      tex_out_ = 0;
+    }
+
     // Destroy EGL Images and GBM allocated buffers
     for (int i = 0; i < 4; i++) {
       if (egl_img_in_[i] != EGL_NO_IMAGE_KHR && eglDestroyImageKHR_) {
