@@ -1304,6 +1304,14 @@ public:
       glDisableVertexAttribArray(pos_attr);
       glDisableVertexAttribArray(tex_attr);
 
+      // [Physical Board Optimization & Synchronization Guarantee]
+      // Why: On real embedded GPU drivers (Vivante/Mali), glReadPixels might start executing before 
+      // the GPU finishes writing to the DMA-BUF/FBO. Calling glFinish() forces the GPU command pipeline 
+      // to flush and blocks the CPU thread until all rendering is complete, preventing synchronization 
+      // lag and caching coherence issues on the physical board.
+      // (実機GPUドライバでの、描画未完了状態でのglReadPixels開始による同期バグやキャッシュコヒーレンシ喪失を防止)
+      glFinish();
+
       glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, out_data);
 
       glBindFramebuffer(GL_FRAMEBUFFER, 0);
