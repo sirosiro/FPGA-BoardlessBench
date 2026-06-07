@@ -52,6 +52,7 @@ if [ "$CLEAN" = true ]; then
     rm -f *.log
     rm -f board_manifest.json
     rm -f dashboard/data/*.json
+    rm -f /tmp/hdmi_output.bmp
     echo "[Runner] Clean finished."
     exit 0
 fi
@@ -66,6 +67,7 @@ start_environment() {
     # 中間ファイルの削除
     rm -f board_manifest.json
     rm -f dashboard/data/*.json
+    rm -f /tmp/hdmi_output.bmp
 
     # 前のシナリオの残骸を削除し、クリーンな状態にする
     make clean > /dev/null 2>&1

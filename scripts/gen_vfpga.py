@@ -625,6 +625,7 @@ class ManifestGenerator(BaseGenerator):
             "shm_path": f"/tmp/{shm_name}",
             "shm_size": shm_size,
             "project_root": project_root,
+            "hdmi_output_path": "/tmp/hdmi_output.bmp",
             "devices": [],
             "uarts": [{"name": d.name, "port": int(d.extra_props.get("port", 2000))} for d in model.get_uart_devices()]
         }

@@ -6,7 +6,9 @@ import RegisterMonitor from './components/RegisterMonitor';
 import GpioPanel from './components/GpioPanel';
 import UartTerminal from './components/UartTerminal';
 import RegisterTracer from './components/RegisterTracer';
+import HdmiOutput from './components/HdmiOutput';
 import './App.css';
+
 
 // Components mapping for Dockview
 const components = {
@@ -14,7 +16,9 @@ const components = {
   gpioPanel: () => <GpioPanel />,
   registerTracer: () => <RegisterTracer />,
   uartTerminal: () => <UartTerminal />,
+  hdmiOutput: () => <HdmiOutput />,
 };
+
 
 function DashboardInner() {
   const { connected, manifest } = useDashboard();
@@ -71,19 +75,33 @@ function DashboardInner() {
       },
     });
 
+    // 5. Add hdmiOutput below uartTerminal
+    const hdmiPanel = api.addPanel({
+      id: 'hdmiOutput',
+      component: 'hdmiOutput',
+      title: 'HDMI Output Preview',
+      position: {
+        referencePanel: 'uartTerminal',
+        direction: 'below',
+      },
+    });
+
     // Programmatic adjustment of sizes to match default ratios
     // Set widths
     regPanel.api.setSize({ width: 400 });
     // Set heights on the left column panels
     regPanel.api.setSize({ height: 250 });
     tracerPanel.api.setSize({ height: 350 });
+    uartPanel.api.setSize({ height: 400 });
 
     // Set panel constraints to prevent breaking layout
     regPanel.api.setConstraints({ minimumWidth: 200, minimumHeight: 100 });
     gpioPanel.api.setConstraints({ minimumWidth: 200, minimumHeight: 100 });
     tracerPanel.api.setConstraints({ minimumWidth: 200, minimumHeight: 100 });
-    uartPanel.api.setConstraints({ minimumWidth: 300 });
+    uartPanel.api.setConstraints({ minimumWidth: 300, minimumHeight: 150 });
+    hdmiPanel.api.setConstraints({ minimumWidth: 300, minimumHeight: 150 });
   };
+
 
   const handleResetLayout = () => {
     if (apiRef.current) {
@@ -99,7 +117,7 @@ function DashboardInner() {
           <span className="version-tag" style={{ marginLeft: '0.5rem', fontSize: '0.7rem', color: '#8b949e', border: '1px solid #30363d', padding: '2px 6px', borderRadius: '4px' }}>v3.0 Premium</span>
         </div>
         <div className="system-meta" style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
-          <button 
+          <button
             className="reset-layout-btn"
             onClick={handleResetLayout}
             style={{

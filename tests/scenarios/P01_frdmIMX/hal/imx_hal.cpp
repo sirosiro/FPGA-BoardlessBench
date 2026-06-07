@@ -16,6 +16,12 @@
 #include <unordered_map>
 #include <vector>
 
+// DRM/KMS headers for physical display setup
+#include <sys/ioctl.h>
+#include <drm/drm.h>
+#include <drm/drm_mode.h>
+
+
 // OpenGL ES and EGL headers
 #include <EGL/egl.h>
 #include <EGL/eglext.h>
@@ -1401,4 +1407,429 @@ std::unique_ptr<IVideoProcessor> HalFactory::createVideoProcessor(SocType soc_ty
   } else {
     return std::make_unique<Imx95GlesProcessor>();
   }
+}
+
+static bool writeBMP(const char* filename, const uint8_t* rgba, int width, int height) {
+  FILE* f = fopen(filename, "wb");
+  if (!f) return false;
+
+  uint32_t image_size = width * height * 3;
+  uint32_t file_size = 54 + image_size;
+
+  uint8_t bmpfileheader[14] = {'B','M', 0,0,0,0, 0,0, 0,0, 54,0,0,0};
+  uint8_t bmpinfoheader[40] = {40,0,0,0, 0,0,0,0, 0,0,0,0, 1,0, 24,0};
+
+  // ファイルサイズ
+  bmpfileheader[2] = (uint8_t)(file_size);
+  bmpfileheader[3] = (uint8_t)(file_size >> 8);
+  bmpfileheader[4] = (uint8_t)(file_size >> 16);
+  bmpfileheader[5] = (uint8_t)(file_size >> 24);
+
+  // 画像の幅と高さ
+  bmpinfoheader[4] = (uint8_t)(width);
+  bmpinfoheader[5] = (uint8_t)(width >> 8);
+  bmpinfoheader[6] = (uint8_t)(width >> 16);
+  bmpinfoheader[7] = (uint8_t)(width >> 24);
+
+  bmpinfoheader[8] = (uint8_t)(height);
+  bmpinfoheader[9] = (uint8_t)(height >> 8);
+  bmpinfoheader[10] = (uint8_t)(height >> 16);
+  bmpinfoheader[11] = (uint8_t)(height >> 24);
+
+  fwrite(bmpfileheader, 1, 14, f);
+  fwrite(bmpinfoheader, 1, 40, f);
+
+  // BMPは下から上に向かってピクセルを並べる。また、BGR順。
+  for (int y = height - 1; y >= 0; y--) {
+    for (int x = 0; x < width; x++) {
+      int idx = (y * width + x) * 4;
+      uint8_t r = rgba[idx + 0];
+      uint8_t g = rgba[idx + 1];
+      uint8_t b = rgba[idx + 2];
+      // BGR順で書き込む
+      uint8_t bgr[3] = {b, g, r};
+      fwrite(bgr, 1, 3, f);
+    }
+  }
+  fclose(f);
+  return true;
+}
+
+class HostDisplaySink : public IDisplaySink {
+public:
+  HostDisplaySink() = default;
+  ~HostDisplaySink() override { terminate(); }
+
+  bool initialize() override {
+    printf("[HAL] [HostDisplay] Host display initialize.\n");
+    return true;
+  }
+
+  bool outputFrame(const uint8_t* rgba_data, int width, int height) override {
+    const char* filename = "/tmp/hdmi_output.bmp";
+    bool ok = writeBMP(filename, rgba_data, width, height);
+    if (!ok) {
+      fprintf(stderr, "[HAL ERROR] [HostDisplay] Failed to write BMP to %s\n", filename);
+    }
+    return ok;
+  }
+
+  void terminate() override {
+    printf("[HAL] [HostDisplay] Host display terminate.\n");
+  }
+};
+
+// xf86drm.h / xf86drmMode.h structures for dynamic loading
+struct drmModeModeInfo {
+  uint16_t clock;
+  uint16_t hdisplay, hsync_start, hsync_end, htotal, hskew;
+  uint16_t vdisplay, vsync_start, vsync_end, vtotal, vscan;
+  uint32_t vrefresh;
+  uint32_t flags;
+  uint32_t type;
+  char name[32];
+};
+
+struct drmModeRes {
+  int count_fbs;
+  uint32_t *fbs;
+  int count_crtcs;
+  uint32_t *crtcs;
+  int count_connectors;
+  uint32_t *connectors;
+  int count_encoders;
+  uint32_t *encoders;
+  uint32_t min_width, max_width;
+  uint32_t min_height, max_height;
+};
+
+struct drmModeConnector {
+  uint32_t connector_id;
+  uint32_t encoder_id;
+  uint32_t connector_type;
+  uint32_t connector_type_id;
+  uint32_t connection;
+  uint32_t mmWidth, mmHeight;
+  uint32_t subpixel;
+  int count_modes;
+  struct drmModeModeInfo *modes;
+  int count_props;
+  uint32_t *props;
+  uint64_t *prop_values;
+  int count_encoders;
+  uint32_t *encoders;
+};
+
+struct drmModeEncoder {
+  uint32_t encoder_id;
+  uint32_t encoder_type;
+  uint32_t crtc_id;
+  uint32_t possible_crtcs;
+  uint32_t possible_clones;
+};
+
+class ImxDisplaySink : public IDisplaySink {
+private:
+  SocType type_;
+  void* drm_lib_handle_ = nullptr;
+  int fd_ = -1;
+  uint32_t connector_id_ = 0;
+  uint32_t crtc_id_ = 0;
+  uint32_t fb_id_ = 0;
+  uint32_t handle_ = 0;
+  uint32_t stride_ = 0;
+  uint64_t size_ = 0;
+  void* map_ = MAP_FAILED;
+  bool is_mock_ = false;
+
+  // Function pointer typedefs
+  typedef struct drmModeRes* (*PFNDRMMODEGETRESOURCES)(int);
+  typedef void (*PFNDRMMODEFREERESOURCES)(struct drmModeRes*);
+  typedef struct drmModeConnector* (*PFNDRMMODEGETCONNECTOR)(int, uint32_t);
+  typedef void (*PFNDRMMODEFREECONNECTOR)(struct drmModeConnector*);
+  typedef struct drmModeEncoder* (*PFNDRMMODEGETENCODER)(int, uint32_t);
+  typedef void (*PFNDRMMODEFREEENCODER)(struct drmModeEncoder*);
+  typedef int (*PFNDRMMODEADDFB)(int, uint32_t, uint32_t, uint8_t, uint8_t, uint32_t, uint32_t, uint32_t*);
+  typedef int (*PFNDRMMODERMFB)(int, uint32_t);
+  typedef int (*PFNDRMMODESETCRTC)(int, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t*, int, struct drmModeModeInfo*);
+
+  PFNDRMMODEGETRESOURCES drmModeGetResources_ = nullptr;
+  PFNDRMMODEFREERESOURCES drmModeFreeResources_ = nullptr;
+  PFNDRMMODEGETCONNECTOR drmModeGetConnector_ = nullptr;
+  PFNDRMMODEFREECONNECTOR drmModeFreeConnector_ = nullptr;
+  PFNDRMMODEGETENCODER drmModeGetEncoder_ = nullptr;
+  PFNDRMMODEFREEENCODER drmModeFreeEncoder_ = nullptr;
+  PFNDRMMODEADDFB drmModeAddFB_ = nullptr;
+  PFNDRMMODERMFB drmModeRmFB_ = nullptr;
+  PFNDRMMODESETCRTC drmModeSetCrtc_ = nullptr;
+
+public:
+  ImxDisplaySink(SocType type) : type_(type) {}
+  ~ImxDisplaySink() override { terminate(); }
+
+  bool initialize() override {
+    printf("[HAL] [ImxDisplay] Initializing DRM/KMS HDMI display on real board (%s)...\n",
+           (type_ == SocType::IMX95) ? "i.MX95" : "i.MX8MP");
+
+    // Dynamic loading of libdrm.so
+    drm_lib_handle_ = dlopen("libdrm.so", RTLD_LAZY);
+    if (!drm_lib_handle_) {
+      drm_lib_handle_ = dlopen("libdrm.so.2", RTLD_LAZY);
+    }
+    if (!drm_lib_handle_) {
+      printf("[HAL WARNING] [ImxDisplay] libdrm.so not found. Falling back to mock/simulation mode.\n");
+      is_mock_ = true;
+      return true;
+    }
+
+    // Resolve symbols
+    drmModeGetResources_ = (PFNDRMMODEGETRESOURCES)dlsym(drm_lib_handle_, "drmModeGetResources");
+    drmModeFreeResources_ = (PFNDRMMODEFREERESOURCES)dlsym(drm_lib_handle_, "drmModeFreeResources");
+    drmModeGetConnector_ = (PFNDRMMODEGETCONNECTOR)dlsym(drm_lib_handle_, "drmModeGetConnector");
+    drmModeFreeConnector_ = (PFNDRMMODEFREECONNECTOR)dlsym(drm_lib_handle_, "drmModeFreeConnector");
+    drmModeGetEncoder_ = (PFNDRMMODEGETENCODER)dlsym(drm_lib_handle_, "drmModeGetEncoder");
+    drmModeFreeEncoder_ = (PFNDRMMODEFREEENCODER)dlsym(drm_lib_handle_, "drmModeFreeEncoder");
+    drmModeAddFB_ = (PFNDRMMODEADDFB)dlsym(drm_lib_handle_, "drmModeAddFB");
+    drmModeRmFB_ = (PFNDRMMODERMFB)dlsym(drm_lib_handle_, "drmModeRmFB");
+    drmModeSetCrtc_ = (PFNDRMMODESETCRTC)dlsym(drm_lib_handle_, "drmModeSetCrtc");
+
+    if (!drmModeGetResources_ || !drmModeFreeResources_ || !drmModeGetConnector_ ||
+        !drmModeFreeConnector_ || !drmModeGetEncoder_ || !drmModeFreeEncoder_ ||
+        !drmModeAddFB_ || !drmModeRmFB_ || !drmModeSetCrtc_) {
+      printf("[HAL WARNING] [ImxDisplay] Some DRM symbols are missing. Falling back to mock mode.\n");
+      dlclose(drm_lib_handle_);
+      drm_lib_handle_ = nullptr;
+      is_mock_ = true;
+      return true;
+    }
+
+    // Open DRM/KMS card device
+    fd_ = open("/dev/dri/card0", O_RDWR | O_CLOEXEC);
+    if (fd_ < 0) {
+      printf("[HAL WARNING] [ImxDisplay] Failed to open /dev/dri/card0. Falling back to mock mode.\n");
+      is_mock_ = true;
+      return true;
+    }
+
+    // Get DRM Resources
+    struct drmModeRes* res = drmModeGetResources_(fd_);
+    if (!res) {
+      printf("[HAL WARNING] [ImxDisplay] drmModeGetResources failed. Falling back to mock mode.\n");
+      close(fd_);
+      fd_ = -1;
+      is_mock_ = true;
+      return true;
+    }
+
+    // Find connected HDMI/DVI connector
+    struct drmModeConnector* conn = nullptr;
+    for (int i = 0; i < res->count_connectors; i++) {
+      conn = drmModeGetConnector_(fd_, res->connectors[i]);
+      if (conn) {
+        // connection == 1 (Connected), types: HDMI_A(11), DVI_D(7), HDMI_B(12)
+        if (conn->connection == 1 && (conn->connector_type == 11 || conn->connector_type == 7 || conn->connector_type == 12)) {
+          connector_id_ = conn->connector_id;
+          break;
+        }
+        drmModeFreeConnector_(conn);
+        conn = nullptr;
+      }
+    }
+
+    if (!conn) {
+      printf("[HAL WARNING] [ImxDisplay] No connected HDMI connector found. Falling back to mock mode.\n");
+      drmModeFreeResources_(res);
+      close(fd_);
+      fd_ = -1;
+      is_mock_ = true;
+      return true;
+    }
+
+    // Determine Encoder & CRTC
+    struct drmModeEncoder* enc = drmModeGetEncoder_(fd_, conn->encoder_id);
+    if (enc) {
+      crtc_id_ = enc->crtc_id;
+      drmModeFreeEncoder_(enc);
+    } else {
+      for (int i = 0; i < conn->count_encoders; i++) {
+        enc = drmModeGetEncoder_(fd_, conn->encoders[i]);
+        if (enc) {
+          crtc_id_ = enc->crtc_id;
+          drmModeFreeEncoder_(enc);
+          if (crtc_id_ != 0) break;
+        }
+      }
+    }
+
+    if (crtc_id_ == 0) {
+      printf("[HAL WARNING] [ImxDisplay] No valid CRTC found. Falling back to mock mode.\n");
+      drmModeFreeConnector_(conn);
+      drmModeFreeResources_(res);
+      close(fd_);
+      fd_ = -1;
+      is_mock_ = true;
+      return true;
+    }
+
+    // Select resolution and mode
+    struct drmModeModeInfo mode = conn->modes[0];
+    uint32_t width = mode.hdisplay;
+    uint32_t height = mode.vdisplay;
+
+    // Allocate Dumb Buffer via IOCTL
+    struct drm_mode_create_dumb create_req;
+    memset(&create_req, 0, sizeof(create_req));
+    create_req.width = width;
+    create_req.height = height;
+    create_req.bpp = 32;
+    if (ioctl(fd_, DRM_IOCTL_MODE_CREATE_DUMB, &create_req) < 0) {
+      printf("[HAL WARNING] [ImxDisplay] DRM_IOCTL_MODE_CREATE_DUMB failed. Falling back to mock mode.\n");
+      drmModeFreeConnector_(conn);
+      drmModeFreeResources_(res);
+      close(fd_);
+      fd_ = -1;
+      is_mock_ = true;
+      return true;
+    }
+    handle_ = create_req.handle;
+    stride_ = create_req.pitch;
+    size_ = create_req.size;
+
+    // Register Framebuffer (FB)
+    if (drmModeAddFB_(fd_, width, height, 24, 32, stride_, handle_, &fb_id_) < 0) {
+      printf("[HAL WARNING] [ImxDisplay] drmModeAddFB failed. Falling back to mock mode.\n");
+      struct drm_mode_destroy_dumb destroy_req;
+      memset(&destroy_req, 0, sizeof(destroy_req));
+      destroy_req.handle = handle_;
+      ioctl(fd_, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy_req);
+      drmModeFreeConnector_(conn);
+      drmModeFreeResources_(res);
+      close(fd_);
+      fd_ = -1;
+      is_mock_ = true;
+      return true;
+    }
+
+    // Map Dumb Buffer via IOCTL
+    struct drm_mode_map_dumb map_req;
+    memset(&map_req, 0, sizeof(map_req));
+    map_req.handle = handle_;
+    if (ioctl(fd_, DRM_IOCTL_MODE_MAP_DUMB, &map_req) < 0) {
+      printf("[HAL WARNING] [ImxDisplay] DRM_IOCTL_MODE_MAP_DUMB failed. Falling back to mock mode.\n");
+      drmModeRmFB_(fd_, fb_id_);
+      struct drm_mode_destroy_dumb destroy_req;
+      memset(&destroy_req, 0, sizeof(destroy_req));
+      destroy_req.handle = handle_;
+      ioctl(fd_, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy_req);
+      drmModeFreeConnector_(conn);
+      drmModeFreeResources_(res);
+      close(fd_);
+      fd_ = -1;
+      is_mock_ = true;
+      return true;
+    }
+
+    // Memory map dumb buffer
+    map_ = mmap(0, size_, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, map_req.offset);
+    if (map_ == MAP_FAILED) {
+      printf("[HAL WARNING] [ImxDisplay] mmap failed. Falling back to mock mode.\n");
+      drmModeRmFB_(fd_, fb_id_);
+      struct drm_mode_destroy_dumb destroy_req;
+      memset(&destroy_req, 0, sizeof(destroy_req));
+      destroy_req.handle = handle_;
+      ioctl(fd_, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy_req);
+      drmModeFreeConnector_(conn);
+      drmModeFreeResources_(res);
+      close(fd_);
+      fd_ = -1;
+      is_mock_ = true;
+      return true;
+    }
+
+    // Bind CRTC to display scanning out from FB
+    if (drmModeSetCrtc_(fd_, crtc_id_, fb_id_, 0, 0, &connector_id_, 1, &mode) < 0) {
+      printf("[HAL WARNING] [ImxDisplay] drmModeSetCrtc failed. Falling back to mock mode.\n");
+      munmap(map_, size_);
+      map_ = MAP_FAILED;
+      drmModeRmFB_(fd_, fb_id_);
+      struct drm_mode_destroy_dumb destroy_req;
+      memset(&destroy_req, 0, sizeof(destroy_req));
+      destroy_req.handle = handle_;
+      ioctl(fd_, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy_req);
+      drmModeFreeConnector_(conn);
+      drmModeFreeResources_(res);
+      close(fd_);
+      fd_ = -1;
+      is_mock_ = true;
+      return true;
+    }
+
+    printf("[HAL] [ImxDisplay] Real board DRM/KMS HDMI display initialized successfully (Resolution: %dx%d).\n", width, height);
+
+    drmModeFreeConnector_(conn);
+    drmModeFreeResources_(res);
+    return true;
+  }
+
+  bool outputFrame(const uint8_t* rgba_data, int width, int height) override {
+    if (is_mock_ || fd_ < 0 || map_ == MAP_FAILED) {
+      printf("[HAL] [ImxDisplay] Real board HDMI display output frame simulated (Wayland/DRM Bypass).\n");
+      return true;
+    }
+
+    // Output stitched frame (RGBA) to physical HDMI dumb framebuffer (XRGB format)
+    uint32_t* dst = (uint32_t*)map_;
+    uint32_t pitch_pixels = stride_ / 4;
+
+    // Copy the frame pixels (width x height) to the top-left of the display buffer
+    for (int y = 0; y < height; y++) {
+      for (int x = 0; x < width; x++) {
+        int idx = (y * width + x) * 4;
+        uint8_t r = rgba_data[idx + 0];
+        uint8_t g = rgba_data[idx + 1];
+        uint8_t b = rgba_data[idx + 2];
+        uint32_t pixel = (r << 16) | (g << 8) | b;
+        dst[y * pitch_pixels + x] = pixel;
+      }
+    }
+    return true;
+  }
+
+  void terminate() override {
+    if (fd_ >= 0) {
+      if (map_ != MAP_FAILED) {
+        munmap(map_, size_);
+        map_ = MAP_FAILED;
+      }
+      if (fb_id_ != 0) {
+        drmModeRmFB_(fd_, fb_id_);
+        fb_id_ = 0;
+      }
+      if (handle_ != 0) {
+        struct drm_mode_destroy_dumb destroy_req;
+        memset(&destroy_req, 0, sizeof(destroy_req));
+        destroy_req.handle = handle_;
+        ioctl(fd_, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy_req);
+        handle_ = 0;
+      }
+      close(fd_);
+      fd_ = -1;
+    }
+    if (drm_lib_handle_) {
+      dlclose(drm_lib_handle_);
+      drm_lib_handle_ = nullptr;
+    }
+    printf("[HAL] [ImxDisplay] DRM/KMS HDMI display terminated.\n");
+  }
+};
+
+
+std::unique_ptr<IDisplaySink> HalFactory::createDisplaySink(SocType soc_type) {
+  const char *force_host = std::getenv("FORCE_HOST_DISPLAY");
+  if (force_host != nullptr && (strcmp(force_host, "1") == 0 || strcmp(force_host, "true") == 0)) {
+    printf("[HAL] FORCE_HOST_DISPLAY detected. Forcing Host Display Sink (Dump mode).\n");
+    return std::make_unique<HostDisplaySink>();
+  }
+
+  return std::make_unique<ImxDisplaySink>(soc_type);
 }

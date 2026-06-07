@@ -32,6 +32,7 @@ cleanup() {
     # 共有メモリファイルとマニフェストの削除
     echo "Cleaning up temporary files..."
     rm -f /tmp/vfpga_* 2>/dev/null
+    rm -f /tmp/hdmi_output.bmp 2>/dev/null
     rm -f dashboard/data/board_manifest.json 2>/dev/null
     
     echo "Done."
@@ -48,6 +49,7 @@ echo "===================================================="
 # 1. 準備
 echo "[0/3] Cleaning up previous state..."
 rm -f dashboard/data/vfpga_uart_* 2>/dev/null
+rm -f /tmp/hdmi_output.bmp 2>/dev/null
 pkill -f "node dashboard/server.js" 2>/dev/null
 make clean > /dev/null 2>&1
 
@@ -126,6 +128,7 @@ echo ""
 echo "   Starting firmware application..."
 export VFPGA_INTERACTIVE=1
 export FORCE_MESA_FALLBACK=1
+export FORCE_HOST_DISPLAY=1
 LD_PRELOAD="$PWD/libfpgashim.so" "${SCENARIO_DIR}/test_bin"
 
 # アプリ終了後もバックエンドの状態を監視し続ける

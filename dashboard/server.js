@@ -4,6 +4,8 @@ const { Server } = require('socket.io');
 const fs = require('fs');
 const path = require('path');
 const cors = require('cors');
+const chokidar = require('chokidar');
+
 
 const app = express();
 app.use(cors());
@@ -15,6 +17,32 @@ const io = new Server(server, {
 const MANIFEST_PATH = path.join(__dirname, 'data/board_manifest.json');
 let manifest = {};
 let shmBuffer = null;
+let hdmiWatcher = null;
+
+function setupHdmiWatcher() {
+    if (hdmiWatcher) {
+        hdmiWatcher.close();
+    }
+    const hdmiPath = manifest.hdmi_output_path || '/tmp/hdmi_output.bmp';
+
+    hdmiWatcher = chokidar.watch(hdmiPath, {
+        persistent: true,
+        usePolling: true,
+        interval: 100
+    });
+
+    const sendHdmiFrame = () => {
+        fs.readFile(hdmiPath, (err, data) => {
+            if (!err) {
+                io.emit('hdmi-frame', data.toString('base64'));
+            }
+        });
+    };
+
+    hdmiWatcher.on('add', sendHdmiFrame);
+    hdmiWatcher.on('change', sendHdmiFrame);
+}
+
 
 // Register State Tracer 状態
 let traceHistory = [];
@@ -27,7 +55,12 @@ function loadManifest() {
     try {
         if (fs.existsSync(MANIFEST_PATH)) {
             const data = fs.readFileSync(MANIFEST_PATH, 'utf8');
-            manifest = JSON.parse(data);
+            const newManifest = JSON.parse(data);
+            const pathChanged = newManifest.hdmi_output_path !== manifest.hdmi_output_path;
+            manifest = newManifest;
+            if (pathChanged) {
+                setupHdmiWatcher();
+            }
             return true;
         }
     } catch (e) {
@@ -35,6 +68,7 @@ function loadManifest() {
     }
     return false;
 }
+
 
 // 共有メモリの読み取り
 function updateShm() {
@@ -162,6 +196,17 @@ function connectToUart(name, port) {
 io.on('connection', (socket) => {
     socket.emit('uart-init', uartLogs);
     socket.emit('trace-history-init', traceHistory);
+
+    // Send initial HDMI frame if exists
+    const hdmiPath = manifest.hdmi_output_path || '/tmp/hdmi_output.bmp';
+    if (fs.existsSync(hdmiPath)) {
+        fs.readFile(hdmiPath, (err, data) => {
+            if (!err) {
+                socket.emit('hdmi-frame', data.toString('base64'));
+            }
+        });
+    }
+
 
     socket.on('trace-history-clear', () => {
         traceHistory = [];

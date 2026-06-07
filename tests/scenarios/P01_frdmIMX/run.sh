@@ -22,6 +22,12 @@ if [ -z "$FORCE_MESA_FALLBACK" ]; then
     export FORCE_MESA_FALLBACK=1
 fi
 
+# HDMIの画面出力先をダッシュボードプレビュー用のファイルダンプにフォールバックさせるため、
+# 環境変数 FORCE_HOST_DISPLAY=1 をデフォルトで設定します。
+if [ -z "$FORCE_HOST_DISPLAY" ]; then
+    export FORCE_HOST_DISPLAY=1
+fi
+
 
 # Determine SOC type (default is imx95)
 SOC_TYPE="imx95"

@@ -83,6 +83,7 @@ class TestVFPGAEngine(unittest.TestCase):
         manifest = json.loads(content)
         self.assertEqual(manifest["board"], "vfpga_reg")
         self.assertEqual(manifest["shm_path"], "/tmp/vfpga_reg")
+        self.assertEqual(manifest["hdmi_output_path"], "/tmp/hdmi_output.bmp")
         self.assertTrue(any(d["name"] == "vfpga_reg" for d in manifest["devices"]))
         self.assertTrue(any(d["type"] == "i2c" for d in manifest["devices"]))
 

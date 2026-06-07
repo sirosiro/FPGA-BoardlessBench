@@ -1,6 +1,7 @@
 #include "hal/imx_hal.hpp"
 #include <atomic>
 #include <chrono>
+#include <cmath>
 #include <functional> // std::bind と std::placeholders のため
 #include <stdio.h>
 #include <string.h>
@@ -12,8 +13,10 @@ class MainApplication {
 private:
   std::unique_ptr<ISerialPort> serial_;
   std::unique_ptr<IGpioController> gpio_;
+  std::unique_ptr<IDisplaySink> display_;
   SocType soc_type_;
   std::atomic<bool> running_{true};
+  std::thread hdmi_thread_;
 
   // 共通のGPIO割り込みイベントハンドラ (プライベートメンバ関数)
   void handleGpioEvent(int pin_num, bool state) {
@@ -30,14 +33,31 @@ private:
 
 public:
   MainApplication() : soc_type_(SocType::IMX95) {}
+  ~MainApplication() {
+    stop();
+    if (display_) {
+      display_->terminate();
+    }
+  }
 
   bool isRunning() const { return running_; }
-  void stop() { running_ = false; }
+  void stop() {
+    running_ = false;
+    if (hdmi_thread_.joinable()) {
+      hdmi_thread_.join();
+    }
+  }
 
   void initialize(SocType soc_type, const std::string &uart_path) {
     soc_type_ = soc_type;
     printf("[App] Initializing HAL for %s...\n",
            (soc_type == SocType::IMX95) ? "i.MX95" : "i.MX 8M Plus");
+
+    // Create Display Sink
+    display_ = HalFactory::createDisplaySink(soc_type);
+    if (!display_ || !display_->initialize()) {
+      fprintf(stderr, "[App] Error: Failed to initialize DisplaySink.\n");
+    }
 
     // ピンアサイン仕様を一箇所に集約して定義 (Approach A)
     // 下位8ピン(0-7)を出力、上位8ピン(8-15)を入力に設定
@@ -348,6 +368,11 @@ public:
           printf("[App] OpenGL ES 4-Cam Stitching verification: FAILURE! "
                  "(Pixel values mismatch)\n");
         }
+
+        // Output first verification frame to display
+        if (display_) {
+          display_->outputFrame(out_img, 64, 64);
+        }
       } else {
         printf("[App] OpenGL ES processing failed.\n");
       }
@@ -366,6 +391,67 @@ public:
              "automatically...\n");
       stop();
     } else {
+      printf("[App] Interactive Mode. Starting HDMI display preview thread (10 fps)...\n");
+      hdmi_thread_ = std::thread([this]() {
+        auto processor = HalFactory::createVideoProcessor(soc_type_);
+        if (!processor || !processor->initialize()) {
+          fprintf(stderr, "[App] [HDMI Thread] Failed to initialize VideoProcessor.\n");
+          return;
+        }
+
+        uint8_t camera_frames[4][64 * 64 * 4];
+        const uint8_t *in_frames[4];
+        uint8_t out_img[64 * 64 * 4];
+        for (int i = 0; i < 4; i++) {
+          in_frames[i] = camera_frames[i];
+          memset(camera_frames[i], 0, sizeof(camera_frames[i]));
+        }
+
+        for (int p = 0; p < 64 * 64; p++) {
+          camera_frames[0][p * 4 + 0] = 255; camera_frames[0][p * 4 + 3] = 255; // Red
+          camera_frames[1][p * 4 + 1] = 255; camera_frames[1][p * 4 + 3] = 255; // Green
+          camera_frames[2][p * 4 + 2] = 255; camera_frames[2][p * 4 + 3] = 255; // Blue
+          camera_frames[3][p * 4 + 0] = 255; camera_frames[3][p * 4 + 1] = 255; camera_frames[3][p * 4 + 3] = 255; // Yellow
+        }
+
+        float theta = 0.0f;
+        while (running_) {
+          theta += 0.05f;
+          float scale = 0.8f + 0.2f * sin(theta);
+          float cos_t = cos(theta * 0.2f);
+          float sin_t = sin(theta * 0.2f);
+
+          for (int i = 0; i < 4; i++) {
+            CalibrationData params;
+            params.distortion_k1 = -0.1f * (float)(i + 1) * (0.5f + 0.5f * sin(theta));
+            params.distortion_k2 = 0.0f;
+
+            memset(params.affine_matrix, 0, sizeof(params.affine_matrix));
+            params.affine_matrix[0] = scale * cos_t;
+            params.affine_matrix[1] = -sin_t;
+            params.affine_matrix[4] = sin_t;
+            params.affine_matrix[5] = scale * cos_t;
+            params.affine_matrix[10] = 1.0f;
+            params.affine_matrix[15] = 1.0f;
+
+            params.color_balance[0] = 0.8f + 0.2f * sin(theta + (float)i);
+            params.color_balance[1] = 0.8f + 0.2f * cos(theta + (float)i);
+            params.color_balance[2] = 0.8f + 0.2f * sin(theta * 0.5f);
+            params.color_balance[3] = 1.0f;
+
+            processor->setCalibrationParams(i, params);
+          }
+
+          processor->processFrame(in_frames, out_img, 64, 64);
+          if (display_) {
+            display_->outputFrame(out_img, 64, 64);
+          }
+
+          std::this_thread::sleep_for(std::chrono::milliseconds(100));
+        }
+        processor->terminate();
+      });
+
       printf("[App] Setup complete. Waiting for Pin 8, 9, 10 (UART notify) or "
              "Pin 11, 12, 13 (Demo triggers)...\n");
     }

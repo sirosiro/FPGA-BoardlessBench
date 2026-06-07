@@ -50,6 +50,7 @@ clean:
 	rm -f $(SHIM_SRC) src/include/vfpga_config.h
 	rm -f src/sim/sim_main.cpp src/rtl/*.v
 	rm -rf obj_dir
+	rm -f /tmp/hdmi_output.bmp
 	$(MAKE) -C tests clean || true
 	$(MAKE) -C sandbox clean || true
 

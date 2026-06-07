@@ -14,6 +14,8 @@ export const DashboardProvider = ({ children }) => {
   const [activeUart, setActiveUart] = useState(null);
   const [uartInput, setUartInput] = useState("");
   const [traceHistory, setTraceHistory] = useState([]);
+  const [hdmiFrame, setHdmiFrame] = useState(null);
+
 
   useEffect(() => {
     socket.on('connect', () => setConnected(true));
@@ -32,6 +34,8 @@ export const DashboardProvider = ({ children }) => {
     socket.on('trace-history-update', (snapshot) => {
       setTraceHistory(prev => [...prev, snapshot].slice(-500));
     });
+    socket.on('hdmi-frame', (data) => setHdmiFrame(data));
+
 
     fetch('/api/manifest').then(res => res.json()).then(setManifest);
 
@@ -43,8 +47,10 @@ export const DashboardProvider = ({ children }) => {
       socket.off('uart-init');
       socket.off('trace-history-init');
       socket.off('trace-history-update');
+      socket.off('hdmi-frame');
     };
   }, [activeUart]);
+
 
   const sendUart = (e) => {
     e.preventDefault();
@@ -80,7 +86,9 @@ export const DashboardProvider = ({ children }) => {
         sendUart,
         handleGpioToggle,
         handleClearTrace,
+        hdmiFrame,
       }}
+
     >
       {children}
     </DashboardContext.Provider>

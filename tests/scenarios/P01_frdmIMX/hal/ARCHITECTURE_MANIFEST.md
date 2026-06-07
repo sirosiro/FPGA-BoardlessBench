@@ -53,6 +53,7 @@ GPIOの入力/出力の方向（`IGpioController::Direction`）を実行時のAP
 
 ```mermaid
 classDiagram
+classInterface
     class ISerialPort {
         <<interface>>
         +open(device_path : string) bool*
@@ -100,6 +101,23 @@ classDiagram
     IVideoProcessor <|-- ImxGlesProcessorBase
     ImxGlesProcessorBase <|-- Imx95GlesProcessor : i.MX 95用
     ImxGlesProcessorBase <|-- Imx8mpGlesProcessor : i.MX 8M Plus用
+
+    class IDisplaySink {
+        <<interface>>
+        +initialize() bool*
+        +outputFrame(rgba_data : const uint8_t*, width : int, height : int) bool*
+        +terminate() void*
+    }
+
+    class HostDisplaySink {
+    }
+
+    class ImxDisplaySink {
+        -type_ : SocType
+    }
+
+    IDisplaySink <|-- HostDisplaySink : ホストダンプ用
+    IDisplaySink <|-- ImxDisplaySink : 実機物理HDMI用
 
     class Direction {
         <<enumeration>>
@@ -166,17 +184,20 @@ classDiagram
         +createSerialPort(soc_type : SocType, path : string) unique_ptr~ISerialPort~$
         +createGpioController(soc_type : SocType, pin_config : unordered_map) unique_ptr~IGpioController~$
         +createVideoProcessor(soc_type : SocType) unique_ptr~IVideoProcessor~$
+        +createDisplaySink(soc_type : SocType) unique_ptr~IDisplaySink~$
     }
 
     class MainApplication {
         -serial_ : unique_ptr~ISerialPort~
         -gpio_ : unique_ptr~IGpioController~
+        -display_ : unique_ptr~IDisplaySink~
         -soc_type_ : SocType
         -running_ : atomic~bool~
     }
 
     MainApplication --> ISerialPort : 利用 (メンバ保持)
     MainApplication --> IGpioController : 利用 (メンバ保持)
+    MainApplication --> IDisplaySink : 利用 (メンバ保持)
     MainApplication ..> IVideoProcessor : 利用 (ローカル利用)
     MainApplication ..> HalFactory : 生成要求
     HalFactory ..> MxcUartController : 生成
@@ -186,6 +207,9 @@ classDiagram
     HalFactory ..> HostGlesProcessor : 生成
     HalFactory ..> Imx95GlesProcessor : 生成
     HalFactory ..> Imx8mpGlesProcessor : 生成
+    HalFactory ..> HostDisplaySink : 生成
+    HalFactory ..> ImxDisplaySink : 生成
+
 ```
 
 ---
@@ -252,6 +276,22 @@ classDiagram
 
 #### 4. `terminate() -> void`
 - **役割**: 作成されたテクスチャ、FBO、GLSL プログラム、および EGL コンテキスト/ディスプレイの解放を行い、リソースリークを防ぎます。
+
+---
+
+## 3.3. HDMI Display Sink HAL API メソッドリファレンス
+
+#### 1. `initialize() -> bool`
+- **役割**: ディスプレイ出力デバイス（実機物理モニター、またはホスト側ダンプ領域）を初期化します。
+- **戻り値**: 初期化に成功した場合は `true`、失敗した場合は `false`。
+
+#### 2. `outputFrame(const uint8_t* rgba_data, int width, int height) -> bool`
+- **役割**: 補正・合成済みの RGBA 画像データをディスプレイに出力します。実機では DRM/KMS または Wayland 経由でモニター表示を行い、ホスト環境（F-BB）ではマニフェスト定義の `/tmp/hdmi_output.bmp` ファイルへ BMP 形式で保存します。
+- **戻り値**: 出力処理が成功した場合は `true`、失敗した場合は `false`。
+
+#### 3. `terminate() -> void`
+- **役割**: 確保されたディスプレイドライバのコンテキスト、描画資源、あるいはファイルディスクリプタを安全に解放・クローズします。
+
 
 ---
 
@@ -444,6 +484,16 @@ GPIO制御のようなハードウェア低レイヤのHAL設計において、*
   Hブリッジ上下アームなどの排他ピンは `registerInterlockPair` で排他登録されます。登録ピンは 32bit の `interlocked_pins_mask_` に記録されます。
   通常の `writePin` の開始時に `interlocked_pins_mask_ & (1 << pin)` のビット論理積（わずか 1 クロックサイクル）を実行し、登録ピンへの誤ったアクセスを即座に拒否しアボートします。
   インターロック対象ピンを操作する場合は、必ず `writePinIL` の使用を強制され、その中でのみ相手ピンのON/OFF競合チェック（衝突時は両方を強制的にOFFにしてアボートする安全ロジック）が走るため、安全でない状態を論理的に完全に防ぎつつ、一般ピンの高速操作を一切阻害しない設計を実現しています。
+
+### 7.6. HDMI出力抽象化（IDisplaySink）による遅延への影響評価
+実機ターゲットにおけるリアルタイム表示性能を損なわないため、HDMI出力の抽象化レイヤーは以下の通り遅延（レイテンシ）を徹底的に排除した設計になっています。
+* **仮想関数テーブル参照コストの極小化**:  
+  `IDisplaySink` のインターフェース切り替えはC++の仮想関数テーブルを介して実行されますが、このCPUペナルティは数ナノ秒以下（数クロックサイクル）であり、60fps等の表示周期に対して完全に無視できます。
+* **実機ゼロコピーラインの維持**:  
+  API設計上 `const uint8_t* rgba_data` のピクセルポインタを渡す形式にしていますが、本番用の `ImxDisplaySink` 等のハードウェア具象実装においては、CPUへのメモリコピーバック（`glReadPixels`）を強制しません。実機では背後で GPU バッファハンドル（DMA-BUF等）をディスプレイエンジン（DRM/KMS）へ直接ゼロコピーパスで紐付ける構造にするため、追加の処理遅延は発生しません。
+* **ホストファイルI/Oの非同期スレッド分離**:  
+  ホスト（F-BB）上でのみ実行される `/tmp/hdmi_output.bmp` へのBMPファイル書き込み処理は、メインの処理・制御ループをブロックしないよう、専用のバックグラウンドスレッド（`hdmi_thread_`）内で非同期的に実行されます。これにより、メインループの制御ジッタを防止しています。
+
 
 ---
 

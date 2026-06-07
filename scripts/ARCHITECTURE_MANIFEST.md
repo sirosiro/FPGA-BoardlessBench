@@ -33,6 +33,11 @@ DTS の論理構造を抽象化したデータモデル。
 
 ### 3.3 Generation Layer (`GeneratorOrchestrator`, `BaseGenerator`)
 `GeneratorOrchestrator` が `BoardModel` を各 `BaseGenerator` 実装へと配布し、一貫性のあるファイルセットを出力する。
+- **ConfigGenerator**: Cヘッダー (`vfpga_config.h`) を生成
+- **ShimGenerator**: Shimライブラリ (`libfpgashim.c`) を生成
+- **RTLGenerator**: Verilog トップモジュール (`vfpga_top.v`) を生成
+- **SimulatorGenerator**: Verilator 用 C++ ラッパー (`sim_main.cpp`) を生成
+- **ManifestGenerator**: Webダッシュボード用メタデータ (`board_manifest.json`) を生成
 
 ## 4. クラス構造概略 (Class Diagram)
 
@@ -77,6 +82,9 @@ classDiagram
     class SimulatorGenerator {
         +generate(model) String
     }
+    class ManifestGenerator {
+        +generate(model) String
+    }
 
     DTSParser ..> BoardModel : creates
     BoardModel "1" *-- "*" Device
@@ -87,6 +95,7 @@ classDiagram
     BaseGenerator <|-- ShimGenerator
     BaseGenerator <|-- RTLGenerator
     BaseGenerator <|-- SimulatorGenerator
+    BaseGenerator <|-- ManifestGenerator
 ```
 
 ## 5. 開発・修正プロトコル (Protocols)

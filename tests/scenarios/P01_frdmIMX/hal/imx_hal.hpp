@@ -61,6 +61,14 @@ public:
   virtual void terminate() = 0;
 };
 
+class IDisplaySink {
+public:
+  virtual ~IDisplaySink() = default;
+  virtual bool initialize() = 0;
+  virtual bool outputFrame(const uint8_t* rgba_data, int width, int height) = 0;
+  virtual void terminate() = 0;
+};
+
 class HalFactory {
 public:
   static SocType detectSocType();
@@ -71,6 +79,7 @@ public:
       SocType soc_type,
       const std::unordered_map<int, IGpioController::Direction> &pin_config);
   static std::unique_ptr<IVideoProcessor> createVideoProcessor(SocType soc_type);
+  static std::unique_ptr<IDisplaySink> createDisplaySink(SocType soc_type);
 };
 
 #endif // IMX_HAL_HPP

@@ -18,7 +18,7 @@ FPGA-BoardlessBench (F-BB) の中心的なエンジンです。**DTSファイル
 - **`src/shim/libfpgashim.c`**: UIO, I2C, UART, `/dev/mem` 等のアクセスをフックし、シミュレータへリダイレクトする Shim ライブラリ。
 - **`src/rtl/vfpga_top.v`**: DTSの定義に基づいた **118ピン標準インターフェース** を備えた Verilog のトップモジュール・スケルトン。
 - **`src/sim/sim_main.cpp`**: Verilator 用の C++ ラッパー。共有メモリと RTL 信号の同期を司るブリッジエンジン。
-- **`dashboard/data/board_manifest.json`**: ダッシュボードがデバイス構成やレジスタ一覧を把握するためのメタデータファイル。
+- **`dashboard/data/board_manifest.json`**: ダッシュボードがデバイス構成やレジスタ一覧、およびHDMIプレビュー用出力パス（`hdmi_output_path`）を把握するためのメタデータファイル。
 
 ### 内部構造
 詳細なクラス構造や設計原則については、[ARCHITECTURE_MANIFEST.md](./ARCHITECTURE_MANIFEST.md) を参照してください。
