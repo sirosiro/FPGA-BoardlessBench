@@ -57,7 +57,7 @@ public:
   virtual ~IVideoProcessor() = default;
   virtual bool initialize() = 0;
   virtual void setCalibrationParams(int camera_index, const CalibrationData& params) = 0;
-  virtual bool processFrame(const uint8_t* in_frames[4], uint8_t* out_data, int width, int height) = 0;
+  virtual bool processFrame(const uint8_t* in_frames[4], int in_width, int in_height, uint8_t* out_data, int out_width, int out_height) = 0;
   virtual void terminate() = 0;
 };
 

@@ -600,7 +600,6 @@ public:
       calib_params_[i].color_balance[3] = 1.0f; // Gamma
     }
   }
-  virtual ~HostGlesProcessor() { terminate(); }
 
   void setCalibrationParams(int camera_index, const CalibrationData& params) override {
     if (camera_index >= 0 && camera_index < 4) {
@@ -691,6 +690,7 @@ public:
         "uniform vec2 u_distortion[4];\n"
         "uniform mat4 u_affine_matrix[4];\n"
         "uniform vec4 u_color_balance[4];\n"
+        "uniform float u_mode;\n" // 0.0: Grid (2x2), 1.0: AroundView
         "\n"
         "vec2 apply_distortion(vec2 uv, vec2 k) {\n"
         "  vec2 d = uv - vec2(0.5, 0.5);\n"
@@ -705,11 +705,162 @@ public:
         "  return vec2((trans.x / trans.w + 1.0) * 0.5, (trans.y / trans.w + 1.0) * 0.5);\n"
         "}\n"
         "\n"
+        // ------------------------------------------------------------------
+        // AroundView uses a rectangular partition with diagonal corners.
+        //
+        // Layout in screen UV (0,0)=bottom-left, (1,1)=top-right:
+        //
+        //   Car body mask: centered rectangle (cx,cy)=(0.5,0.5)
+        //     half-width hw=0.10, half-height hh=0.20
+        //     => car rect: x in [0.40, 0.60], y in [0.30, 0.70]
+        //
+        //   FRONT (cam0): y > 0.70 (above car)
+        //   REAR  (cam1): y < 0.30 (below car)
+        //   LEFT  (cam2): x < 0.40, 0.30 <= y <= 0.70
+        //   RIGHT (cam3): x > 0.60, 0.30 <= y <= 0.70
+        //
+        //   Corner zones: diagonal split between adjacent cameras.
+        //     Top-left  corner: x < 0.40 && y > 0.70 -> FRONT or LEFT
+        //     Top-right corner: x > 0.60 && y > 0.70 -> FRONT or RIGHT
+        //     Bot-left  corner: x < 0.40 && y < 0.30 -> REAR or LEFT
+        //     Bot-right corner: x > 0.60 && y < 0.30 -> REAR or RIGHT
+        //
+        //   Each camera computes texture UV directly from screen position:
+        //   FRONT: tex_u = f(screen_x), tex_v = f(screen_y)
+        //          screen_y [0.70..1.0] maps to cam0 road area [bottom..mid]
+        //          screen_x [0.0..1.0] maps to cam0 [left..right]
+        //   LEFT:  90° CCW rotation
+        //          screen_x [0.0..0.40] maps to cam2 road [bottom..near car]
+        //          screen_y [0.30..0.70] maps to cam2 [left..right]
+        // ------------------------------------------------------------------
         "void main() {\n"
         "  vec2 uv = v_texcoord;\n"
         "  int cam_idx = 0;\n"
         "  vec2 sub_uv = vec2(0.0);\n"
         "  vec4 color = vec4(0.0);\n"
+        "  if (u_mode > 0.5) {\n"
+        //  Car body constants
+        "    float cx = 0.5;\n"
+        "    float cy = 0.5;\n"
+        "    float hw = 0.10;\n"
+        "    float hh = 0.20;\n"
+        "    float car_left   = cx - hw;\n" // 0.40
+        "    float car_right  = cx + hw;\n" // 0.60
+        "    float car_bottom = cy - hh;\n" // 0.30
+        "    float car_top    = cy + hh;\n" // 0.70
+        //  Car body mask
+        "    if (uv.x >= car_left && uv.x <= car_right && uv.y >= car_bottom && uv.y <= car_top) {\n"
+        "      gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);\n"
+        "      return;\n"
+        "    }\n"
+        //  Determine camera index
+        "    if (uv.y > car_top && uv.x >= car_left && uv.x <= car_right) {\n"
+        "      cam_idx = 0;\n" // FRONT (pure zone above car)
+        "    } else if (uv.y < car_bottom && uv.x >= car_left && uv.x <= car_right) {\n"
+        "      cam_idx = 1;\n" // REAR (pure zone below car)
+        "    } else if (uv.x < car_left && uv.y >= car_bottom && uv.y <= car_top) {\n"
+        "      cam_idx = 2;\n" // LEFT (pure zone left of car)
+        "    } else if (uv.x > car_right && uv.y >= car_bottom && uv.y <= car_top) {\n"
+        "      cam_idx = 3;\n" // RIGHT (pure zone right of car)
+        //  Corner zones: diagonal split
+        "    } else if (uv.x < car_left && uv.y > car_top) {\n"
+        //    Top-left corner: split by diagonal from car corner
+        "      float dx = car_left - uv.x;\n"
+        "      float dy = uv.y - car_top;\n"
+        "      cam_idx = (dy >= dx) ? 0 : 2;\n" // above diagonal = FRONT, below = LEFT
+        "    } else if (uv.x > car_right && uv.y > car_top) {\n"
+        //    Top-right corner
+        "      float dx = uv.x - car_right;\n"
+        "      float dy = uv.y - car_top;\n"
+        "      cam_idx = (dy >= dx) ? 0 : 3;\n"
+        "    } else if (uv.x < car_left && uv.y < car_bottom) {\n"
+        //    Bottom-left corner
+        "      float dx = car_left - uv.x;\n"
+        "      float dy = car_bottom - uv.y;\n"
+        "      cam_idx = (dy >= dx) ? 1 : 2;\n"
+        "    } else {\n"
+        //    Bottom-right corner
+        "      float dx = uv.x - car_right;\n"
+        "      float dy = car_bottom - uv.y;\n"
+        "      cam_idx = (dy >= dx) ? 1 : 3;\n"
+        "    }\n"
+        //  Compute per-camera texture UV directly from screen position.
+        //  For FRONT (cam0): road is in bottom half of camera image.
+        //    screen_x [0..1] -> tex_u [0..1]  (direct horizontal mapping)
+        //    screen_y from car_top(0.70) to 1.0 -> tex_v from ~0.95 (near car) to ~0.45 (far)
+        //    After Y-flip in AroundView: we compute pre-flip UV, then flip below.
+        //    Pre-flip: screen_y 0.70 -> tex_v 0.05, screen_y 1.0 -> tex_v 0.55
+        //    Linear: tex_v = 0.05 + (screen_y - 0.70) / 0.30 * 0.50
+        //           = 0.05 + (screen_y - 0.70) * 1.667
+        "    if (cam_idx == 0) {\n"
+        "      float t = clamp((uv.y - car_top) / (1.0 - car_top), 0.0, 1.0);\n"
+        "      sub_uv.x = uv.x;\n"
+        "      sub_uv.y = 0.05 + t * 0.50;\n"
+        //    Apply perspective: widen at near, narrow at far
+        "      float persp = 1.0 + t * 0.6;\n"
+        "      sub_uv.x = 0.5 + (uv.x - 0.5) * persp;\n"
+        "    }\n"
+        //  REAR (cam1): same structure but mirrored vertically
+        //    screen_y from 0.0 to car_bottom(0.30) -> tex_v near car to far
+        //    Pre-flip: screen_y 0.30 -> tex_v 0.05, screen_y 0.0 -> tex_v 0.55
+        "    if (cam_idx == 1) {\n"
+        "      float t = clamp((car_bottom - uv.y) / car_bottom, 0.0, 1.0);\n"
+        "      sub_uv.x = uv.x;\n"
+        "      sub_uv.y = 0.05 + t * 0.50;\n"
+        "      float persp = 1.0 + t * 0.6;\n"
+        "      sub_uv.x = 0.5 + (uv.x - 0.5) * persp;\n"
+        "    }\n"
+        //  LEFT (cam2): 90° CCW rotation from camera to bird's eye
+        //    screen_x [0..car_left(0.40)] -> depth into road (near car = far road)
+        //    screen_y [0..1] maps to horizontal span of camera
+        //    Pre-flip tex_v: screen_x 0.40 -> near car -> tex_v 0.05
+        //                    screen_x 0.00 -> far -> tex_v 0.55
+        //    tex_u: screen_y [0..1] -> tex_u [0..1]
+        "    if (cam_idx == 2) {\n"
+        "      float t = clamp((car_left - uv.x) / car_left, 0.0, 1.0);\n"
+        "      sub_uv.y = 0.05 + t * 0.50;\n"
+        "      sub_uv.x = uv.y;\n"
+        "      float persp = 1.0 + t * 0.6;\n"
+        "      sub_uv.x = 0.5 + (uv.y - 0.5) * persp;\n"
+        "    }\n"
+        //  RIGHT (cam3): 90° CW rotation
+        //    screen_x [car_right(0.60)..1.0] -> depth
+        //    screen_y [0..1] -> horizontal span (reversed)
+        "    if (cam_idx == 3) {\n"
+        "      float t = clamp((uv.x - car_right) / (1.0 - car_right), 0.0, 1.0);\n"
+        "      sub_uv.y = 0.05 + t * 0.50;\n"
+        "      sub_uv.x = 1.0 - uv.y;\n"
+        "      float persp = 1.0 + t * 0.6;\n"
+        "      sub_uv.x = 0.5 + (1.0 - uv.y - 0.5) * persp;\n"
+        "    }\n"
+        //  Apply affine transform (for fine-tuning) and distortion
+        "    vec2 corr_uv = apply_affine(sub_uv, u_affine_matrix[cam_idx]);\n"
+        "    corr_uv = apply_distortion(corr_uv, u_distortion[cam_idx]);\n"
+        //  Y-flip for AroundView
+        "    corr_uv.y = 1.0 - corr_uv.y;\n"
+        //  Bounds check
+        "    if (corr_uv.x < 0.0 || corr_uv.x > 1.0 || corr_uv.y < 0.0 || corr_uv.y > 1.0) {\n"
+        "      gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);\n"
+        "      return;\n"
+        "    }\n"
+        //  Sample texture
+        "    if (cam_idx == 0) {\n"
+        "      color = texture2D(s_tex0, corr_uv);\n"
+        "    } else if (cam_idx == 1) {\n"
+        "      color = texture2D(s_tex1, corr_uv);\n"
+        "    } else if (cam_idx == 2) {\n"
+        "      color = texture2D(s_tex2, corr_uv);\n"
+        "    } else {\n"
+        "      color = texture2D(s_tex3, corr_uv);\n"
+        "    }\n"
+        "    float gamma = u_color_balance[cam_idx].a;\n"
+        "    float is_invert = (gamma < 0.0) ? 0.0 : 1.0;\n"
+        "    float abs_gamma = abs(gamma);\n"
+        "    vec3 adjusted_rgb = pow(color.rgb * u_color_balance[cam_idx].rgb, vec3(abs_gamma));\n"
+        "    gl_FragColor = vec4(mix(adjusted_rgb, 1.0 - adjusted_rgb, is_invert), color.a);\n"
+        "    return;\n"
+        "  }\n"
+        //  Grid mode (2x2)
         "  if (uv.x < 0.5 && uv.y < 0.5) {\n"
         "    cam_idx = 0;\n"
         "    sub_uv = uv * 2.0;\n"
@@ -738,8 +889,11 @@ public:
         "  } else {\n"
         "    color = texture2D(s_tex3, corr_uv);\n"
         "  }\n"
-        "  vec3 adjusted_rgb = pow(color.rgb * u_color_balance[cam_idx].rgb, vec3(u_color_balance[cam_idx].a));\n"
-        "  gl_FragColor = vec4(1.0 - adjusted_rgb, color.a);\n"
+        "  float gamma = u_color_balance[cam_idx].a;\n"
+        "  float is_invert = (gamma < 0.0) ? 0.0 : 1.0;\n"
+        "  float abs_gamma = abs(gamma);\n"
+        "  vec3 adjusted_rgb = pow(color.rgb * u_color_balance[cam_idx].rgb, vec3(abs_gamma));\n"
+        "  gl_FragColor = vec4(mix(adjusted_rgb, 1.0 - adjusted_rgb, is_invert), color.a);\n"
         "}\n";
 
     GLuint vs = compileShader(GL_VERTEX_SHADER, vs_src);
@@ -768,7 +922,7 @@ public:
     return true;
   }
 
-  bool processFrame(const uint8_t* in_frames[4], uint8_t* out_data, int width, int height) override {
+  bool processFrame(const uint8_t* in_frames[4], int in_width, int in_height, uint8_t* out_data, int out_width, int out_height) override {
     if (egl_dpy_ == EGL_NO_DISPLAY || egl_ctx_ == EGL_NO_CONTEXT) {
       fprintf(stderr, "[HAL ERROR] VideoProcessor not initialized.\n");
       return false;
@@ -780,13 +934,13 @@ public:
         return false;
       }
       glBindTexture(GL_TEXTURE_2D, tex_in_[i]);
-      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, in_frames[i]);
+      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, in_width, in_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, in_frames[i]);
       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     }
 
     glBindTexture(GL_TEXTURE_2D, tex_out_);
-    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, out_width, out_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
     glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
@@ -798,11 +952,15 @@ public:
       return false;
     }
 
-    glViewport(0, 0, width, height);
+    glViewport(0, 0, out_width, out_height);
     glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
     glUseProgram(program_);
+
+    GLint mode_loc = glGetUniformLocation(program_, "u_mode");
+    float mode_val = (in_width == 64) ? 0.0f : 1.0f;
+    glUniform1f(mode_loc, mode_val);
 
     GLint dist_loc = glGetUniformLocation(program_, "u_distortion");
     GLint affine_loc = glGetUniformLocation(program_, "u_affine_matrix");
@@ -862,7 +1020,7 @@ public:
     glDisableVertexAttribArray(pos_attr);
     glDisableVertexAttribArray(tex_attr);
 
-    glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, out_data);
+    glReadPixels(0, 0, out_width, out_height, GL_RGBA, GL_UNSIGNED_BYTE, out_data);
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     return true;
@@ -1098,6 +1256,7 @@ public:
         "uniform vec2 u_distortion[4];\n"
         "uniform mat4 u_affine_matrix[4];\n"
         "uniform vec4 u_color_balance[4];\n"
+        "uniform float u_mode;\n" // 0.0: Grid (2x2), 1.0: AroundView
         "\n"
         "vec2 apply_distortion(vec2 uv, vec2 k) {\n"
         "  vec2 d = uv - vec2(0.5, 0.5);\n"
@@ -1117,22 +1276,40 @@ public:
         "  int cam_idx = 0;\n"
         "  vec2 sub_uv = vec2(0.0);\n"
         "  vec4 color = vec4(0.0);\n"
-        "  if (uv.x < 0.5 && uv.y < 0.5) {\n"
-        "    cam_idx = 0;\n"
-        "    sub_uv = uv * 2.0;\n"
-        "  } else if (uv.x >= 0.5 && uv.y < 0.5) {\n"
-        "    cam_idx = 1;\n"
-        "    sub_uv = vec2(uv.x - 0.5, uv.y) * 2.0;\n"
-        "  } else if (uv.x < 0.5 && uv.y >= 0.5) {\n"
-        "    cam_idx = 2;\n"
-        "    sub_uv = vec2(uv.x, uv.y - 0.5) * 2.0;\n"
+        "  if (u_mode > 0.5) {\n"
+        "    sub_uv = uv;\n"
+        "    vec2 d = uv - vec2(0.5, 0.5);\n"
+        "    if (d.y >= d.x && d.y >= -d.x) {\n"
+        "      cam_idx = 0;\n"
+        "    } else if (d.y < d.x && d.y < -d.x) {\n"
+        "      cam_idx = 1;\n"
+        "    } else if (d.y >= d.x && d.y < -d.x) {\n"
+        "      cam_idx = 2;\n"
+        "    } else {\n"
+        "      cam_idx = 3;\n"
+        "    }\n"
         "  } else {\n"
-        "    cam_idx = 3;\n"
-        "    sub_uv = (uv - vec2(0.5, 0.5)) * 2.0;\n"
+        "    if (uv.x < 0.5 && uv.y < 0.5) {\n"
+        "      cam_idx = 0;\n"
+        "      sub_uv = uv * 2.0;\n"
+        "    } else if (uv.x >= 0.5 && uv.y < 0.5) {\n"
+        "      cam_idx = 1;\n"
+        "      sub_uv = vec2(uv.x - 0.5, uv.y) * 2.0;\n"
+        "    } else if (uv.x < 0.5 && uv.y >= 0.5) {\n"
+        "      cam_idx = 2;\n"
+        "      sub_uv = vec2(uv.x, uv.y - 0.5) * 2.0;\n"
+        "    } else {\n"
+        "      cam_idx = 3;\n"
+        "      sub_uv = (uv - vec2(0.5, 0.5)) * 2.0;\n"
+        "    }\n"
         "  }\n"
         "  vec2 corr_uv = apply_affine(sub_uv, u_affine_matrix[cam_idx]);\n"
         "  corr_uv = apply_distortion(corr_uv, u_distortion[cam_idx]);\n"
-        "  if (corr_uv.x < 0.0 || corr_uv.x > 1.0 || corr_uv.y < 0.0 || corr_uv.y > 1.0) {\n"
+        "  if (u_mode > 0.5) {\n"
+        "    corr_uv.y = 1.0 - corr_uv.y;\n"
+        "  }\n"
+        "  float min_y = (u_mode > 0.5 && (cam_idx == 0 || cam_idx == 1)) ? 0.15 : 0.0;\n"
+        "  if (corr_uv.x < 0.0 || corr_uv.x > 1.0 || corr_uv.y < min_y || corr_uv.y > 1.0) {\n"
         "    gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0);\n"
         "    return;\n"
         "  }\n"
@@ -1145,8 +1322,11 @@ public:
         "  } else {\n"
         "    color = texture2D(s_tex3, corr_uv);\n"
         "  }\n"
-        "  vec3 adjusted_rgb = pow(color.rgb * u_color_balance[cam_idx].rgb, vec3(u_color_balance[cam_idx].a));\n"
-        "  gl_FragColor = vec4(1.0 - adjusted_rgb, color.a);\n"
+        "  float gamma = u_color_balance[cam_idx].a;\n"
+        "  float is_invert = (gamma < 0.0) ? 0.0 : 1.0;\n"
+        "  float abs_gamma = abs(gamma);\n"
+        "  vec3 adjusted_rgb = pow(color.rgb * u_color_balance[cam_idx].rgb, vec3(abs_gamma));\n"
+        "  gl_FragColor = vec4(mix(adjusted_rgb, 1.0 - adjusted_rgb, is_invert), color.a);\n"
         "}\n";
 
     GLuint vs = compileShader(GL_VERTEX_SHADER, vs_src);
@@ -1174,7 +1354,7 @@ public:
     return true;
   }
 
-  bool processFrame(const uint8_t* in_frames[4], uint8_t* out_data, int width, int height) override {
+  bool processFrame(const uint8_t* in_frames[4], int in_width, int in_height, uint8_t* out_data, int out_width, int out_height) override {
     printf("[HAL] [Production] GPU hardware processing frame\n");
 
     // Real physical hardware Zero-Copy zero-latency logic path
@@ -1192,8 +1372,8 @@ public:
           gbm_bo_in_[i] = nullptr;
         }
 
-        // 1. Allocate buffer using GBM
-        gbm_bo_in_[i] = gbm_bo_create_(gbm_dev_, width, height, GBM_FORMAT_ARGB8888, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
+        // 1. Allocate buffer using GBM (allocate with input resolution)
+        gbm_bo_in_[i] = gbm_bo_create_(gbm_dev_, in_width, in_height, GBM_FORMAT_ARGB8888, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
         if (!gbm_bo_in_[i]) {
           fprintf(stderr, "[HAL ERROR] [Production] Failed to create gbm_bo for stream %d\n", i);
           return false;
@@ -1203,8 +1383,8 @@ public:
         uint32_t stride = gbm_bo_get_stride_(gbm_bo_in_[i]);
 
         EGLint img_attribs[] = {
-            EGL_WIDTH, width,
-            EGL_HEIGHT, height,
+            EGL_WIDTH, in_width,
+            EGL_HEIGHT, in_height,
             EGL_LINUX_DMA_BUF_EXT, // format or target config
             EGL_DMA_BUF_PLANE0_FD_EXT, dbuf_fd,
             EGL_DMA_BUF_PLANE0_OFFSET_EXT, 0,
@@ -1231,9 +1411,9 @@ public:
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
       }
 
-      // Bind output texture
+      // Bind output texture (allocate with output resolution)
       glBindTexture(GL_TEXTURE_2D, tex_out_);
-      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, out_width, out_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
@@ -1246,11 +1426,15 @@ public:
         return false;
       }
 
-      glViewport(0, 0, width, height);
+      glViewport(0, 0, out_width, out_height);
       glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
       glClear(GL_COLOR_BUFFER_BIT);
 
       glUseProgram(program_);
+
+      GLint mode_loc = glGetUniformLocation(program_, "u_mode");
+      float mode_val = (in_width == 64) ? 0.0f : 1.0f;
+      glUniform1f(mode_loc, mode_val);
 
       GLint dist_loc = glGetUniformLocation(program_, "u_distortion");
       GLint affine_loc = glGetUniformLocation(program_, "u_affine_matrix");
@@ -1318,7 +1502,7 @@ public:
       // (実機GPUドライバでの、描画未完了状態でのglReadPixels開始による同期バグやキャッシュコヒーレンシ喪失を防止)
       glFinish();
 
-      glReadPixels(0, 0, width, height, GL_RGBA, GL_UNSIGNED_BYTE, out_data);
+      glReadPixels(0, 0, out_width, out_height, GL_RGBA, GL_UNSIGNED_BYTE, out_data);
 
       glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
@@ -1326,8 +1510,8 @@ public:
     } else {
       // Mock fallback execution path (No native GBM)
       printf("[HAL] [Production] GBM/DMA-BUF mock fallback mode active.\n");
-      if (in_frames[0]) {
-        memcpy(out_data, in_frames[0], width * height * 4); // Dummy copy for non-hardware execution fallback
+      if (in_frames[0] && in_width == out_width && in_height == out_height) {
+        memcpy(out_data, in_frames[0], out_width * out_height * 4); // Dummy copy for non-hardware execution fallback
       }
     }
 
@@ -1413,7 +1597,9 @@ static bool writeBMP(const char* filename, const uint8_t* rgba, int width, int h
   FILE* f = fopen(filename, "wb");
   if (!f) return false;
 
-  uint32_t image_size = width * height * 3;
+  int row_stride = (width * 3 + 3) & ~3;
+  int padding = row_stride - width * 3;
+  uint32_t image_size = row_stride * height;
   uint32_t file_size = 54 + image_size;
 
   uint8_t bmpfileheader[14] = {'B','M', 0,0,0,0, 0,0, 0,0, 54,0,0,0};
@@ -1439,7 +1625,7 @@ static bool writeBMP(const char* filename, const uint8_t* rgba, int width, int h
   fwrite(bmpfileheader, 1, 14, f);
   fwrite(bmpinfoheader, 1, 40, f);
 
-  // BMPは下から上に向かってピクセルを並べる。また、BGR順。
+  uint8_t pad_bytes[3] = {0, 0, 0};
   for (int y = height - 1; y >= 0; y--) {
     for (int x = 0; x < width; x++) {
       int idx = (y * width + x) * 4;
@@ -1449,6 +1635,9 @@ static bool writeBMP(const char* filename, const uint8_t* rgba, int width, int h
       // BGR順で書き込む
       uint8_t bgr[3] = {b, g, r};
       fwrite(bgr, 1, 3, f);
+    }
+    if (padding > 0) {
+      fwrite(pad_bytes, 1, padding, f);
     }
   }
   fclose(f);
