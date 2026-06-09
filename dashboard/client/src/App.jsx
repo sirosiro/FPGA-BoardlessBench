@@ -15,7 +15,7 @@ const components = {
   registerMonitor: () => <RegisterMonitor />,
   gpioPanel: () => <GpioPanel />,
   registerTracer: () => <RegisterTracer />,
-  uartTerminal: () => <UartTerminal />,
+  uartTerminal: (props) => <UartTerminal {...props} />,
   hdmiOutput: () => <HdmiOutput />,
 };
 
@@ -25,8 +25,8 @@ function DashboardInner() {
   const apiRef = useRef(null);
 
   // Initialize the default layout:
-  // - Register Monitor, GPIO Panel, and Register Tracer in a vertical stack on the left (width 30%)
-  // - UART Terminal on the right (width 70%)
+  // - Register Monitor, GPIO Panel, and Register Tracer on the left
+  // - Dynamic UART Terminals on the right
   const onReady = (event) => {
     apiRef.current = event.api;
     initLayout(event.api);
@@ -34,21 +34,52 @@ function DashboardInner() {
 
   const initLayout = (api) => {
     api.clear();
+    const rawUarts = manifest?.uarts || [];
+    const uarts = rawUarts.map((uart, index) => ({
+      ...uart,
+      name: `vfpga_uart_${index + 1}`
+    }));
 
-    // 1. Add uartTerminal on the right (takes whole space initially)
-    const uartPanel = api.addPanel({
-      id: 'uartTerminal',
-      component: 'uartTerminal',
-      title: 'UART Console',
-    });
+    // 1. Create a separate panel for each UART device
+    let mainUartPanelId = 'uartTerminal_default';
+    if (uarts.length > 0) {
+      mainUartPanelId = `uartTerminal_${uarts[0].name}`;
+      uarts.forEach((uart, index) => {
+        const panelId = `uartTerminal_${uart.name}`;
+        const isFirst = index === 0;
 
-    // 2. Add registerMonitor to the left of uartTerminal
+        api.addPanel({
+          id: panelId,
+          component: 'uartTerminal',
+          title: `UART: ${uart.name}`,
+          params: { deviceName: uart.name },
+          ...(isFirst ? {} : {
+            position: {
+              referencePanel: mainUartPanelId,
+              direction: 'within'
+            }
+          })
+        });
+      });
+    } else {
+      // Fallback if no UARTs are defined yet
+      api.addPanel({
+        id: 'uartTerminal_default',
+        component: 'uartTerminal',
+        title: 'UART Console',
+        params: { deviceName: 'default' }
+      });
+    }
+
+    const referenceId = uarts.length > 0 ? `uartTerminal_${uarts[0].name}` : 'uartTerminal_default';
+
+    // 2. Add registerMonitor to the left of the main UART panel
     const regPanel = api.addPanel({
       id: 'registerMonitor',
       component: 'registerMonitor',
       title: 'Registers',
       position: {
-        referencePanel: 'uartTerminal',
+        referencePanel: referenceId,
         direction: 'left',
       },
     });
@@ -75,39 +106,60 @@ function DashboardInner() {
       },
     });
 
-    // 5. Add hdmiOutput below uartTerminal
+    // 5. Add hdmiOutput below the main UART panel
     const hdmiPanel = api.addPanel({
       id: 'hdmiOutput',
       component: 'hdmiOutput',
       title: 'HDMI Output Preview',
       position: {
-        referencePanel: 'uartTerminal',
+        referencePanel: referenceId,
         direction: 'below',
       },
     });
 
-    // Programmatic adjustment of sizes to match default ratios
-    // Set widths
-    regPanel.api.setSize({ width: 400 });
-    // Set heights on the left column panels
-    regPanel.api.setSize({ height: 250 });
-    tracerPanel.api.setSize({ height: 350 });
-    uartPanel.api.setSize({ height: 400 });
-
-    // Set panel constraints to prevent breaking layout
-    regPanel.api.setConstraints({ minimumWidth: 200, minimumHeight: 100 });
-    gpioPanel.api.setConstraints({ minimumWidth: 200, minimumHeight: 100 });
-    tracerPanel.api.setConstraints({ minimumWidth: 200, minimumHeight: 100 });
-    uartPanel.api.setConstraints({ minimumWidth: 300, minimumHeight: 150 });
-    hdmiPanel.api.setConstraints({ minimumWidth: 300, minimumHeight: 150 });
+    // Programmatic adjustment of sizes to match default ratios with safety checks
+    if (regPanel?.api) {
+      regPanel.api.setSize({ width: 400 });
+      regPanel.api.setSize({ height: 250 });
+      regPanel.api.setConstraints({ minimumWidth: 200, minimumHeight: 100 });
+    }
+    if (gpioPanel?.api) {
+      gpioPanel.api.setConstraints({ minimumWidth: 200, minimumHeight: 100 });
+    }
+    if (tracerPanel?.api) {
+      tracerPanel.api.setSize({ height: 350 });
+      tracerPanel.api.setConstraints({ minimumWidth: 200, minimumHeight: 100 });
+    }
+    
+    // Programmatic layout update via API lookup instead of object handles
+    const mainPanel = api.getPanel(referenceId);
+    if (mainPanel?.api) {
+      mainPanel.api.setSize({ height: 400 });
+      mainPanel.api.setConstraints({ minimumWidth: 300, minimumHeight: 150 });
+    }
+    
+    if (hdmiPanel?.api) {
+      hdmiPanel.api.setConstraints({ minimumWidth: 300, minimumHeight: 150 });
+    }
   };
-
 
   const handleResetLayout = () => {
     if (apiRef.current) {
       initLayout(apiRef.current);
     }
   };
+
+  // Wait for manifest to load before mounting the Dockview interface to avoid race conditions.
+  if (!manifest) {
+    return (
+      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#0d1117', color: '#c9d1d9' }}>
+        <div style={{ textAlign: 'center', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
+          <div style={{ fontSize: '1.5rem', marginBottom: '1rem', color: '#58a6ff', fontWeight: 800 }}>FPGA-BoardlessBench (F-BB)</div>
+          <div>Loading board manifest...</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div className="dashboard-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', overflow: 'hidden' }}>

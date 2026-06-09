@@ -2,6 +2,8 @@
 
 このディレクトリは、i.MX95 FRDM評価ボードおよびi.MX 8M Plus評価ボードを模擬し、C++ HAL（ハードウェア抽象化レイヤー）を用いたデバイス制御アプリケーションの開発・テストを行うシナリオです。
 
+![FPGA-BoardlessBench (F-BB) AroundView Dashboard](assets/dashboard.png)
+
 ---
 
 ## 実行方法 (Execution)

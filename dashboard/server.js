@@ -28,7 +28,7 @@ function setupHdmiWatcher() {
     hdmiWatcher = chokidar.watch(hdmiPath, {
         persistent: true,
         usePolling: true,
-        interval: 100
+        interval: 30
     });
 
     const sendHdmiFrame = () => {
@@ -151,20 +151,57 @@ const UART_MAP_PATH = path.join(__dirname, 'data/uart_map.json');
 let uartConnections = {}; 
 let uartLogs = {}; 
 
+let externalUartServers = {};
+let externalUartClients = {};
+
 const UART_MACROS = [
     { pattern: /login:/i, response: 'root\n', delay: 500 },
     { pattern: /password:/i, response: 'vfpga\n', delay: 500 }
 ];
 
+function cleanupExternalUart(name) {
+    if (externalUartClients[name]) {
+        externalUartClients[name].forEach(socket => {
+            try { socket.destroy(); } catch (e) {}
+        });
+        delete externalUartClients[name];
+    }
+    if (externalUartServers[name]) {
+        try { externalUartServers[name].close(); } catch (e) {}
+        delete externalUartServers[name];
+    }
+}
+
 function syncUartConnections() {
     try {
         if (fs.existsSync(UART_MAP_PATH)) {
             const mapping = JSON.parse(fs.readFileSync(UART_MAP_PATH, 'utf8'));
+            
+            // Cleanup mapping connections that are no longer active
+            for (const name of Object.keys(uartConnections)) {
+                if (!mapping[name]) {
+                    if (uartConnections[name] && uartConnections[name] !== 'connecting') {
+                        try { uartConnections[name].destroy(); } catch (e) {}
+                    }
+                    delete uartConnections[name];
+                    cleanupExternalUart(name);
+                }
+            }
+
             for (const [name, port] of Object.entries(mapping)) {
                 if (!uartConnections[name]) {
                     uartConnections[name] = 'connecting';
                     connectToUart(name, port);
                 }
+            }
+        } else {
+            // Cleanup everything if mapping file is removed
+            for (const name of Object.keys(uartConnections)) {
+                if (uartConnections[name] && uartConnections[name] !== 'connecting') {
+                    try { uartConnections[name].destroy(); } catch (e) {}
+                }
+                delete uartConnections[name];
+                cleanupExternalUart(name);
             }
         }
     } catch (e) {}
@@ -175,21 +212,81 @@ function connectToUart(name, port) {
     client.connect(port, '127.0.0.1', () => {
         uartConnections[name] = client;
         uartLogs[name] = "";
+
+        // Start proxy server for external client on port = Python port + 1000
+        const extPort = parseInt(port, 10) + 1000;
+        if (!externalUartServers[name]) {
+            externalUartClients[name] = new Set();
+            const server = net.createServer((socket) => {
+                externalUartClients[name].add(socket);
+                
+                // Immediately replay past logs for new external connections
+                if (uartLogs[name]) {
+                    socket.write(uartLogs[name]);
+                }
+
+                socket.on('data', (data) => {
+                    // Pipe external client input to Python bridge
+                    if (uartConnections[name] && uartConnections[name] !== 'connecting') {
+                        try { uartConnections[name].write(data); } catch (e) {}
+                    }
+                    // Mirror to dashboard
+                    const text = data.toString('utf8');
+                    uartLogs[name] = (uartLogs[name] + text).slice(-5000);
+                    io.emit('uart-data', { name, text });
+                });
+
+                socket.on('close', () => {
+                    if (externalUartClients[name]) {
+                        externalUartClients[name].delete(socket);
+                    }
+                });
+
+                socket.on('error', (err) => {
+                    if (externalUartClients[name]) {
+                        externalUartClients[name].delete(socket);
+                    }
+                });
+            });
+
+            server.listen(extPort, '0.0.0.0', () => {
+                console.log(`[Backend] External UART proxy for ${name} listening on port ${extPort}`);
+            });
+            externalUartServers[name] = server;
+        }
     });
+
     client.on('data', (data) => {
         const text = data.toString('utf8');
         uartLogs[name] = (uartLogs[name] + text).slice(-5000);
         io.emit('uart-data', { name, text });
+
+        // Forward python data to all connected external clients
+        if (externalUartClients[name]) {
+            externalUartClients[name].forEach(socket => {
+                try { socket.write(data); } catch (e) {}
+            });
+        }
+
         UART_MACROS.forEach(macro => {
             if (macro.pattern.test(text)) {
                 setTimeout(() => {
-                    if (uartConnections[name]) uartConnections[name].write(macro.response);
+                    if (uartConnections[name] && uartConnections[name] !== 'connecting') {
+                        uartConnections[name].write(macro.response);
+                    }
                 }, macro.delay);
             }
         });
     });
-    client.on('close', () => { delete uartConnections[name]; });
-    client.on('error', () => { delete uartConnections[name]; });
+
+    client.on('close', () => { 
+        delete uartConnections[name]; 
+        cleanupExternalUart(name);
+    });
+    client.on('error', () => { 
+        delete uartConnections[name]; 
+        cleanupExternalUart(name);
+    });
 }
 
 // Socket.io
@@ -216,7 +313,15 @@ io.on('connection', (socket) => {
     });
 
     socket.on('uart-send', ({ name, text }) => {
-        if (uartConnections[name]) uartConnections[name].write(text);
+        if (uartConnections[name] && uartConnections[name] !== 'connecting') {
+            try { uartConnections[name].write(text); } catch (e) {}
+        }
+        // Mirror the dashboard input to all external connected terminals
+        if (externalUartClients[name]) {
+            externalUartClients[name].forEach(socket => {
+                try { socket.write(text); } catch (e) {}
+            });
+        }
     });
 
     socket.on('gpio-inject', ({ deviceName, bitIndex, value, dataRegName = 'DATA' }) => {

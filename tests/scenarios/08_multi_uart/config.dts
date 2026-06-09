@@ -1,0 +1,25 @@
+/dts-v1/;
+
+/ {
+    model = "F-BB 08 Multi UART Board";
+    compatible = "vfpga,multi-uart-08";
+
+    #address-cells = <1>;
+    #size-cells = <1>;
+
+    /* UART1: ttyPS0 */
+    uart1: serial@e0000000 {
+        compatible = "xlnx,xps-uartlite-1.00.a";
+        reg = <0xe0000000 0x1000>;
+        label = "/dev/ttyPS0";
+        port = <2000>;
+    };
+
+    /* UART2: ttyPS1 */
+    uart2: serial@e0001000 {
+        compatible = "xlnx,xps-uartlite-1.00.a";
+        reg = <0xe0001000 0x1000>;
+        label = "/dev/ttyPS1";
+        port = <2001>;
+    };
+};

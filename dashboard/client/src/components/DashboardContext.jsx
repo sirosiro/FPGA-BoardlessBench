@@ -11,8 +11,6 @@ export const DashboardProvider = ({ children }) => {
   const [connected, setConnected] = useState(false);
   const [manifest, setManifest] = useState(null);
   const [uartLogs, setUartLogs] = useState({});
-  const [activeUart, setActiveUart] = useState(null);
-  const [uartInput, setUartInput] = useState("");
   const [traceHistory, setTraceHistory] = useState([]);
   const [hdmiFrame, setHdmiFrame] = useState(null);
 
@@ -23,11 +21,9 @@ export const DashboardProvider = ({ children }) => {
     socket.on('registers', (data) => setRegisters(data));
     socket.on('uart-init', (data) => {
       setUartLogs(data);
-      if (!activeUart && Object.keys(data).length > 0) setActiveUart(Object.keys(data)[0]);
     });
     socket.on('uart-data', ({ name, text }) => {
       setUartLogs(prev => ({ ...prev, [name]: (prev[name] || "") + text }));
-      if (!activeUart) setActiveUart(name);
     });
 
     socket.on('trace-history-init', (data) => setTraceHistory(data));
@@ -49,14 +45,12 @@ export const DashboardProvider = ({ children }) => {
       socket.off('trace-history-update');
       socket.off('hdmi-frame');
     };
-  }, [activeUart]);
+  }, []);
 
 
-  const sendUart = (e) => {
-    e.preventDefault();
-    if (activeUart && uartInput) {
-      socket.emit('uart-send', { name: activeUart, text: uartInput + '\n' });
-      setUartInput("");
+  const sendUart = (name, text) => {
+    if (name && text) {
+      socket.emit('uart-send', { name, text });
     }
   };
 
@@ -77,10 +71,6 @@ export const DashboardProvider = ({ children }) => {
         connected,
         manifest,
         uartLogs,
-        activeUart,
-        setActiveUart,
-        uartInput,
-        setUartInput,
         traceHistory,
         gpioDevices,
         sendUart,
