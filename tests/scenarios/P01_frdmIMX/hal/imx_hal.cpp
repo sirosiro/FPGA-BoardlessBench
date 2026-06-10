@@ -922,19 +922,24 @@ public:
     return true;
   }
 
-  bool processFrame(const uint8_t* in_frames[4], int in_width, int in_height, uint8_t* out_data, int out_width, int out_height) override {
+  bool processFrame(const VideoFrame inputs[4], VideoFrame& output) override {
     if (egl_dpy_ == EGL_NO_DISPLAY || egl_ctx_ == EGL_NO_CONTEXT) {
       fprintf(stderr, "[HAL ERROR] VideoProcessor not initialized.\n");
       return false;
     }
 
+    int in_width = inputs[0].width;
+    int in_height = inputs[0].height;
+    int out_width = output.width;
+    int out_height = output.height;
+
     for (int i = 0; i < 4; i++) {
-      if (!in_frames[i]) {
+      if (!inputs[i].cpu_data) {
         fprintf(stderr, "[HAL ERROR] Input frame %d is null.\n", i);
         return false;
       }
       glBindTexture(GL_TEXTURE_2D, tex_in_[i]);
-      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, in_width, in_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, in_frames[i]);
+      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, in_width, in_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, inputs[i].cpu_data);
       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
     }
@@ -1020,7 +1025,9 @@ public:
     glDisableVertexAttribArray(pos_attr);
     glDisableVertexAttribArray(tex_attr);
 
-    glReadPixels(0, 0, out_width, out_height, GL_RGBA, GL_UNSIGNED_BYTE, out_data);
+    if (output.cpu_data) {
+      glReadPixels(0, 0, out_width, out_height, GL_RGBA, GL_UNSIGNED_BYTE, const_cast<uint8_t*>(output.cpu_data));
+    }
 
     glBindFramebuffer(GL_FRAMEBUFFER, 0);
     return true;
@@ -1354,61 +1361,92 @@ public:
     return true;
   }
 
-  bool processFrame(const uint8_t* in_frames[4], int in_width, int in_height, uint8_t* out_data, int out_width, int out_height) override {
+  bool processFrame(const VideoFrame inputs[4], VideoFrame& output) override {
     printf("[HAL] [Production] GPU hardware processing frame\n");
+
+    int in_width = inputs[0].width;
+    int in_height = inputs[0].height;
+    int out_width = output.width;
+    int out_height = output.height;
 
     // Real physical hardware Zero-Copy zero-latency logic path
     if (gbm_dev_ && eglCreateImageKHR_ && glEGLImageTargetTexture2DOES_ && program_ && fbo_ && tex_out_) {
       for (int i = 0; i < 4; i++) {
-        if (!in_frames[i]) continue;
-        
-        // Clean up previous buffer and texture resources
-        if (egl_img_in_[i] != EGL_NO_IMAGE_KHR) {
-          eglDestroyImageKHR_(egl_dpy_, egl_img_in_[i]);
-          egl_img_in_[i] = EGL_NO_IMAGE_KHR;
-        }
-        if (gbm_bo_in_[i]) {
-          gbm_bo_destroy_(gbm_bo_in_[i]);
-          gbm_bo_in_[i] = nullptr;
-        }
+        if (inputs[i].dma_buf_fd >= 0) {
+          if (egl_img_in_[i] != EGL_NO_IMAGE_KHR) {
+            eglDestroyImageKHR_(egl_dpy_, egl_img_in_[i]);
+            egl_img_in_[i] = EGL_NO_IMAGE_KHR;
+          }
+          EGLint img_attribs[] = {
+              EGL_WIDTH, in_width,
+              EGL_HEIGHT, in_height,
+              EGL_LINUX_DMA_BUF_EXT,
+              EGL_DMA_BUF_PLANE0_FD_EXT, inputs[i].dma_buf_fd,
+              EGL_DMA_BUF_PLANE0_OFFSET_EXT, 0,
+              EGL_DMA_BUF_PLANE0_PITCH_EXT, inputs[i].stride ? inputs[i].stride : in_width * 4,
+              EGL_NONE
+          };
+          egl_img_in_[i] = eglCreateImageKHR_(egl_dpy_, EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, NULL, img_attribs);
+          if (egl_img_in_[i] == EGL_NO_IMAGE_KHR) {
+            fprintf(stderr, "[HAL ERROR] [Production] Failed to create EGLImage from dma-buf fd for stream %d\n", i);
+            return false;
+          }
+          if (tex_in_[i] == 0) {
+            glGenTextures(1, &tex_in_[i]);
+          }
+          glBindTexture(GL_TEXTURE_2D, tex_in_[i]);
+          glEGLImageTargetTexture2DOES_(GL_TEXTURE_2D, egl_img_in_[i]);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        } else if (inputs[i].cpu_data) {
+          // Clean up previous buffer and texture resources
+          if (egl_img_in_[i] != EGL_NO_IMAGE_KHR) {
+            eglDestroyImageKHR_(egl_dpy_, egl_img_in_[i]);
+            egl_img_in_[i] = EGL_NO_IMAGE_KHR;
+          }
+          if (gbm_bo_in_[i]) {
+            gbm_bo_destroy_(gbm_bo_in_[i]);
+            gbm_bo_in_[i] = nullptr;
+          }
 
-        // 1. Allocate buffer using GBM (allocate with input resolution)
-        gbm_bo_in_[i] = gbm_bo_create_(gbm_dev_, in_width, in_height, GBM_FORMAT_ARGB8888, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
-        if (!gbm_bo_in_[i]) {
-          fprintf(stderr, "[HAL ERROR] [Production] Failed to create gbm_bo for stream %d\n", i);
-          return false;
-        }
+          // 1. Allocate buffer using GBM (allocate with input resolution)
+          gbm_bo_in_[i] = gbm_bo_create_(gbm_dev_, in_width, in_height, GBM_FORMAT_ARGB8888, GBM_BO_USE_SCANOUT | GBM_BO_USE_RENDERING);
+          if (!gbm_bo_in_[i]) {
+            fprintf(stderr, "[HAL ERROR] [Production] Failed to create gbm_bo for stream %d\n", i);
+            return false;
+          }
 
-        int dbuf_fd = gbm_bo_get_fd_(gbm_bo_in_[i]);
-        uint32_t stride = gbm_bo_get_stride_(gbm_bo_in_[i]);
+          int dbuf_fd = gbm_bo_get_fd_(gbm_bo_in_[i]);
+          uint32_t stride = gbm_bo_get_stride_(gbm_bo_in_[i]);
 
-        EGLint img_attribs[] = {
-            EGL_WIDTH, in_width,
-            EGL_HEIGHT, in_height,
-            EGL_LINUX_DMA_BUF_EXT, // format or target config
-            EGL_DMA_BUF_PLANE0_FD_EXT, dbuf_fd,
-            EGL_DMA_BUF_PLANE0_OFFSET_EXT, 0,
-            EGL_DMA_BUF_PLANE0_PITCH_EXT, (EGLint)stride,
-            EGL_NONE
-        };
+          EGLint img_attribs[] = {
+              EGL_WIDTH, in_width,
+              EGL_HEIGHT, in_height,
+              EGL_LINUX_DMA_BUF_EXT, // format or target config
+              EGL_DMA_BUF_PLANE0_FD_EXT, dbuf_fd,
+              EGL_DMA_BUF_PLANE0_OFFSET_EXT, 0,
+              EGL_DMA_BUF_PLANE0_PITCH_EXT, (EGLint)stride,
+              EGL_NONE
+          };
 
-        // 2. Create EGLImageKHR from DMA-BUF
-        egl_img_in_[i] = eglCreateImageKHR_(egl_dpy_, EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, NULL, img_attribs);
-        if (egl_img_in_[i] == EGL_NO_IMAGE_KHR) {
-          fprintf(stderr, "[HAL ERROR] [Production] Failed to create EGLImage from dma-buf fd for stream %d\n", i);
+          // 2. Create EGLImageKHR from DMA-BUF
+          egl_img_in_[i] = eglCreateImageKHR_(egl_dpy_, EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, NULL, img_attribs);
+          if (egl_img_in_[i] == EGL_NO_IMAGE_KHR) {
+            fprintf(stderr, "[HAL ERROR] [Production] Failed to create EGLImage from dma-buf fd for stream %d\n", i);
+            close(dbuf_fd);
+            return false;
+          }
           close(dbuf_fd);
-          return false;
-        }
-        close(dbuf_fd);
 
-        // 3. Bind to GL_TEXTURE_2D target (or GL_TEXTURE_EXTERNAL_OES on hardware)
-        if (tex_in_[i] == 0) {
-          glGenTextures(1, &tex_in_[i]);
+          // 3. Bind to GL_TEXTURE_2D target (or GL_TEXTURE_EXTERNAL_OES on hardware)
+          if (tex_in_[i] == 0) {
+            glGenTextures(1, &tex_in_[i]);
+          }
+          glBindTexture(GL_TEXTURE_2D, tex_in_[i]);
+          glEGLImageTargetTexture2DOES_(GL_TEXTURE_2D, egl_img_in_[i]);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+          glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
         }
-        glBindTexture(GL_TEXTURE_2D, tex_in_[i]);
-        glEGLImageTargetTexture2DOES_(GL_TEXTURE_2D, egl_img_in_[i]);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
       }
 
       // Bind output texture (allocate with output resolution)
@@ -1494,15 +1532,11 @@ public:
       glDisableVertexAttribArray(pos_attr);
       glDisableVertexAttribArray(tex_attr);
 
-      // [Physical Board Optimization & Synchronization Guarantee]
-      // Why: On real embedded GPU drivers (Vivante/Mali), glReadPixels might start executing before 
-      // the GPU finishes writing to the DMA-BUF/FBO. Calling glFinish() forces the GPU command pipeline 
-      // to flush and blocks the CPU thread until all rendering is complete, preventing synchronization 
-      // lag and caching coherence issues on the physical board.
-      // (実機GPUドライバでの、描画未完了状態でのglReadPixels開始による同期バグやキャッシュコヒーレンシ喪失を防止)
       glFinish();
 
-      glReadPixels(0, 0, out_width, out_height, GL_RGBA, GL_UNSIGNED_BYTE, out_data);
+      if (output.cpu_data) {
+        glReadPixels(0, 0, out_width, out_height, GL_RGBA, GL_UNSIGNED_BYTE, const_cast<uint8_t*>(output.cpu_data));
+      }
 
       glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
@@ -1510,8 +1544,8 @@ public:
     } else {
       // Mock fallback execution path (No native GBM)
       printf("[HAL] [Production] GBM/DMA-BUF mock fallback mode active.\n");
-      if (in_frames[0] && in_width == out_width && in_height == out_height) {
-        memcpy(out_data, in_frames[0], out_width * out_height * 4); // Dummy copy for non-hardware execution fallback
+      if (inputs[0].cpu_data && in_width == out_width && in_height == out_height && output.cpu_data) {
+        memcpy(const_cast<uint8_t*>(output.cpu_data), inputs[0].cpu_data, out_width * out_height * 4);
       }
     }
 
@@ -1654,9 +1688,9 @@ public:
     return true;
   }
 
-  bool outputFrame(const uint8_t* rgba_data, int width, int height) override {
+  bool outputFrame(const VideoFrame& frame) override {
     const char* filename = "/tmp/hdmi_output.bmp";
-    bool ok = writeBMP(filename, rgba_data, width, height);
+    bool ok = writeBMP(filename, frame.cpu_data, frame.width, frame.height);
     if (!ok) {
       fprintf(stderr, "[HAL ERROR] [HostDisplay] Failed to write BMP to %s\n", filename);
     }
@@ -1960,25 +1994,27 @@ public:
     return true;
   }
 
-  bool outputFrame(const uint8_t* rgba_data, int width, int height) override {
+  bool outputFrame(const VideoFrame& frame) override {
     if (is_mock_ || fd_ < 0 || map_ == MAP_FAILED) {
       printf("[HAL] [ImxDisplay] Real board HDMI display output frame simulated (Wayland/DRM Bypass).\n");
       return true;
     }
 
     // Output stitched frame (RGBA) to physical HDMI dumb framebuffer (XRGB format)
-    uint32_t* dst = (uint32_t*)map_;
-    uint32_t pitch_pixels = stride_ / 4;
+    if (frame.cpu_data) {
+      uint32_t* dst = (uint32_t*)map_;
+      uint32_t pitch_pixels = stride_ / 4;
 
-    // Copy the frame pixels (width x height) to the top-left of the display buffer
-    for (int y = 0; y < height; y++) {
-      for (int x = 0; x < width; x++) {
-        int idx = (y * width + x) * 4;
-        uint8_t r = rgba_data[idx + 0];
-        uint8_t g = rgba_data[idx + 1];
-        uint8_t b = rgba_data[idx + 2];
-        uint32_t pixel = (r << 16) | (g << 8) | b;
-        dst[y * pitch_pixels + x] = pixel;
+      // Copy the frame pixels (width x height) to the top-left of the display buffer
+      for (int y = 0; y < frame.height; y++) {
+        for (int x = 0; x < frame.width; x++) {
+          int idx = (y * frame.width + x) * 4;
+          uint8_t r = frame.cpu_data[idx + 0];
+          uint8_t g = frame.cpu_data[idx + 1];
+          uint8_t b = frame.cpu_data[idx + 2];
+          uint32_t pixel = (r << 16) | (g << 8) | b;
+          dst[y * pitch_pixels + x] = pixel;
+        }
       }
     }
     return true;

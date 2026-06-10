@@ -83,7 +83,7 @@ classInterface
         <<interface>>
         +initialize() bool*
         +setCalibrationParams(camera_index : int, params : CalibrationData) void*
-        +processFrame(in_frames : const uint8_t*[4], out_data : uint8_t*, width : int, height : int) bool*
+        +processFrame(inputs : const VideoFrame[4], output : VideoFrame&) bool*
         +terminate() void*
     }
 
@@ -105,7 +105,7 @@ classInterface
     class IDisplaySink {
         <<interface>>
         +initialize() bool*
-        +outputFrame(rgba_data : const uint8_t*, width : int, height : int) bool*
+        +outputFrame(frame : const VideoFrame&) bool*
         +terminate() void*
     }
 
@@ -270,8 +270,8 @@ classInterface
 - **役割**: 特定の入力カメラ（インデックス 0〜3）に対応するキャリブレーションパラメータ（レンズ歪み補正係数、4x4アフィン変換行列、RGB/ガンマ色調調整値）を個別に設定し、HAL内部メモリへ格納します。
 - **効果**: 設定されたパラメータは、`processFrame()` 実行時に自動的に GLSL の `uniform` 変数として GPU シェーダーに転送・適用されます。
 
-#### 3. `processFrame(const uint8_t* in_frames[4], uint8_t* out_data, int width, int height) -> bool`
-- **役割**: 4台の入力カメラからのデコード済み RGBA フレームバッファを受け取り、マルチテクスチャとして GPU に転送し、GLSL シェーダーを用いてアフィン変換・歪み補正・カラー調整・2x2 合成（Stitching）を一括実行し、結果を `out_data` バッファ（RGBA）へ書き出します。
+#### 3. `processFrame(const VideoFrame inputs[4], VideoFrame& output) -> bool`
+- **役割**: 4台の入力カメラからのデコード済み RGBA フレームバッファ（または DMA-BUF）を受け取り、マルチテクスチャとして GPU に転送し、GLSL シェーダーを用いてアフィン変換・歪み補正・カラー調整・2x2 合成（Stitching）を一括実行し、結果を出力バッファ（または DMA-BUF）へ書き出します。
 - **戻り値**: フレーム処理が成功した場合は `true`、失敗した場合は `false`。
 
 #### 4. `terminate() -> void`
@@ -285,8 +285,8 @@ classInterface
 - **役割**: ディスプレイ出力デバイス（実機物理モニター、またはホスト側ダンプ領域）を初期化します。
 - **戻り値**: 初期化に成功した場合は `true`、失敗した場合は `false`。
 
-#### 2. `outputFrame(const uint8_t* rgba_data, int width, int height) -> bool`
-- **役割**: 補正・合成済みの RGBA 画像データをディスプレイに出力します。実機では DRM/KMS または Wayland 経由でモニター表示を行い、ホスト環境（F-BB）ではマニフェスト定義の `/tmp/hdmi_output.bmp` ファイルへ BMP 形式で保存します。
+#### 2. `outputFrame(const VideoFrame& frame) -> bool`
+- **役割**: 補正・合成済みの RGBA 画像データ（または DMA-BUF）をディスプレイに出力します。実機では DRM/KMS または Wayland 経由でモニター表示を行い、ホスト環境（F-BB）ではマニフェスト定義の `/tmp/hdmi_output.bmp` ファイルへ BMP 形式で保存します。
 - **戻り値**: 出力処理が成功した場合は `true`、失敗した場合は `false`。
 
 #### 3. `terminate() -> void`
@@ -490,7 +490,7 @@ GPIO制御のようなハードウェア低レイヤのHAL設計において、*
 * **仮想関数テーブル参照コストの極小化**:  
   `IDisplaySink` のインターフェース切り替えはC++の仮想関数テーブルを介して実行されますが、このCPUペナルティは数ナノ秒以下（数クロックサイクル）であり、60fps等の表示周期に対して完全に無視できます。
 * **実機ゼロコピーラインの維持**:  
-  API設計上 `const uint8_t* rgba_data` のピクセルポインタを渡す形式にしていますが、本番用の `ImxDisplaySink` 等のハードウェア具象実装においては、CPUへのメモリコピーバック（`glReadPixels`）を強制しません。実機では背後で GPU バッファハンドル（DMA-BUF等）をディスプレイエンジン（DRM/KMS）へ直接ゼロコピーパスで紐付ける構造にするため、追加の処理遅延は発生しません。
+  API設計上 `VideoFrame` を渡す形式にしており、本番用の `ImxDisplaySink` 等のハードウェア具象実装においては、CPUへのメモリコピーバック（`glReadPixels`）やピクセルコピーを必要とせず、直接 GPU バッファハンドル（DMA-BUF等）をディスプレイエンジン（DRM/KMS）へ直接ゼロコピーパスで紐付ける構造にするため、追加の処理遅延は発生しません。
 * **ホストファイルI/Oの非同期スレッド分離**:  
   ホスト（F-BB）上でのみ実行される `/tmp/hdmi_output.bmp` へのBMPファイル書き込み処理は、メインの処理・制御ループをブロックしないよう、専用のバックグラウンドスレッド（`hdmi_thread_`）内で非同期的に実行されます。これにより、メインループの制御ジッタを防止しています。
 

@@ -52,12 +52,20 @@ struct CalibrationData {
   float color_balance[4]; // R, G, B, Gamma offset/scale
 };
 
+struct VideoFrame {
+  const uint8_t* cpu_data; // Pointer to system memory (Simulation fallback or CPU path)
+  int dma_buf_fd;          // DMA-BUF File Descriptor (Real board zero-copy path, -1 if invalid)
+  int width;
+  int height;
+  int stride;              // Row stride in bytes
+};
+
 class IVideoProcessor {
 public:
   virtual ~IVideoProcessor() = default;
   virtual bool initialize() = 0;
   virtual void setCalibrationParams(int camera_index, const CalibrationData& params) = 0;
-  virtual bool processFrame(const uint8_t* in_frames[4], int in_width, int in_height, uint8_t* out_data, int out_width, int out_height) = 0;
+  virtual bool processFrame(const VideoFrame inputs[4], VideoFrame& output) = 0;
   virtual void terminate() = 0;
 };
 
@@ -65,7 +73,7 @@ class IDisplaySink {
 public:
   virtual ~IDisplaySink() = default;
   virtual bool initialize() = 0;
-  virtual bool outputFrame(const uint8_t* rgba_data, int width, int height) = 0;
+  virtual bool outputFrame(const VideoFrame& frame) = 0;
   virtual void terminate() = 0;
 };
 

@@ -160,6 +160,7 @@ class ConfigGenerator(BaseGenerator):
 class ShimGenerator(BaseGenerator):
     def generate(self, model: BoardModel):
         mmap_routes, i2c_matches, uart_matches = [], [], []
+        uart_count = 0
         for i, dev in enumerate(model.devices):
             if dev.type in ['uio', 'gpio']:
                 reg_parts = dev.base_reg.split()
@@ -169,7 +170,8 @@ class ShimGenerator(BaseGenerator):
                 bus_id = dev.extra_props.get('bus_id', '1')
                 i2c_matches.append('    if (pathname != NULL && strcmp(pathname, "%s") == 0) return %s;' % (dev.path, bus_id))
             elif dev.type == 'uart':
-                uart_matches.append('    if (pathname != NULL && strcmp(pathname, "%s") == 0) return %d;' % (dev.path, i + 1))
+                uart_count += 1
+                uart_matches.append('    if (pathname != NULL && strcmp(pathname, "%s") == 0) return %d;' % (dev.path, uart_count))
         
         return """
 #define _GNU_SOURCE

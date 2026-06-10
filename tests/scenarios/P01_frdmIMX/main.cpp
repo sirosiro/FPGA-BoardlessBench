@@ -356,13 +356,23 @@ public:
     auto processor = HalFactory::createVideoProcessor(soc_type_);
     if (processor && processor->initialize()) {
       uint8_t camera_frames[4][64 * 64 * 4];
-      const uint8_t *in_frames[4];
       uint8_t out_img[64 * 64 * 4];
+      VideoFrame inputs[4];
+      VideoFrame output;
 
       for (int i = 0; i < 4; i++) {
-        in_frames[i] = camera_frames[i];
         memset(camera_frames[i], 0, sizeof(camera_frames[i]));
+        inputs[i].cpu_data = camera_frames[i];
+        inputs[i].dma_buf_fd = -1;
+        inputs[i].width = 64;
+        inputs[i].height = 64;
+        inputs[i].stride = 64 * 4;
       }
+      output.cpu_data = out_img;
+      output.dma_buf_fd = -1;
+      output.width = 64;
+      output.height = 64;
+      output.stride = 64 * 4;
 
       // Camera 0: Red (R=255, G=0, B=0, A=255)
       // Camera 1: Green (R=0, G=255, B=0, A=255)
@@ -403,7 +413,7 @@ public:
 
       printf("[App] Processing 4x 64x64 input frames via GPU processor "
              "(Stitching)...\n");
-      if (processor->processFrame(in_frames, 64, 64, out_img, 64, 64)) {
+      if (processor->processFrame(inputs, output)) {
         bool success = true;
         for (int y = 0; y < 64; y++) {
           for (int x = 0; x < 64; x++) {
@@ -455,7 +465,7 @@ public:
 
         // Output first verification frame to display
         if (display_) {
-          display_->outputFrame(out_img, 64, 64);
+          display_->outputFrame(output);
         }
       } else {
         printf("[App] OpenGL ES processing failed.\n");
@@ -505,16 +515,26 @@ public:
         }
 
         uint8_t camera_frames[4][64 * 64 * 4];
-        const uint8_t *in_frames[4];
         uint8_t out_img[64 * 64 * 4];
+        VideoFrame inputs[4];
+        VideoFrame output;
         for (int i = 0; i < 4; i++) {
-          in_frames[i] = camera_frames[i];
+          inputs[i].cpu_data = camera_frames[i];
+          inputs[i].dma_buf_fd = -1;
+          inputs[i].width = 64;
+          inputs[i].height = 64;
+          inputs[i].stride = 64 * 4;
           if (use_patterns) {
             memcpy(camera_frames[i], loaded_frames[i].data(), 64 * 64 * 4);
           } else {
             memset(camera_frames[i], 0, sizeof(camera_frames[i]));
           }
         }
+        output.cpu_data = out_img;
+        output.dma_buf_fd = -1;
+        output.width = 64;
+        output.height = 64;
+        output.stride = 64 * 4;
 
         if (!use_patterns) {
           printf("[App] Warning: Failed to load 64x64 patterns. Falling back to solid colors.\n");
@@ -556,9 +576,9 @@ public:
             processor->setCalibrationParams(i, params);
           }
 
-          processor->processFrame(in_frames, 64, 64, out_img, 64, 64);
+          processor->processFrame(inputs, output);
           if (display_) {
-            display_->outputFrame(out_img, 64, 64);
+            display_->outputFrame(output);
           }
 
           std::this_thread::sleep_for(std::chrono::milliseconds(100));
@@ -617,11 +637,6 @@ public:
     }
     printf("[App] Loaded 4 camera frames. Frame size: %dx%d\n", cam_w, cam_h);
 
-    const uint8_t* in_frames[4] = {
-      camera_frames[0].data(), camera_frames[1].data(),
-      camera_frames[2].data(), camera_frames[3].data()
-    };
-
     auto processor = HalFactory::createVideoProcessor(soc_type_);
     if (processor && processor->initialize()) {
       // 歪み補正係数 k1 (4台のカメラは同じレンズを使用しているため共通にするべきです)
@@ -656,8 +671,23 @@ public:
       int av_h = 1080;
       std::vector<uint8_t> av_img(av_w * av_h * 4);
 
+      VideoFrame inputs[4];
+      VideoFrame output;
+      for (int i = 0; i < 4; i++) {
+        inputs[i].cpu_data = camera_frames[i].data();
+        inputs[i].dma_buf_fd = -1;
+        inputs[i].width = cam_w;
+        inputs[i].height = cam_h;
+        inputs[i].stride = cam_w * 4;
+      }
+      output.cpu_data = av_img.data();
+      output.dma_buf_fd = -1;
+      output.width = av_w;
+      output.height = av_h;
+      output.stride = av_w * 4;
+
       printf("[App] Stitching 4 camera frames into AroundView image %dx%d...\n", av_w, av_h);
-      if (processor->processFrame(in_frames, cam_w, cam_h, av_img.data(), av_w, av_h)) {
+      if (processor->processFrame(inputs, output)) {
         printf("[App] Stitching successful. Outputting side-by-side composite to display...\n");
         // OpenGLのボトムアップ出力をトップダウンに上下反転する
         std::vector<uint8_t> av_top_down(av_w * av_h * 4);
@@ -716,7 +746,13 @@ public:
         }
 
         if (display_) {
-          display_->outputFrame(out_img.data(), total_w, total_h);
+          VideoFrame display_frame;
+          display_frame.cpu_data = out_img.data();
+          display_frame.dma_buf_fd = -1;
+          display_frame.width = total_w;
+          display_frame.height = total_h;
+          display_frame.stride = total_w * 4;
+          display_->outputFrame(display_frame);
         }
       } else {
         fprintf(stderr, "[App] Error: Failed to composite frames.\n");
