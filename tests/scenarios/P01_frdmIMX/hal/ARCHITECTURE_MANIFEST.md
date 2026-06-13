@@ -861,7 +861,7 @@ sequenceDiagram
 #### `IDisplaySink::outputFrame(const VideoFrame& frame) -> bool`
 - **役割**: 描画完了バッファをディスプレイの表示対象へ切り替えます。
 - **実装詳細**:
-  - **`HostDisplaySink`**: 受信した `frame.cpu_data` を `/tmp/hdmi_output.bmp` ファイルへ同期的に書き出します（PC Mesa用ダンプ）。
+  - **`HostDisplaySink`**: 受信した `frame.cpu_data` の内容を内部のステージングバッファへ `memcpy`（~1-2ms）した上で、非同期の書き出し用ワーカースレッド（`writerLoop`）を起こしてディスクI/O処理を委譲します。ワーカースレッド側では、一時ファイル（`/tmp/hdmi_output.bmp.tmp`）に一括書き込みを行い、最後に原子的な `rename()` システムコールを呼び出して `/tmp/hdmi_output.bmp` をアトミックに置換します。これにより、レンダリングループからのディスクI/Oブロッキングの完全排除（ジッタ防止）と、Webダッシュボード側からのポーリング読み込み時のファイル破損・画面ちらつき（フリッカー）防止を同時に実現しています。
   - **`ImxDisplaySink` (実機)**: `frame.dma_buf_fd` が有効な場合、それが Swapchain の裏画面バッファの FD であることを照合し、カーネルの `drmModePageFlip()` を呼び出して瞬時にV-BLANK同期で画面表示を切り替えます。これにより、CPUによるピクセルコピーや glReadPixels などのブロッキング読み込みを完全に排除した「ゼロコピー画面表示」が実現されます。
 
 ### 9.3. アプリケーション層 (main.cpp) のリファクタリング効果
