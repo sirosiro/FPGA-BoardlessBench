@@ -485,7 +485,7 @@ public:
              "automatically...\n");
       stop();
     } else {
-      printf("[App] Interactive Mode. Starting HDMI display preview thread (10 fps)...\n");
+      printf("[App] Interactive Mode. Starting HDMI display preview thread (20 fps)...\n");
       preview_running_ = true;
 
       // Pin 14: 車載合成テストへの移行トリガー登録
@@ -515,9 +515,7 @@ public:
         }
 
         uint8_t camera_frames[4][64 * 64 * 4];
-        uint8_t out_img[64 * 64 * 4];
         VideoFrame inputs[4];
-        VideoFrame output;
         for (int i = 0; i < 4; i++) {
           inputs[i].cpu_data = camera_frames[i];
           inputs[i].dma_buf_fd = -1;
@@ -530,11 +528,6 @@ public:
             memset(camera_frames[i], 0, sizeof(camera_frames[i]));
           }
         }
-        output.cpu_data = out_img;
-        output.dma_buf_fd = -1;
-        output.width = 64;
-        output.height = 64;
-        output.stride = 64 * 4;
 
         if (!use_patterns) {
           printf("[App] Warning: Failed to load 64x64 patterns. Falling back to solid colors.\n");
@@ -549,11 +542,22 @@ public:
         }
 
         float theta = 0.0f;
+        const auto frame_interval = std::chrono::milliseconds(50); // 20fps target
+
+        // プレビュー用に解像度を1/4 (960x540) に下げる
+        // Mesa llvmpipe ソフトウェアレンダリングの処理時間は解像度に比例するため、
+        // フルHD (1920x1080) では ~64ms/frame だが、960x540 なら ~16ms/frame で20fps達成可能
+        const int preview_w = 960;
+        const int preview_h = 540;
+        std::vector<uint8_t> preview_buf(preview_w * preview_h * 4, 0);
+
         while (running_ && preview_running_) {
-          theta += 0.05f;
+          auto frame_start = std::chrono::steady_clock::now();
+
+          theta += 0.033f;
           float scale = 0.8f + 0.2f * sin(theta);
-          float cos_t = cos(theta * 0.2f);
-          float sin_t = sin(theta * 0.2f);
+          float cos_t = cos(theta * 0.8f);
+          float sin_t = sin(theta * 0.8f);
 
           for (int i = 0; i < 4; i++) {
             CalibrationData params;
@@ -576,12 +580,39 @@ public:
             processor->setCalibrationParams(i, params);
           }
 
+          // プレビュー専用の低解像度出力バッファを使用
+          VideoFrame output;
+          output.cpu_data = preview_buf.data();
+          output.dma_buf_fd = -1;
+          output.width = preview_w;
+          output.height = preview_h;
+          output.stride = preview_w * 4;
+
+          auto t0 = std::chrono::steady_clock::now();
           processor->processFrame(inputs, output);
+          auto t1 = std::chrono::steady_clock::now();
           if (display_) {
             display_->outputFrame(output);
           }
+          auto t2 = std::chrono::steady_clock::now();
 
-          std::this_thread::sleep_for(std::chrono::milliseconds(100));
+          // デッドラインベースのフレームタイミング
+          auto frame_end = std::chrono::steady_clock::now();
+          auto elapsed = frame_end - frame_start;
+
+          // 20フレームごとにタイミングを出力（デバッグ用）
+          static int frame_count = 0;
+          if (++frame_count % 20 == 0) {
+            auto gpu_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t1 - t0).count();
+            auto out_ms = std::chrono::duration_cast<std::chrono::milliseconds>(t2 - t1).count();
+            auto total_ms = std::chrono::duration_cast<std::chrono::milliseconds>(elapsed).count();
+            printf("[App] Frame %d: processFrame=%ldms, outputFrame=%ldms, total=%ldms (preview %dx%d)\n",
+                   frame_count, gpu_ms, out_ms, total_ms, preview_w, preview_h);
+          }
+
+          if (elapsed < frame_interval) {
+            std::this_thread::sleep_for(frame_interval - elapsed);
+          }
         }
         processor->terminate();
       });
@@ -665,14 +696,7 @@ public:
         processor->setCalibrationParams(i, params);
       }
 
-      int total_w = 1920;
-      int total_h = 1080;
-      int av_w = 1080;
-      int av_h = 1080;
-      std::vector<uint8_t> av_img(av_w * av_h * 4);
-
       VideoFrame inputs[4];
-      VideoFrame output;
       for (int i = 0; i < 4; i++) {
         inputs[i].cpu_data = camera_frames[i].data();
         inputs[i].dma_buf_fd = -1;
@@ -680,79 +704,24 @@ public:
         inputs[i].height = cam_h;
         inputs[i].stride = cam_w * 4;
       }
-      output.cpu_data = av_img.data();
-      output.dma_buf_fd = -1;
-      output.width = av_w;
-      output.height = av_h;
-      output.stride = av_w * 4;
 
-      printf("[App] Stitching 4 camera frames into AroundView image %dx%d...\n", av_w, av_h);
+      VideoFrame output;
+      if (display_) {
+        output = display_->getBackBuffer();
+      } else {
+        static std::vector<uint8_t> dummy_buf(1920 * 1080 * 4);
+        output.cpu_data = dummy_buf.data();
+        output.dma_buf_fd = -1;
+        output.width = 1920;
+        output.height = 1080;
+        output.stride = 1920 * 4;
+      }
+
+      printf("[App] Stitching 4 camera frames into display output %dx%d (zero-copy GPU rendering)...\n", output.width, output.height);
       if (processor->processFrame(inputs, output)) {
-        printf("[App] Stitching successful. Outputting side-by-side composite to display...\n");
-        // OpenGLのボトムアップ出力をトップダウンに上下反転する
-        std::vector<uint8_t> av_top_down(av_w * av_h * 4);
-        for (int y = 0; y < av_h; y++) {
-          const uint8_t* src_row = av_img.data() + (av_h - 1 - y) * av_w * 4;
-          uint8_t* dst_row = av_top_down.data() + y * av_w * 4;
-          memcpy(dst_row, src_row, av_w * 4);
-        }
-
-        std::vector<uint8_t> out_img(total_w * total_h * 4, 0); // initialize to black/0
-
-        // Layout parameters
-        int gap = 20;
-        int left_w = total_w - av_w; // 840
-        int cell_w = (left_w - gap * 3) / 2; // 390
-        int cell_h = 312; // cell_w / 1.25 = 390 / 1.25 = 312
-        int grid_h = cell_h * 2 + gap * 3; // 684
-        int y_offset = (total_h - grid_h) / 2; // 198
-
-        // Resize the 4 raw camera frames
-        std::vector<std::vector<uint8_t>> resized_frames(4, std::vector<uint8_t>(cell_w * cell_h * 4));
-        for (int i = 0; i < 4; i++) {
-          resizeRGBA(camera_frames[i].data(), cam_w, cam_h, resized_frames[i].data(), cell_w, cell_h);
-        }
-
-        // 1. Copy Left 2x2 grid with gaps
-        // cam0 (Front): top-left -> x = gap, y = y_offset + gap
-        // cam1 (Rear): top-right -> x = gap + cell_w + gap, y = y_offset + gap
-        // cam2 (Left): bottom-left -> x = gap, y = y_offset + gap + cell_h + gap
-        // cam3 (Right): bottom-right -> x = gap + cell_w + gap, y = y_offset + gap + cell_h + gap
-        for (int y = 0; y < cell_h; y++) {
-          // cam0: row y -> final row (y_offset + gap + y)
-          memcpy(out_img.data() + ((y_offset + gap + y) * total_w + gap) * 4,
-                 resized_frames[0].data() + y * cell_w * 4,
-                 cell_w * 4);
-          // cam1: row y -> final row (y_offset + gap + y)
-          memcpy(out_img.data() + ((y_offset + gap + y) * total_w + gap + cell_w + gap) * 4,
-                 resized_frames[1].data() + y * cell_w * 4,
-                 cell_w * 4);
-          // cam2: row y -> final row (y_offset + gap + cell_h + gap + y)
-          memcpy(out_img.data() + ((y_offset + gap + cell_h + gap + y) * total_w + gap) * 4,
-                 resized_frames[2].data() + y * cell_w * 4,
-                 cell_w * 4);
-          // cam3: row y -> final row (y_offset + gap + cell_h + gap + y)
-          memcpy(out_img.data() + ((y_offset + gap + cell_h + gap + y) * total_w + gap + cell_w + gap) * 4,
-                 resized_frames[3].data() + y * cell_w * 4,
-                 cell_w * 4);
-        }
-
-        // 2. Copy Right half (AroundView top-down)
-        // AroundView starts at x offset = left_w, y offset = 0
-        for (int y = 0; y < av_h; y++) {
-          memcpy(out_img.data() + (y * total_w + left_w) * 4,
-                 av_top_down.data() + y * av_w * 4,
-                 av_w * 4);
-        }
-
+        printf("[App] Stitching successful. Outputting to display...\n");
         if (display_) {
-          VideoFrame display_frame;
-          display_frame.cpu_data = out_img.data();
-          display_frame.dma_buf_fd = -1;
-          display_frame.width = total_w;
-          display_frame.height = total_h;
-          display_frame.stride = total_w * 4;
-          display_->outputFrame(display_frame);
+          display_->outputFrame(output);
         }
       } else {
         fprintf(stderr, "[App] Error: Failed to composite frames.\n");

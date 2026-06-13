@@ -2,6 +2,7 @@
 #include <atomic>
 #include <cerrno>
 #include <chrono>
+#include <condition_variable>
 #include <dlfcn.h>
 #include <fcntl.h>
 #include <mutex>
@@ -753,6 +754,97 @@ public:
         "  int cam_idx = 0;\n"
         "  vec2 sub_uv = vec2(0.0);\n"
         "  vec4 color = vec4(0.0);\n"
+        "  if (u_mode > 1.5) {\n"
+        "    float split_x = 840.0 / 1920.0;\n"
+        "    if (uv.x < split_x) {\n"
+        "      vec2 local_uv = vec2(uv.x / split_x, uv.y);\n"
+        "      float px = local_uv.x * 840.0;\n"
+        "      float py = local_uv.y * 1080.0;\n"
+        "      if (px >= 60.0 && px <= 416.0 && py >= 180.0 && py <= 536.0) {\n"
+        "        cam_idx = 0; sub_uv.x = (px - 60.0) / 356.0; sub_uv.y = (py - 180.0) / 356.0;\n"
+        "      } else if (px >= 424.0 && px <= 780.0 && py >= 180.0 && py <= 536.0) {\n"
+        "        cam_idx = 1; sub_uv.x = (px - 424.0) / 356.0; sub_uv.y = (py - 180.0) / 356.0;\n"
+        "      } else if (px >= 60.0 && px <= 416.0 && py >= 544.0 && py <= 900.0) {\n"
+        "        cam_idx = 2; sub_uv.x = (px - 60.0) / 356.0; sub_uv.y = (py - 544.0) / 356.0;\n"
+        "      } else if (px >= 424.0 && px <= 780.0 && py >= 544.0 && py <= 900.0) {\n"
+        "        cam_idx = 3; sub_uv.x = (px - 424.0) / 356.0; sub_uv.y = (py - 544.0) / 356.0;\n"
+        "      } else {\n"
+        "        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return;\n"
+        "      }\n"
+        "      vec2 corr_uv = apply_affine(sub_uv, u_affine_matrix[cam_idx]);\n"
+        "      corr_uv = apply_distortion(corr_uv, u_distortion[cam_idx]);\n"
+        "      if (corr_uv.x < 0.0 || corr_uv.x > 1.0 || corr_uv.y < 0.0 || corr_uv.y > 1.0) {\n"
+        "        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return;\n"
+        "      }\n"
+        "      if (cam_idx == 0) color = texture2D(s_tex0, corr_uv);\n"
+        "      else if (cam_idx == 1) color = texture2D(s_tex1, corr_uv);\n"
+        "      else if (cam_idx == 2) color = texture2D(s_tex2, corr_uv);\n"
+        "      else color = texture2D(s_tex3, corr_uv);\n"
+        "      float gamma = u_color_balance[cam_idx].a;\n"
+        "      float is_invert = (gamma < 0.0) ? 0.0 : 1.0;\n"
+        "      float abs_gamma = abs(gamma);\n"
+        "      vec3 adjusted_rgb = pow(color.rgb * u_color_balance[cam_idx].rgb, vec3(abs_gamma));\n"
+        "      gl_FragColor = vec4(mix(adjusted_rgb, 1.0 - adjusted_rgb, is_invert), color.a);\n"
+        "      return;\n"
+        "    } else {\n"
+        "      vec2 local_uv = vec2((uv.x - split_x) / (1.0 - split_x), uv.y);\n"
+        "      float cx = 0.5; float cy = 0.5; float hw = 0.10; float hh = 0.20;\n"
+        "      float car_left = cx - hw; float car_right = cx + hw;\n"
+        "      float car_bottom = cy - hh; float car_top = cy + hh;\n"
+        "      if (local_uv.x >= car_left && local_uv.x <= car_right && local_uv.y >= car_bottom && local_uv.y <= car_top) {\n"
+        "        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return;\n"
+        "      }\n"
+        "      if (local_uv.y > car_top && local_uv.x >= car_left && local_uv.x <= car_right) cam_idx = 0;\n"
+        "      else if (local_uv.y < car_bottom && local_uv.x >= car_left && local_uv.x <= car_right) cam_idx = 1;\n"
+        "      else if (local_uv.x < car_left && local_uv.y >= car_bottom && local_uv.y <= car_top) cam_idx = 2;\n"
+        "      else if (local_uv.x > car_right && local_uv.y >= car_bottom && local_uv.y <= car_top) cam_idx = 3;\n"
+        "      else if (local_uv.x < car_left && local_uv.y > car_top) {\n"
+        "        float dx = car_left - local_uv.x; float dy = local_uv.y - car_top; cam_idx = (dy >= dx) ? 0 : 2;\n"
+        "      } else if (local_uv.x > car_right && local_uv.y > car_top) {\n"
+        "        float dx = local_uv.x - car_right; float dy = local_uv.y - car_top; cam_idx = (dy >= dx) ? 0 : 3;\n"
+        "      } else if (local_uv.x < car_left && local_uv.y < car_bottom) {\n"
+        "        float dx = car_left - local_uv.x; float dy = car_bottom - local_uv.y; cam_idx = (dy >= dx) ? 1 : 2;\n"
+        "      } else {\n"
+        "        float dx = local_uv.x - car_right; float dy = car_bottom - local_uv.y; cam_idx = (dy >= dx) ? 1 : 3;\n"
+        "      }\n"
+        "      if (cam_idx == 0) {\n"
+        "        float t = clamp((local_uv.y - car_top) / (1.0 - car_top), 0.0, 1.0);\n"
+        "        sub_uv.x = local_uv.x; sub_uv.y = 0.05 + t * 0.50;\n"
+        "        float persp = 1.0 + t * 0.6; sub_uv.x = 0.5 + (local_uv.x - 0.5) * persp;\n"
+        "      }\n"
+        "      if (cam_idx == 1) {\n"
+        "        float t = clamp((car_bottom - local_uv.y) / car_bottom, 0.0, 1.0);\n"
+        "        sub_uv.x = local_uv.x; sub_uv.y = 0.05 + t * 0.50;\n"
+        "        float persp = 1.0 + t * 0.6; sub_uv.x = 0.5 + (local_uv.x - 0.5) * persp;\n"
+        "      }\n"
+        "      if (cam_idx == 2) {\n"
+        "        float t = clamp((car_left - local_uv.x) / car_left, 0.0, 1.0);\n"
+        "        sub_uv.y = 0.05 + t * 0.50; sub_uv.x = local_uv.y;\n"
+        "        float persp = 1.0 + t * 0.6; sub_uv.x = 0.5 + (local_uv.y - 0.5) * persp;\n"
+        "      }\n"
+        "      if (cam_idx == 3) {\n"
+        "        float t = clamp((local_uv.x - car_right) / (1.0 - car_right), 0.0, 1.0);\n"
+        "        sub_uv.y = 0.05 + t * 0.50; sub_uv.x = 1.0 - local_uv.y;\n"
+        "        float persp = 1.0 + t * 0.6; sub_uv.x = 0.5 + (1.0 - local_uv.y - 0.5) * persp;\n"
+        "      }\n"
+        "      vec2 corr_uv = apply_affine(sub_uv, u_affine_matrix[cam_idx]);\n"
+        "      corr_uv = apply_distortion(corr_uv, u_distortion[cam_idx]);\n"
+        "      corr_uv.y = 1.0 - corr_uv.y;\n"
+        "      if (corr_uv.x < 0.0 || corr_uv.x > 1.0 || corr_uv.y < 0.0 || corr_uv.y > 1.0) {\n"
+        "        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return;\n"
+        "      }\n"
+        "      if (cam_idx == 0) color = texture2D(s_tex0, corr_uv);\n"
+        "      else if (cam_idx == 1) color = texture2D(s_tex1, corr_uv);\n"
+        "      else if (cam_idx == 2) color = texture2D(s_tex2, corr_uv);\n"
+        "      else color = texture2D(s_tex3, corr_uv);\n"
+        "      float gamma = u_color_balance[cam_idx].a;\n"
+        "      float is_invert = (gamma < 0.0) ? 0.0 : 1.0;\n"
+        "      float abs_gamma = abs(gamma);\n"
+        "      vec3 adjusted_rgb = pow(color.rgb * u_color_balance[cam_idx].rgb, vec3(abs_gamma));\n"
+        "      gl_FragColor = vec4(mix(adjusted_rgb, 1.0 - adjusted_rgb, is_invert), color.a);\n"
+        "      return;\n"
+        "    }\n"
+        "  }\n"
         "  if (u_mode > 0.5) {\n"
         //  Car body constants
         "    float cx = 0.5;\n"
@@ -979,7 +1071,12 @@ public:
     glUseProgram(program_);
 
     GLint mode_loc = glGetUniformLocation(program_, "u_mode");
-    float mode_val = (in_width == 64) ? 0.0f : 1.0f;
+    float mode_val = 1.0f;
+    if (out_width == 1920 && out_height == 1080) {
+      mode_val = 2.0f;
+    } else if (in_width == 64) {
+      mode_val = 0.0f;
+    }
     glUniform1f(mode_loc, mode_val);
 
     GLint dist_loc = glGetUniformLocation(program_, "u_distortion");
@@ -1313,6 +1410,97 @@ public:
         "  int cam_idx = 0;\n"
         "  vec2 sub_uv = vec2(0.0);\n"
         "  vec4 color = vec4(0.0);\n"
+        "  if (u_mode > 1.5) {\n"
+        "    float split_x = 840.0 / 1920.0;\n"
+        "    if (uv.x < split_x) {\n"
+        "      vec2 local_uv = vec2(uv.x / split_x, uv.y);\n"
+        "      float px = local_uv.x * 840.0;\n"
+        "      float py = local_uv.y * 1080.0;\n"
+        "      if (px >= 60.0 && px <= 416.0 && py >= 180.0 && py <= 536.0) {\n"
+        "        cam_idx = 0; sub_uv.x = (px - 60.0) / 356.0; sub_uv.y = (py - 180.0) / 356.0;\n"
+        "      } else if (px >= 424.0 && px <= 780.0 && py >= 180.0 && py <= 536.0) {\n"
+        "        cam_idx = 1; sub_uv.x = (px - 424.0) / 356.0; sub_uv.y = (py - 180.0) / 356.0;\n"
+        "      } else if (px >= 60.0 && px <= 416.0 && py >= 544.0 && py <= 900.0) {\n"
+        "        cam_idx = 2; sub_uv.x = (px - 60.0) / 356.0; sub_uv.y = (py - 544.0) / 356.0;\n"
+        "      } else if (px >= 424.0 && px <= 780.0 && py >= 544.0 && py <= 900.0) {\n"
+        "        cam_idx = 3; sub_uv.x = (px - 424.0) / 356.0; sub_uv.y = (py - 544.0) / 356.0;\n"
+        "      } else {\n"
+        "        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return;\n"
+        "      }\n"
+        "      vec2 corr_uv = apply_affine(sub_uv, u_affine_matrix[cam_idx]);\n"
+        "      corr_uv = apply_distortion(corr_uv, u_distortion[cam_idx]);\n"
+        "      if (corr_uv.x < 0.0 || corr_uv.x > 1.0 || corr_uv.y < 0.0 || corr_uv.y > 1.0) {\n"
+        "        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return;\n"
+        "      }\n"
+        "      if (cam_idx == 0) color = texture2D(s_tex0, corr_uv);\n"
+        "      else if (cam_idx == 1) color = texture2D(s_tex1, corr_uv);\n"
+        "      else if (cam_idx == 2) color = texture2D(s_tex2, corr_uv);\n"
+        "      else color = texture2D(s_tex3, corr_uv);\n"
+        "      float gamma = u_color_balance[cam_idx].a;\n"
+        "      float is_invert = (gamma < 0.0) ? 0.0 : 1.0;\n"
+        "      float abs_gamma = abs(gamma);\n"
+        "      vec3 adjusted_rgb = pow(color.rgb * u_color_balance[cam_idx].rgb, vec3(abs_gamma));\n"
+        "      gl_FragColor = vec4(mix(adjusted_rgb, 1.0 - adjusted_rgb, is_invert), color.a);\n"
+        "      return;\n"
+        "    } else {\n"
+        "      vec2 local_uv = vec2((uv.x - split_x) / (1.0 - split_x), uv.y);\n"
+        "      float cx = 0.5; float cy = 0.5; float hw = 0.10; float hh = 0.20;\n"
+        "      float car_left = cx - hw; float car_right = cx + hw;\n"
+        "      float car_bottom = cy - hh; float car_top = cy + hh;\n"
+        "      if (local_uv.x >= car_left && local_uv.x <= car_right && local_uv.y >= car_bottom && local_uv.y <= car_top) {\n"
+        "        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return;\n"
+        "      }\n"
+        "      if (local_uv.y > car_top && local_uv.x >= car_left && local_uv.x <= car_right) cam_idx = 0;\n"
+        "      else if (local_uv.y < car_bottom && local_uv.x >= car_left && local_uv.x <= car_right) cam_idx = 1;\n"
+        "      else if (local_uv.x < car_left && local_uv.y >= car_bottom && local_uv.y <= car_top) cam_idx = 2;\n"
+        "      else if (local_uv.x > car_right && local_uv.y >= car_bottom && local_uv.y <= car_top) cam_idx = 3;\n"
+        "      else if (local_uv.x < car_left && local_uv.y > car_top) {\n"
+        "        float dx = car_left - local_uv.x; float dy = local_uv.y - car_top; cam_idx = (dy >= dx) ? 0 : 2;\n"
+        "      } else if (local_uv.x > car_right && local_uv.y > car_top) {\n"
+        "        float dx = local_uv.x - car_right; float dy = local_uv.y - car_top; cam_idx = (dy >= dx) ? 0 : 3;\n"
+        "      } else if (local_uv.x < car_left && local_uv.y < car_bottom) {\n"
+        "        float dx = car_left - local_uv.x; float dy = car_bottom - local_uv.y; cam_idx = (dy >= dx) ? 1 : 2;\n"
+        "      } else {\n"
+        "        float dx = local_uv.x - car_right; float dy = car_bottom - local_uv.y; cam_idx = (dy >= dx) ? 1 : 3;\n"
+        "      }\n"
+        "      if (cam_idx == 0) {\n"
+        "        float t = clamp((local_uv.y - car_top) / (1.0 - car_top), 0.0, 1.0);\n"
+        "        sub_uv.x = local_uv.x; sub_uv.y = 0.05 + t * 0.50;\n"
+        "        float persp = 1.0 + t * 0.6; sub_uv.x = 0.5 + (local_uv.x - 0.5) * persp;\n"
+        "      }\n"
+        "      if (cam_idx == 1) {\n"
+        "        float t = clamp((car_bottom - local_uv.y) / car_bottom, 0.0, 1.0);\n"
+        "        sub_uv.x = local_uv.x; sub_uv.y = 0.05 + t * 0.50;\n"
+        "        float persp = 1.0 + t * 0.6; sub_uv.x = 0.5 + (local_uv.x - 0.5) * persp;\n"
+        "      }\n"
+        "      if (cam_idx == 2) {\n"
+        "        float t = clamp((car_left - local_uv.x) / car_left, 0.0, 1.0);\n"
+        "        sub_uv.y = 0.05 + t * 0.50; sub_uv.x = local_uv.y;\n"
+        "        float persp = 1.0 + t * 0.6; sub_uv.x = 0.5 + (local_uv.y - 0.5) * persp;\n"
+        "      }\n"
+        "      if (cam_idx == 3) {\n"
+        "        float t = clamp((local_uv.x - car_right) / (1.0 - car_right), 0.0, 1.0);\n"
+        "        sub_uv.y = 0.05 + t * 0.50; sub_uv.x = 1.0 - local_uv.y;\n"
+        "        float persp = 1.0 + t * 0.6; sub_uv.x = 0.5 + (1.0 - local_uv.y - 0.5) * persp;\n"
+        "      }\n"
+        "      vec2 corr_uv = apply_affine(sub_uv, u_affine_matrix[cam_idx]);\n"
+        "      corr_uv = apply_distortion(corr_uv, u_distortion[cam_idx]);\n"
+        "      corr_uv.y = 1.0 - corr_uv.y;\n"
+        "      if (corr_uv.x < 0.0 || corr_uv.x > 1.0 || corr_uv.y < 0.0 || corr_uv.y > 1.0) {\n"
+        "        gl_FragColor = vec4(0.0, 0.0, 0.0, 1.0); return;\n"
+        "      }\n"
+        "      if (cam_idx == 0) color = texture2D(s_tex0, corr_uv);\n"
+        "      else if (cam_idx == 1) color = texture2D(s_tex1, corr_uv);\n"
+        "      else if (cam_idx == 2) color = texture2D(s_tex2, corr_uv);\n"
+        "      else color = texture2D(s_tex3, corr_uv);\n"
+        "      float gamma = u_color_balance[cam_idx].a;\n"
+        "      float is_invert = (gamma < 0.0) ? 0.0 : 1.0;\n"
+        "      float abs_gamma = abs(gamma);\n"
+        "      vec3 adjusted_rgb = pow(color.rgb * u_color_balance[cam_idx].rgb, vec3(abs_gamma));\n"
+        "      gl_FragColor = vec4(mix(adjusted_rgb, 1.0 - adjusted_rgb, is_invert), color.a);\n"
+        "      return;\n"
+        "    }\n"
+        "  }\n"
         "  if (u_mode > 0.5) {\n"
         "    sub_uv = uv;\n"
         "    vec2 d = uv - vec2(0.5, 0.5);\n"
@@ -1482,9 +1670,28 @@ public:
         }
       }
 
-      // Bind output texture (allocate with output resolution)
-      glBindTexture(GL_TEXTURE_2D, tex_out_);
-      glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, out_width, out_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+      EGLImageKHR egl_img_out = EGL_NO_IMAGE_KHR;
+      if (output.dma_buf_fd >= 0) {
+        EGLint img_attribs[] = {
+            EGL_WIDTH, out_width,
+            EGL_HEIGHT, out_height,
+            EGL_LINUX_DMA_BUF_EXT,
+            EGL_DMA_BUF_PLANE0_FD_EXT, output.dma_buf_fd,
+            EGL_DMA_BUF_PLANE0_OFFSET_EXT, 0,
+            EGL_DMA_BUF_PLANE0_PITCH_EXT, output.stride ? output.stride : out_width * 4,
+            EGL_NONE
+        };
+        egl_img_out = eglCreateImageKHR_(egl_dpy_, EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, NULL, img_attribs);
+        if (egl_img_out == EGL_NO_IMAGE_KHR) {
+          fprintf(stderr, "[HAL ERROR] [Production] Failed to create EGLImage for output DMA-BUF\n");
+          return false;
+        }
+        glBindTexture(GL_TEXTURE_2D, tex_out_);
+        glEGLImageTargetTexture2DOES_(GL_TEXTURE_2D, egl_img_out);
+      } else {
+        glBindTexture(GL_TEXTURE_2D, tex_out_);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, out_width, out_height, 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+      }
       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
       glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 
@@ -1504,7 +1711,12 @@ public:
       glUseProgram(program_);
 
       GLint mode_loc = glGetUniformLocation(program_, "u_mode");
-      float mode_val = (in_width == 64) ? 0.0f : 1.0f;
+      float mode_val = 1.0f;
+      if (out_width == 1920 && out_height == 1080) {
+        mode_val = 2.0f;
+      } else if (in_width == 64) {
+        mode_val = 0.0f;
+      }
       glUniform1f(mode_loc, mode_val);
 
       GLint dist_loc = glGetUniformLocation(program_, "u_distortion");
@@ -1578,6 +1790,10 @@ public:
       glDisableVertexAttribArray(tex_attr);
 
       glFinish();
+
+      if (egl_img_out != EGL_NO_IMAGE_KHR) {
+        eglDestroyImageKHR_(egl_dpy_, egl_img_out);
+      }
 
       if (output.cpu_data) {
         glReadPixels(0, 0, out_width, out_height, GL_RGBA, GL_UNSIGNED_BYTE, const_cast<uint8_t*>(output.cpu_data));
@@ -1716,11 +1932,11 @@ std::unique_ptr<IVideoProcessor> HalFactory::createVideoProcessor(SocType soc_ty
 }
 
 static bool writeBMP(const char* filename, const uint8_t* rgba, int width, int height) {
-  FILE* f = fopen(filename, "wb");
+  std::string temp_filename = std::string(filename) + ".tmp";
+  FILE* f = fopen(temp_filename.c_str(), "wb");
   if (!f) return false;
 
   int row_stride = (width * 3 + 3) & ~3;
-  int padding = row_stride - width * 3;
   uint32_t image_size = row_stride * height;
   uint32_t file_size = 54 + image_size;
 
@@ -1747,46 +1963,136 @@ static bool writeBMP(const char* filename, const uint8_t* rgba, int width, int h
   fwrite(bmpfileheader, 1, 14, f);
   fwrite(bmpinfoheader, 1, 40, f);
 
-  uint8_t pad_bytes[3] = {0, 0, 0};
-  for (int y = height - 1; y >= 0; y--) {
+  // 一括書き込みバッファの構築
+  std::vector<uint8_t> out_buf(image_size, 0);
+
+  for (int y = 0; y < height; y++) {
+    int src_y = height - 1 - y; // Bottom-up conversion
+    int dst_row_offset = y * row_stride;
+    int src_row_offset = src_y * width * 4;
+
     for (int x = 0; x < width; x++) {
-      int idx = (y * width + x) * 4;
-      uint8_t r = rgba[idx + 0];
-      uint8_t g = rgba[idx + 1];
-      uint8_t b = rgba[idx + 2];
-      // BGR順で書き込む
-      uint8_t bgr[3] = {b, g, r};
-      fwrite(bgr, 1, 3, f);
-    }
-    if (padding > 0) {
-      fwrite(pad_bytes, 1, padding, f);
+      int src_idx = src_row_offset + x * 4;
+      int dst_idx = dst_row_offset + x * 3;
+
+      out_buf[dst_idx + 0] = rgba[src_idx + 2]; // B
+      out_buf[dst_idx + 1] = rgba[src_idx + 1]; // G
+      out_buf[dst_idx + 2] = rgba[src_idx + 0]; // R
     }
   }
+
+  // 1回でピクセルデータを一括書き込み
+  fwrite(out_buf.data(), 1, image_size, f);
   fclose(f);
+
+  // 原子的なリネームを実行して書き込み中のちらつきを防止
+  if (rename(temp_filename.c_str(), filename) != 0) {
+    perror("[HAL ERROR] Failed to rename temporary BMP file");
+    return false;
+  }
   return true;
 }
 
 class HostDisplaySink : public IDisplaySink {
+private:
+  std::vector<uint8_t> buffer_;
+
+  // 非同期BMP書き出し用のダブルバッファとワーカースレッド
+  std::vector<uint8_t> staging_buf_;
+  int staging_width_ = 0;
+  int staging_height_ = 0;
+  std::mutex staging_mutex_;
+  std::condition_variable staging_cv_;
+  bool staging_ready_ = false;
+  std::atomic<bool> writer_running_{false};
+  std::thread writer_thread_;
+
+  void writerLoop() {
+    std::vector<uint8_t> local_buf;
+    int local_w = 0, local_h = 0;
+
+    while (writer_running_) {
+      {
+        std::unique_lock<std::mutex> lock(staging_mutex_);
+        staging_cv_.wait(lock, [this]{ return staging_ready_ || !writer_running_; });
+        if (!writer_running_) break;
+
+        // ステージングバッファをローカルにスワップ（コピーではなくswapで高速化）
+        local_buf.swap(staging_buf_);
+        local_w = staging_width_;
+        local_h = staging_height_;
+        staging_ready_ = false;
+      }
+
+      // ロック外でディスクI/Oを実行（レンダーループをブロックしない）
+      if (!local_buf.empty()) {
+        bool ok = writeBMP("/tmp/hdmi_output.bmp", local_buf.data(), local_w, local_h);
+        if (!ok) {
+          fprintf(stderr, "[HAL ERROR] [HostDisplay] Async BMP write failed\n");
+        }
+      }
+
+      // スワップ後にステージングバッファを再確保（次のフレーム用）
+      {
+        std::lock_guard<std::mutex> lock(staging_mutex_);
+        if (staging_buf_.size() < local_buf.size()) {
+          staging_buf_.resize(local_buf.size());
+        }
+      }
+    }
+  }
+
 public:
   HostDisplaySink() = default;
   ~HostDisplaySink() override { terminate(); }
 
   bool initialize() override {
-    printf("[HAL] [HostDisplay] Host display initialize.\n");
+    printf("[HAL] [HostDisplay] Host display initialize (async writer).\n");
+    buffer_.resize(1920 * 1080 * 4, 0);
+    staging_buf_.resize(1920 * 1080 * 4, 0);
+
+    writer_running_ = true;
+    writer_thread_ = std::thread(&HostDisplaySink::writerLoop, this);
     return true;
   }
 
+  VideoFrame getBackBuffer() override {
+    VideoFrame frame;
+    frame.cpu_data = buffer_.data();
+    frame.dma_buf_fd = -1;
+    frame.width = 1920;
+    frame.height = 1080;
+    frame.stride = 1920 * 4;
+    return frame;
+  }
+
   bool outputFrame(const VideoFrame& frame) override {
-    const char* filename = "/tmp/hdmi_output.bmp";
-    bool ok = writeBMP(filename, frame.cpu_data, frame.width, frame.height);
-    if (!ok) {
-      fprintf(stderr, "[HAL ERROR] [HostDisplay] Failed to write BMP to %s\n", filename);
+    // フレームデータをステージングバッファにコピーし、ワーカーを起こす
+    // memcpy は ~8MB で ~1-2ms（ディスクI/O 30-50ms よりはるかに高速）
+    size_t data_size = (size_t)frame.width * frame.height * 4;
+    {
+      std::lock_guard<std::mutex> lock(staging_mutex_);
+      if (staging_buf_.size() < data_size) {
+        staging_buf_.resize(data_size);
+      }
+      memcpy(staging_buf_.data(), frame.cpu_data, data_size);
+      staging_width_ = frame.width;
+      staging_height_ = frame.height;
+      staging_ready_ = true;
     }
-    return ok;
+    staging_cv_.notify_one();
+    return true;
   }
 
   void terminate() override {
-    printf("[HAL] [HostDisplay] Host display terminate.\n");
+    if (writer_running_) {
+      writer_running_ = false;
+      staging_cv_.notify_one();
+      if (writer_thread_.joinable()) {
+        writer_thread_.join();
+      }
+      printf("[HAL] [HostDisplay] Host display terminate (async writer stopped).\n");
+    }
   }
 };
 
@@ -1843,15 +2149,32 @@ class ImxDisplaySink : public IDisplaySink {
 private:
   SocType type_;
   void* drm_lib_handle_ = nullptr;
+  void* gbm_lib_handle_ = nullptr;
   int fd_ = -1;
   uint32_t connector_id_ = 0;
   uint32_t crtc_id_ = 0;
+
+  // CPU fallback buffer if mock
+  std::vector<uint8_t> mock_buffer_;
+
+  // Double buffering gbm structures
+  struct gbm_device* gbm_dev_ = nullptr;
+  struct gbm_bo* bos_[2] = {nullptr, nullptr};
+  int dma_buf_fds_[2] = {-1, -1};
+  uint32_t fb_ids_[2] = {0, 0};
+  uint32_t width_ = 0;
+  uint32_t height_ = 0;
+  uint32_t stride_ = 0;
+  int current_buf_idx_ = 0;
+
+  // Dumb buffer fallback (original implementation, kept for fallback if gbm fails)
   uint32_t fb_id_ = 0;
   uint32_t handle_ = 0;
-  uint32_t stride_ = 0;
   uint64_t size_ = 0;
   void* map_ = MAP_FAILED;
+
   bool is_mock_ = false;
+  bool is_gbm_active_ = false;
 
   // Function pointer typedefs
   typedef struct drmModeRes* (*PFNDRMMODEGETRESOURCES)(int);
@@ -1863,6 +2186,7 @@ private:
   typedef int (*PFNDRMMODEADDFB)(int, uint32_t, uint32_t, uint8_t, uint8_t, uint32_t, uint32_t, uint32_t*);
   typedef int (*PFNDRMMODERMFB)(int, uint32_t);
   typedef int (*PFNDRMMODESETCRTC)(int, uint32_t, uint32_t, uint32_t, uint32_t, uint32_t*, int, struct drmModeModeInfo*);
+  typedef int (*PFNDRMMODEPAGEFLIP)(int, uint32_t, uint32_t, uint32_t, void*);
 
   PFNDRMMODEGETRESOURCES drmModeGetResources_ = nullptr;
   PFNDRMMODEFREERESOURCES drmModeFreeResources_ = nullptr;
@@ -1873,6 +2197,31 @@ private:
   PFNDRMMODEADDFB drmModeAddFB_ = nullptr;
   PFNDRMMODERMFB drmModeRmFB_ = nullptr;
   PFNDRMMODESETCRTC drmModeSetCrtc_ = nullptr;
+  PFNDRMMODEPAGEFLIP drmModePageFlip_ = nullptr;
+
+  // GBM function pointers
+  union gbm_bo_handle {
+    void *ptr;
+    int32_t s32;
+    uint32_t u32;
+    int64_t s64;
+    uint64_t u64;
+  };
+  typedef struct gbm_device* (*PFNGBMCREATEDEVICE)(int);
+  typedef void (*PFNGBMDEVICEDESTROY)(struct gbm_device*);
+  typedef struct gbm_bo* (*PFNGBMBOCREATE)(struct gbm_device*, uint32_t, uint32_t, uint32_t, uint32_t);
+  typedef void (*PFNGBMBODESTROY)(struct gbm_bo*);
+  typedef int (*PFNGBMBOGETFD)(struct gbm_bo*);
+  typedef uint32_t (*PFNGBMBOGETSTRIDE)(struct gbm_bo*);
+  typedef union gbm_bo_handle (*PFNGBMBOGETHANDLE)(struct gbm_bo*);
+
+  PFNGBMCREATEDEVICE gbm_create_device_ = nullptr;
+  PFNGBMDEVICEDESTROY gbm_device_destroy_ = nullptr;
+  PFNGBMBOCREATE gbm_bo_create_ = nullptr;
+  PFNGBMBODESTROY gbm_bo_destroy_ = nullptr;
+  PFNGBMBOGETFD gbm_bo_get_fd_ = nullptr;
+  PFNGBMBOGETSTRIDE gbm_bo_get_stride_ = nullptr;
+  PFNGBMBOGETHANDLE gbm_bo_get_handle_ = nullptr;
 
 public:
   ImxDisplaySink(SocType type) : type_(type) {}
@@ -1890,6 +2239,7 @@ public:
     if (!drm_lib_handle_) {
       printf("[HAL WARNING] [ImxDisplay] libdrm.so not found. Falling back to mock/simulation mode.\n");
       is_mock_ = true;
+      mock_buffer_.resize(1920 * 1080 * 4, 0);
       return true;
     }
 
@@ -1903,14 +2253,16 @@ public:
     drmModeAddFB_ = (PFNDRMMODEADDFB)dlsym(drm_lib_handle_, "drmModeAddFB");
     drmModeRmFB_ = (PFNDRMMODERMFB)dlsym(drm_lib_handle_, "drmModeRmFB");
     drmModeSetCrtc_ = (PFNDRMMODESETCRTC)dlsym(drm_lib_handle_, "drmModeSetCrtc");
+    drmModePageFlip_ = (PFNDRMMODEPAGEFLIP)dlsym(drm_lib_handle_, "drmModePageFlip");
 
     if (!drmModeGetResources_ || !drmModeFreeResources_ || !drmModeGetConnector_ ||
         !drmModeFreeConnector_ || !drmModeGetEncoder_ || !drmModeFreeEncoder_ ||
-        !drmModeAddFB_ || !drmModeRmFB_ || !drmModeSetCrtc_) {
+        !drmModeAddFB_ || !drmModeRmFB_ || !drmModeSetCrtc_ || !drmModePageFlip_) {
       printf("[HAL WARNING] [ImxDisplay] Some DRM symbols are missing. Falling back to mock mode.\n");
       dlclose(drm_lib_handle_);
       drm_lib_handle_ = nullptr;
       is_mock_ = true;
+      mock_buffer_.resize(1920 * 1080 * 4, 0);
       return true;
     }
 
@@ -1919,6 +2271,7 @@ public:
     if (fd_ < 0) {
       printf("[HAL WARNING] [ImxDisplay] Failed to open /dev/dri/card0. Falling back to mock mode.\n");
       is_mock_ = true;
+      mock_buffer_.resize(1920 * 1080 * 4, 0);
       return true;
     }
 
@@ -1929,6 +2282,7 @@ public:
       close(fd_);
       fd_ = -1;
       is_mock_ = true;
+      mock_buffer_.resize(1920 * 1080 * 4, 0);
       return true;
     }
 
@@ -1937,7 +2291,6 @@ public:
     for (int i = 0; i < res->count_connectors; i++) {
       conn = drmModeGetConnector_(fd_, res->connectors[i]);
       if (conn) {
-        // connection == 1 (Connected), types: HDMI_A(11), DVI_D(7), HDMI_B(12)
         if (conn->connection == 1 && (conn->connector_type == 11 || conn->connector_type == 7 || conn->connector_type == 12)) {
           connector_id_ = conn->connector_id;
           break;
@@ -1953,10 +2306,10 @@ public:
       close(fd_);
       fd_ = -1;
       is_mock_ = true;
+      mock_buffer_.resize(1920 * 1080 * 4, 0);
       return true;
     }
 
-    // Determine Encoder & CRTC
     struct drmModeEncoder* enc = drmModeGetEncoder_(fd_, conn->encoder_id);
     if (enc) {
       crtc_id_ = enc->crtc_id;
@@ -1979,121 +2332,228 @@ public:
       close(fd_);
       fd_ = -1;
       is_mock_ = true;
+      mock_buffer_.resize(1920 * 1080 * 4, 0);
       return true;
     }
 
-    // Select resolution and mode
     struct drmModeModeInfo mode = conn->modes[0];
     uint32_t width = mode.hdisplay;
     uint32_t height = mode.vdisplay;
+    width_ = width;
+    height_ = height;
 
-    // Allocate Dumb Buffer via IOCTL
-    struct drm_mode_create_dumb create_req;
-    memset(&create_req, 0, sizeof(create_req));
-    create_req.width = width;
-    create_req.height = height;
-    create_req.bpp = 32;
-    if (ioctl(fd_, DRM_IOCTL_MODE_CREATE_DUMB, &create_req) < 0) {
-      printf("[HAL WARNING] [ImxDisplay] DRM_IOCTL_MODE_CREATE_DUMB failed. Falling back to mock mode.\n");
-      drmModeFreeConnector_(conn);
-      drmModeFreeResources_(res);
-      close(fd_);
-      fd_ = -1;
-      is_mock_ = true;
-      return true;
+    // Load libgbm.so
+    gbm_lib_handle_ = dlopen("libgbm.so", RTLD_LAZY);
+    if (!gbm_lib_handle_) {
+      gbm_lib_handle_ = dlopen("libgbm.so.1", RTLD_LAZY);
     }
-    handle_ = create_req.handle;
-    stride_ = create_req.pitch;
-    size_ = create_req.size;
-
-    // Register Framebuffer (FB)
-    if (drmModeAddFB_(fd_, width, height, 24, 32, stride_, handle_, &fb_id_) < 0) {
-      printf("[HAL WARNING] [ImxDisplay] drmModeAddFB failed. Falling back to mock mode.\n");
-      struct drm_mode_destroy_dumb destroy_req;
-      memset(&destroy_req, 0, sizeof(destroy_req));
-      destroy_req.handle = handle_;
-      ioctl(fd_, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy_req);
-      drmModeFreeConnector_(conn);
-      drmModeFreeResources_(res);
-      close(fd_);
-      fd_ = -1;
-      is_mock_ = true;
-      return true;
+    if (gbm_lib_handle_) {
+      gbm_create_device_ = (PFNGBMCREATEDEVICE)dlsym(gbm_lib_handle_, "gbm_create_device");
+      gbm_device_destroy_ = (PFNGBMDEVICEDESTROY)dlsym(gbm_lib_handle_, "gbm_device_destroy");
+      gbm_bo_create_ = (PFNGBMBOCREATE)dlsym(gbm_lib_handle_, "gbm_bo_create");
+      gbm_bo_destroy_ = (PFNGBMBODESTROY)dlsym(gbm_lib_handle_, "gbm_bo_destroy");
+      gbm_bo_get_fd_ = (PFNGBMBOGETFD)dlsym(gbm_lib_handle_, "gbm_bo_get_fd");
+      gbm_bo_get_stride_ = (PFNGBMBOGETSTRIDE)dlsym(gbm_lib_handle_, "gbm_bo_get_stride");
+      gbm_bo_get_handle_ = (PFNGBMBOGETHANDLE)dlsym(gbm_lib_handle_, "gbm_bo_get_handle");
     }
 
-    // Map Dumb Buffer via IOCTL
-    struct drm_mode_map_dumb map_req;
-    memset(&map_req, 0, sizeof(map_req));
-    map_req.handle = handle_;
-    if (ioctl(fd_, DRM_IOCTL_MODE_MAP_DUMB, &map_req) < 0) {
-      printf("[HAL WARNING] [ImxDisplay] DRM_IOCTL_MODE_MAP_DUMB failed. Falling back to mock mode.\n");
-      drmModeRmFB_(fd_, fb_id_);
-      struct drm_mode_destroy_dumb destroy_req;
-      memset(&destroy_req, 0, sizeof(destroy_req));
-      destroy_req.handle = handle_;
-      ioctl(fd_, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy_req);
-      drmModeFreeConnector_(conn);
-      drmModeFreeResources_(res);
-      close(fd_);
-      fd_ = -1;
-      is_mock_ = true;
-      return true;
+    // Try allocating via GBM first for true zero-copy Page Flipping
+    if (gbm_create_device_ && gbm_device_destroy_ && gbm_bo_create_ && gbm_bo_destroy_ &&
+        gbm_bo_get_fd_ && gbm_bo_get_stride_ && gbm_bo_get_handle_) {
+      gbm_dev_ = gbm_create_device_(fd_);
+      if (gbm_dev_) {
+        bool gbm_success = true;
+        for (int i = 0; i < 2; i++) {
+          bos_[i] = gbm_bo_create_(gbm_dev_, width_, height_, 0x34325258, 1 | 2); // GBM_FORMAT_XRGB8888, SCANOUT | RENDERING
+          if (!bos_[i]) {
+            printf("[HAL WARNING] [ImxDisplay] Failed to create gbm_bo[%d]\n", i);
+            gbm_success = false;
+            break;
+          }
+          dma_buf_fds_[i] = gbm_bo_get_fd_(bos_[i]);
+          uint32_t bo_stride = gbm_bo_get_stride_(bos_[i]);
+          union gbm_bo_handle bo_handle = gbm_bo_get_handle_(bos_[i]);
+          if (drmModeAddFB_(fd_, width_, height_, 24, 32, bo_stride, bo_handle.u32, &fb_ids_[i]) < 0) {
+            printf("[HAL WARNING] [ImxDisplay] drmModeAddFB failed for gbm_bo[%d]\n", i);
+            gbm_success = false;
+            break;
+          }
+        }
+        if (gbm_success) {
+          if (drmModeSetCrtc_(fd_, crtc_id_, fb_ids_[0], 0, 0, &connector_id_, 1, &mode) < 0) {
+            printf("[HAL WARNING] [ImxDisplay] drmModeSetCrtc failed for gbm_bo[0]. Falling back to dumb buffer.\n");
+          } else {
+            current_buf_idx_ = 0;
+            is_gbm_active_ = true;
+            printf("[HAL] [ImxDisplay] Double-buffered GBM swapchain initialized successfully.\n");
+          }
+        }
+      }
     }
 
-    // Memory map dumb buffer
-    map_ = mmap(0, size_, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, map_req.offset);
-    if (map_ == MAP_FAILED) {
-      printf("[HAL WARNING] [ImxDisplay] mmap failed. Falling back to mock mode.\n");
-      drmModeRmFB_(fd_, fb_id_);
-      struct drm_mode_destroy_dumb destroy_req;
-      memset(&destroy_req, 0, sizeof(destroy_req));
-      destroy_req.handle = handle_;
-      ioctl(fd_, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy_req);
-      drmModeFreeConnector_(conn);
-      drmModeFreeResources_(res);
-      close(fd_);
-      fd_ = -1;
-      is_mock_ = true;
-      return true;
+    // Fallback to original dumb buffer allocation if GBM fails
+    if (!is_gbm_active_) {
+      struct drm_mode_create_dumb create_req;
+      memset(&create_req, 0, sizeof(create_req));
+      create_req.width = width;
+      create_req.height = height;
+      create_req.bpp = 32;
+      if (ioctl(fd_, DRM_IOCTL_MODE_CREATE_DUMB, &create_req) < 0) {
+        printf("[HAL WARNING] [ImxDisplay] DRM_IOCTL_MODE_CREATE_DUMB failed. Falling back to mock mode.\n");
+        if (gbm_dev_) {
+          for (int i = 0; i < 2; i++) {
+            if (fb_ids_[i]) drmModeRmFB_(fd_, fb_ids_[i]);
+            if (dma_buf_fds_[i] >= 0) close(dma_buf_fds_[i]);
+            if (bos_[i]) gbm_bo_destroy_(bos_[i]);
+          }
+          gbm_device_destroy_(gbm_dev_);
+          gbm_dev_ = nullptr;
+        }
+        drmModeFreeConnector_(conn);
+        drmModeFreeResources_(res);
+        close(fd_);
+        fd_ = -1;
+        is_mock_ = true;
+        mock_buffer_.resize(1920 * 1080 * 4, 0);
+        return true;
+      }
+      handle_ = create_req.handle;
+      stride_ = create_req.pitch;
+      size_ = create_req.size;
+
+      if (drmModeAddFB_(fd_, width, height, 24, 32, stride_, handle_, &fb_id_) < 0) {
+        printf("[HAL WARNING] [ImxDisplay] drmModeAddFB failed. Falling back to mock mode.\n");
+        struct drm_mode_destroy_dumb destroy_req;
+        memset(&destroy_req, 0, sizeof(destroy_req));
+        destroy_req.handle = handle_;
+        ioctl(fd_, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy_req);
+        drmModeFreeConnector_(conn);
+        drmModeFreeResources_(res);
+        close(fd_);
+        fd_ = -1;
+        is_mock_ = true;
+        mock_buffer_.resize(1920 * 1080 * 4, 0);
+        return true;
+      }
+
+      struct drm_mode_map_dumb map_req;
+      memset(&map_req, 0, sizeof(map_req));
+      map_req.handle = handle_;
+      if (ioctl(fd_, DRM_IOCTL_MODE_MAP_DUMB, &map_req) < 0) {
+        printf("[HAL WARNING] [ImxDisplay] DRM_IOCTL_MODE_MAP_DUMB failed. Falling back to mock mode.\n");
+        drmModeRmFB_(fd_, fb_id_);
+        struct drm_mode_destroy_dumb destroy_req;
+        memset(&destroy_req, 0, sizeof(destroy_req));
+        destroy_req.handle = handle_;
+        ioctl(fd_, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy_req);
+        drmModeFreeConnector_(conn);
+        drmModeFreeResources_(res);
+        close(fd_);
+        fd_ = -1;
+        is_mock_ = true;
+        mock_buffer_.resize(1920 * 1080 * 4, 0);
+        return true;
+      }
+
+      map_ = mmap(0, size_, PROT_READ | PROT_WRITE, MAP_SHARED, fd_, map_req.offset);
+      if (map_ == MAP_FAILED) {
+        printf("[HAL WARNING] [ImxDisplay] mmap failed. Falling back to mock mode.\n");
+        drmModeRmFB_(fd_, fb_id_);
+        struct drm_mode_destroy_dumb destroy_req;
+        memset(&destroy_req, 0, sizeof(destroy_req));
+        destroy_req.handle = handle_;
+        ioctl(fd_, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy_req);
+        drmModeFreeConnector_(conn);
+        drmModeFreeResources_(res);
+        close(fd_);
+        fd_ = -1;
+        is_mock_ = true;
+        mock_buffer_.resize(1920 * 1080 * 4, 0);
+        return true;
+      }
+
+      if (drmModeSetCrtc_(fd_, crtc_id_, fb_id_, 0, 0, &connector_id_, 1, &mode) < 0) {
+        printf("[HAL WARNING] [ImxDisplay] drmModeSetCrtc failed. Falling back to mock mode.\n");
+        munmap(map_, size_);
+        map_ = MAP_FAILED;
+        drmModeRmFB_(fd_, fb_id_);
+        struct drm_mode_destroy_dumb destroy_req;
+        memset(&destroy_req, 0, sizeof(destroy_req));
+        destroy_req.handle = handle_;
+        ioctl(fd_, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy_req);
+        drmModeFreeConnector_(conn);
+        drmModeFreeResources_(res);
+        close(fd_);
+        fd_ = -1;
+        is_mock_ = true;
+        mock_buffer_.resize(1920 * 1080 * 4, 0);
+        return true;
+      }
     }
 
-    // Bind CRTC to display scanning out from FB
-    if (drmModeSetCrtc_(fd_, crtc_id_, fb_id_, 0, 0, &connector_id_, 1, &mode) < 0) {
-      printf("[HAL WARNING] [ImxDisplay] drmModeSetCrtc failed. Falling back to mock mode.\n");
-      munmap(map_, size_);
-      map_ = MAP_FAILED;
-      drmModeRmFB_(fd_, fb_id_);
-      struct drm_mode_destroy_dumb destroy_req;
-      memset(&destroy_req, 0, sizeof(destroy_req));
-      destroy_req.handle = handle_;
-      ioctl(fd_, DRM_IOCTL_MODE_DESTROY_DUMB, &destroy_req);
-      drmModeFreeConnector_(conn);
-      drmModeFreeResources_(res);
-      close(fd_);
-      fd_ = -1;
-      is_mock_ = true;
-      return true;
-    }
-
-    printf("[HAL] [ImxDisplay] Real board DRM/KMS HDMI display initialized successfully (Resolution: %dx%d).\n", width, height);
+    printf("[HAL] [ImxDisplay] Real board DRM/KMS HDMI display initialized successfully (Resolution: %dx%d).\n", width_, height_);
 
     drmModeFreeConnector_(conn);
     drmModeFreeResources_(res);
     return true;
   }
 
+  VideoFrame getBackBuffer() override {
+    VideoFrame frame;
+    if (is_mock_) {
+      frame.cpu_data = mock_buffer_.data();
+      frame.dma_buf_fd = -1;
+      frame.width = 1920;
+      frame.height = 1080;
+      frame.stride = 1920 * 4;
+      return frame;
+    }
+
+    if (is_gbm_active_) {
+      int back_idx = 1 - current_buf_idx_;
+      frame.cpu_data = nullptr;
+      frame.dma_buf_fd = dma_buf_fds_[back_idx];
+      frame.width = width_;
+      frame.height = height_;
+      frame.stride = gbm_bo_get_stride_(bos_[back_idx]);
+      return frame;
+    }
+
+    // Dumb buffer fallback
+    frame.cpu_data = (const uint8_t*)map_;
+    frame.dma_buf_fd = -1;
+    frame.width = width_;
+    frame.height = height_;
+    frame.stride = stride_;
+    return frame;
+  }
+
   bool outputFrame(const VideoFrame& frame) override {
-    if (is_mock_ || fd_ < 0 || map_ == MAP_FAILED) {
+    if (is_mock_ || fd_ < 0) {
       printf("[HAL] [ImxDisplay] Real board HDMI display output frame simulated (Wayland/DRM Bypass).\n");
       return true;
     }
 
-    // Output stitched frame (RGBA) to physical HDMI dumb framebuffer (XRGB format)
-    if (frame.cpu_data) {
+    if (is_gbm_active_) {
+      int back_idx = 1 - current_buf_idx_;
+      if (frame.dma_buf_fd >= 0 && frame.dma_buf_fd == dma_buf_fds_[back_idx]) {
+        if (drmModePageFlip_ && drmModePageFlip_(fd_, crtc_id_, fb_ids_[back_idx], 0, nullptr) >= 0) {
+          current_buf_idx_ = back_idx;
+          return true;
+        } else {
+          static int log_count = 0;
+          if (log_count++ < 5) {
+            perror("[HAL WARNING] [ImxDisplay] drmModePageFlip failed");
+          }
+        }
+      }
+    }
+
+    // Copy frame to dumb buffer (fallback path)
+    if (frame.cpu_data && map_ != MAP_FAILED) {
       uint32_t* dst = (uint32_t*)map_;
       uint32_t pitch_pixels = stride_ / 4;
 
-      // Copy the frame pixels (width x height) to the top-left of the display buffer
       for (int y = 0; y < frame.height; y++) {
         for (int x = 0; x < frame.width; x++) {
           int idx = (y * frame.width + x) * 4;
@@ -2110,6 +2570,18 @@ public:
 
   void terminate() override {
     if (fd_ >= 0) {
+      if (is_gbm_active_) {
+        for (int i = 0; i < 2; i++) {
+          if (fb_ids_[i]) drmModeRmFB_(fd_, fb_ids_[i]);
+          if (dma_buf_fds_[i] >= 0) close(dma_buf_fds_[i]);
+          if (bos_[i]) gbm_bo_destroy_(bos_[i]);
+        }
+        if (gbm_device_destroy_ && gbm_dev_) {
+          gbm_device_destroy_(gbm_dev_);
+          gbm_dev_ = nullptr;
+        }
+        is_gbm_active_ = false;
+      }
       if (map_ != MAP_FAILED) {
         munmap(map_, size_);
         map_ = MAP_FAILED;
@@ -2127,6 +2599,10 @@ public:
       }
       close(fd_);
       fd_ = -1;
+    }
+    if (gbm_lib_handle_) {
+      dlclose(gbm_lib_handle_);
+      gbm_lib_handle_ = nullptr;
     }
     if (drm_lib_handle_) {
       dlclose(drm_lib_handle_);

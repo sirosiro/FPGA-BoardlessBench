@@ -812,7 +812,64 @@ ioctl(dma_buf_fd, DMA_BUF_IOCTL_SYNC,
 | 比較項目 | ① PCエミュレーション (Mesa) | ② i.MX 8M Plus (Vivante) | ③ i.MX 95 (Mali) |
 | --- | --- | --- | --- |
 | **バッファの正体** | 通常のシステム配列（`uint8_t*`） | 物理連続メモリ（`dma_buf_fd`） | 物理連続メモリ（`dma_buf_fd`） |
-| **APIの呼び出し** | 標準の `glTexImage2D` のみ。 | `eglCreateImageKHR` などの拡張関数ポインタの取得が必要。 | 同左、さらに `ioctl(dma_buf_fd)` による同期が必要。 |
+| **APIの呼び出し** | 標準の `glTexImage2D` のみ。 | `eglCreateImageKHR` などの拡張関数ポインタ of 取得が必要。 | 同左、さらに `ioctl(dma_buf_fd)` による同期が必要。 |
 | **グラフィックスの転送** | **CPUコピー**（毎フレーム `memcpy` 相当の重い処理が発生）。 | **ゼロコピー**（GPUがメモリを直接覗きに行く）。 | **ゼロコピー**（さらにAFBC圧縮等でバス帯域を節約）。 |
 | **同期の責任** | 同期は不要（コピー完了）。 | ドライバ（フェンス）が自動で同期することが多い。 | ISP、NPU、GPUが超高速で並列動作するため、**`ioctl`（`DMA_BUF_IOCTL_SYNC`）での明示的同期**が必要になるケースがある。 |
+
+
+---
+
+## 9. ゼロコピーディスプレイ表示パイプライン (EGL/DRM/GBM Swapchain)
+
+本リファクタリングにより、EGL/OpenGL ES レンダリングコンテキストと Linux のディスプレイエンジン（DRM/KMSおよびGBM）との間における完全ゼロコピー表示パイプライン（ダブルバッファリング Swapchain）をHALへ統合しました。
+
+### 9.1. ゼロコピー Swapchain 設計図 (EGL Image to DRM Framebuffer)
+
+```mermaid
+sequenceDiagram
+    participant App as アプリケーション (main.cpp)
+    participant Display as ImxDisplaySink
+    participant GPU as IVideoProcessor (GPU)
+    participant DRM as DRM/KMS Kernel
+
+    App->>Display: getBackBuffer()
+    Note over Display: 表画面 (Front BO) と裏画面 (Back BO) を交互にトグル
+    Display-->>App: VideoFrame (dma_buf_fd = 裏画面 BO)
+    
+    App->>GPU: processFrame(inputs, output)
+    Note over GPU: output.dma_buf_fd (裏画面) から EGLImageKHR を作成
+    Note over GPU: FBO (Color Attachment) にバインドし、GPUで直接裏画面バッファへ描画
+    GPU-->>App: processFrame完了
+    
+    App->>Display: outputFrame(output)
+    Note over Display: frame.dma_buf_fd == 裏画面のdma_buf_fd であることを検証
+    Display->>DRM: drmModePageFlip(fd, crtc_id, fb_id_back, 0, NULL)
+    Note over DRM: V-BLANK 同期で画面表示を切り替え
+    DRM-->>Display: Page Flip 完了
+    Note over Display: current_buf_idx を更新 (裏画面が表画面に昇格)
+    Display-->>App: outputFrame完了
+```
+
+### 9.2. 追加・更新された HAL API メソッド
+
+#### `IDisplaySink::getBackBuffer() -> VideoFrame`
+- **役割**: ダブルバッファ構成の Swapchain から、現在描画可能な非表示バッファ（裏画面バッファ）を取得します。
+- **実装詳細**:
+  - **`HostDisplaySink`**: 1920x1080x4 のホストシステムメモリバッファを `VideoFrame.cpu_data` にセットし、`dma_buf_fd = -1` として返却します。
+  - **`ImxDisplaySink` (実機)**: GBM デバイスからあらかじめ確保されている 2枚の `gbm_bo`（ダブルバッファ）のうち、現在非表示状態のバッファの `dma_buf_fd` を `VideoFrame` のメンバとして返却します。`cpu_data` は `nullptr` に設定されます。
+
+#### `IDisplaySink::outputFrame(const VideoFrame& frame) -> bool`
+- **役割**: 描画完了バッファをディスプレイの表示対象へ切り替えます。
+- **実装詳細**:
+  - **`HostDisplaySink`**: 受信した `frame.cpu_data` を `/tmp/hdmi_output.bmp` ファイルへ同期的に書き出します（PC Mesa用ダンプ）。
+  - **`ImxDisplaySink` (実機)**: `frame.dma_buf_fd` が有効な場合、それが Swapchain の裏画面バッファの FD であることを照合し、カーネルの `drmModePageFlip()` を呼び出して瞬時にV-BLANK同期で画面表示を切り替えます。これにより、CPUによるピクセルコピーや glReadPixels などのブロッキング読み込みを完全に排除した「ゼロコピー画面表示」が実現されます。
+
+### 9.3. アプリケーション層 (main.cpp) のリファクタリング効果
+従来、`main.cpp` 側で行われていた以下の CPU 負荷の高い処理がすべて廃止されました。
+1. `resizeRGBA` による CPU スケール（縦横サイズ変換・ピクセルコピー）のループ。
+2. 上下反転（`av_top_down`）のための CPU メモリ転送処理。
+3. `memcpy` による左右画面レイアウト（左側2x2生カメラ、右側AroundView）の組み立て処理。
+
+これらがすべて GPU 側の GLSL フラグメントシェーダー内での座標マッピング（`u_mode = 2.0`）として完全自動・統合化されました。アプリケーション層は、取得した `getBackBuffer()` のバッファを `processFrame()` の出力先として GPU に直接渡すだけで、自動的に合成・補正・レイアウト配置が施されたフレームが生成され、`outputFrame()` でゼロコピー表示されるシンプルな設計へ洗練されました。
+
 

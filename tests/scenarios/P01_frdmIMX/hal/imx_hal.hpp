@@ -73,6 +73,7 @@ class IDisplaySink {
 public:
   virtual ~IDisplaySink() = default;
   virtual bool initialize() = 0;
+  virtual VideoFrame getBackBuffer() = 0;
   virtual bool outputFrame(const VideoFrame& frame) = 0;
   virtual void terminate() = 0;
 };
