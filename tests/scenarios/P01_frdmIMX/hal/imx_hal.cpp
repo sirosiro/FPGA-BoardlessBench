@@ -20,6 +20,10 @@
 #include <sys/ioctl.h>
 #include <drm/drm.h>
 #include <drm/drm_mode.h>
+#if defined(__linux__)
+#include <linux/dma-buf.h>
+#endif
+
 
 
 // OpenGL ES and EGL headers
@@ -58,6 +62,17 @@ struct gbm_bo;
 #ifndef GL_TEXTURE_EXTERNAL_OES
 #define GL_TEXTURE_EXTERNAL_OES 0x8D65
 #endif
+
+#ifndef EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT
+#define EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT 0x3443
+#endif
+#ifndef EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT
+#define EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT 0x3444
+#endif
+#ifndef DRM_FORMAT_MOD_ARM_AFBC
+#define DRM_FORMAT_MOD_ARM_AFBC 0x0800000000000001ULL
+#endif
+
 
 // Standard base addresses and sizes
 constexpr unsigned long IMX8MP_GPIO1_BASE = 0x30200000;
@@ -1104,6 +1119,21 @@ protected:
   GLuint fbo_ = 0;
   GLuint tex_out_ = 0;
 
+  // Virtual hooks for subclass-specific GPU/display tuning
+  virtual void setupEglImageAttribs(std::vector<EGLint>& attribs, int fd, int width, int height, int stride) {
+    (void)attribs;
+    (void)fd;
+    (void)width;
+    (void)height;
+    (void)stride;
+  }
+  virtual void preDrawSync(int fd) {
+    (void)fd;
+  }
+  virtual void postDrawSync(int fd) {
+    (void)fd;
+  }
+
   bool loadGbmApis() {
     gbm_lib_handle_ = dlopen("libgbm.so", RTLD_LAZY);
     if (!gbm_lib_handle_) {
@@ -1377,16 +1407,18 @@ public:
             eglDestroyImageKHR_(egl_dpy_, egl_img_in_[i]);
             egl_img_in_[i] = EGL_NO_IMAGE_KHR;
           }
-          EGLint img_attribs[] = {
+          std::vector<EGLint> img_attribs = {
               EGL_WIDTH, in_width,
               EGL_HEIGHT, in_height,
               EGL_LINUX_DMA_BUF_EXT,
               EGL_DMA_BUF_PLANE0_FD_EXT, inputs[i].dma_buf_fd,
               EGL_DMA_BUF_PLANE0_OFFSET_EXT, 0,
-              EGL_DMA_BUF_PLANE0_PITCH_EXT, inputs[i].stride ? inputs[i].stride : in_width * 4,
-              EGL_NONE
+              EGL_DMA_BUF_PLANE0_PITCH_EXT, inputs[i].stride ? (EGLint)inputs[i].stride : (EGLint)(in_width * 4)
           };
-          egl_img_in_[i] = eglCreateImageKHR_(egl_dpy_, EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, NULL, img_attribs);
+          setupEglImageAttribs(img_attribs, inputs[i].dma_buf_fd, in_width, in_height, inputs[i].stride ? inputs[i].stride : in_width * 4);
+          img_attribs.push_back(EGL_NONE);
+
+          egl_img_in_[i] = eglCreateImageKHR_(egl_dpy_, EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, NULL, img_attribs.data());
           if (egl_img_in_[i] == EGL_NO_IMAGE_KHR) {
             fprintf(stderr, "[HAL ERROR] [Production] Failed to create EGLImage from dma-buf fd for stream %d\n", i);
             return false;
@@ -1419,18 +1451,19 @@ public:
           int dbuf_fd = gbm_bo_get_fd_(gbm_bo_in_[i]);
           uint32_t stride = gbm_bo_get_stride_(gbm_bo_in_[i]);
 
-          EGLint img_attribs[] = {
+          std::vector<EGLint> img_attribs = {
               EGL_WIDTH, in_width,
               EGL_HEIGHT, in_height,
               EGL_LINUX_DMA_BUF_EXT, // format or target config
               EGL_DMA_BUF_PLANE0_FD_EXT, dbuf_fd,
               EGL_DMA_BUF_PLANE0_OFFSET_EXT, 0,
-              EGL_DMA_BUF_PLANE0_PITCH_EXT, (EGLint)stride,
-              EGL_NONE
+              EGL_DMA_BUF_PLANE0_PITCH_EXT, (EGLint)stride
           };
+          setupEglImageAttribs(img_attribs, dbuf_fd, in_width, in_height, stride);
+          img_attribs.push_back(EGL_NONE);
 
           // 2. Create EGLImageKHR from DMA-BUF
-          egl_img_in_[i] = eglCreateImageKHR_(egl_dpy_, EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, NULL, img_attribs);
+          egl_img_in_[i] = eglCreateImageKHR_(egl_dpy_, EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, NULL, img_attribs.data());
           if (egl_img_in_[i] == EGL_NO_IMAGE_KHR) {
             fprintf(stderr, "[HAL ERROR] [Production] Failed to create EGLImage from dma-buf fd for stream %d\n", i);
             close(dbuf_fd);
@@ -1527,7 +1560,19 @@ public:
         glUniform1i(glGetUniformLocation(program_, tex_name), i);
       }
 
+      for (int i = 0; i < 4; i++) {
+        if (inputs[i].dma_buf_fd >= 0) {
+          preDrawSync(inputs[i].dma_buf_fd);
+        }
+      }
+
       glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+
+      for (int i = 0; i < 4; i++) {
+        if (inputs[i].dma_buf_fd >= 0) {
+          postDrawSync(inputs[i].dma_buf_fd);
+        }
+      }
 
       glDisableVertexAttribArray(pos_attr);
       glDisableVertexAttribArray(tex_attr);
@@ -1603,6 +1648,49 @@ public:
 };
 
 class Imx95GlesProcessor : public ImxGlesProcessorBase {
+protected:
+  void setupEglImageAttribs(std::vector<EGLint>& attribs, int fd, int width, int height, int stride) override {
+    (void)fd;
+    (void)width;
+    (void)height;
+    (void)stride;
+    // Mali-specific AFBC compression modifier attribute setup
+    attribs.push_back(EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT);
+    attribs.push_back((EGLint)(DRM_FORMAT_MOD_ARM_AFBC & 0xFFFFFFFF));
+    attribs.push_back(EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT);
+    attribs.push_back((EGLint)(DRM_FORMAT_MOD_ARM_AFBC >> 32));
+  }
+
+  void preDrawSync(int fd) override {
+#if defined(__linux__) && defined(DMA_BUF_IOCTL_SYNC)
+    struct dma_buf_sync sync = {0};
+    sync.flags = DMA_BUF_SYNC_START | DMA_BUF_SYNC_RW;
+    if (ioctl(fd, DMA_BUF_IOCTL_SYNC, &sync) < 0) {
+      static int log_count = 0;
+      if (log_count++ < 5) {
+        perror("[HAL WARNING] [Imx95Gles] DMA_BUF_SYNC_START failed");
+      }
+    }
+#else
+    (void)fd;
+#endif
+  }
+
+  void postDrawSync(int fd) override {
+#if defined(__linux__) && defined(DMA_BUF_IOCTL_SYNC)
+    struct dma_buf_sync sync = {0};
+    sync.flags = DMA_BUF_SYNC_END | DMA_BUF_SYNC_RW;
+    if (ioctl(fd, DMA_BUF_IOCTL_SYNC, &sync) < 0) {
+      static int log_count = 0;
+      if (log_count++ < 5) {
+        perror("[HAL WARNING] [Imx95Gles] DMA_BUF_SYNC_END failed");
+      }
+    }
+#else
+    (void)fd;
+#endif
+  }
+
 public:
   Imx95GlesProcessor() : ImxGlesProcessorBase(SocType::IMX95) {}
 };
