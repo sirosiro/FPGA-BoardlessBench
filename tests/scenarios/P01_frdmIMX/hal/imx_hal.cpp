@@ -142,6 +142,11 @@ protected:
   std::vector<std::pair<int, int>> interlock_pairs_;       // 相互排他ペアリスト
   uint32_t interlocked_pins_mask_;                         // インターロック対象ピンの32bitビットマスク
 
+  // SoC-specific register offsets parameterization
+  int reg_idx_data_out_ = 0;
+  int reg_idx_data_in_ = 0;
+  int reg_idx_dir_ = 1;
+
   // 物理境界および方向の整合性を述語(Predicate)ラムダ式で検証する Fail-Fast テンプレートメソッド
   template <typename Predicate>
   void validatePin(int pin_num, Predicate&& validator, const char* error_reason) const {
@@ -169,7 +174,7 @@ protected:
             "System is aborting immediately to prevent potential hardware/board damage.\n\n",
             pin_num, details.c_str());
     if (gpio_regs_) {
-      gpio_regs_[1] = 0x0; // 安全のため全ピンを入力化
+      gpio_regs_[reg_idx_dir_] = 0x0; // 安全のため全ピンを入力化
     }
     abort();
   }
@@ -196,18 +201,21 @@ protected:
 
   // ガードチェックを一切行わない、内部用の高速な生レジスタ読み込みメソッド (インライン展開用)
   inline bool readPinRaw(int pin_num) const {
-    return (gpio_regs_[0] & (1 << pin_num)) != 0;
+    int reg_idx = (pin_directions_[pin_num] == IGpioController::Direction::OUTPUT)
+                  ? reg_idx_data_out_
+                  : reg_idx_data_in_;
+    return (gpio_regs_[reg_idx] & (1 << pin_num)) != 0;
   }
 
   // ガードチェックを一切行わない、内部用の高速な生レジスタ書き込みメソッド (インライン展開用)
   inline void writePinRaw(int pin_num, bool value) {
-    uint32_t dr = gpio_regs_[0];
+    uint32_t dr = gpio_regs_[reg_idx_data_out_];
     if (value) {
       dr |= (1 << pin_num);
     } else {
       dr &= ~(1 << pin_num);
     }
-    gpio_regs_[0] = dr;
+    gpio_regs_[reg_idx_data_out_] = dr;
   }
 
   // 登録されたすべてのピンを単一のスレッドで一括監視（イベントマルチプレクシング）するループ。
@@ -315,13 +323,13 @@ public:
 
     // ピン方向の一括設定 (1 = output, 0 = input)
     for (const auto &[pin_num, dir] : pin_config) {
-      uint32_t gdir = gpio_regs_[1];
+      uint32_t gdir = gpio_regs_[reg_idx_dir_];
       if (dir == IGpioController::Direction::OUTPUT) {
         gdir |= (1 << pin_num);
       } else {
         gdir &= ~(1 << pin_num);
       }
-      gpio_regs_[1] = gdir;
+      gpio_regs_[reg_idx_dir_] = gdir;
     }
     return true;
   }
@@ -343,8 +351,10 @@ public:
                 "readPin(): Pin was not declared in the initialization map.");
     if (!gpio_regs_)
       return false;
-    // DR (Data Register) is at offset 0x00 (index 0)
-    uint32_t dr = gpio_regs_[0];
+    int reg_idx = (pin_directions_[pin_num] == IGpioController::Direction::OUTPUT)
+                  ? reg_idx_data_out_
+                  : reg_idx_data_in_;
+    uint32_t dr = gpio_regs_[reg_idx];
     return (dr & (1 << pin_num)) != 0;
   }
 
@@ -479,12 +489,20 @@ public:
 
 class Imx8mpGpioController : public GpioControllerBase {
 public:
-  Imx8mpGpioController() : GpioControllerBase(IMX8MP_GPIO1_BASE, IMX8MP_GPIO1_MAX_PINS) {}
+  Imx8mpGpioController() : GpioControllerBase(IMX8MP_GPIO1_BASE, IMX8MP_GPIO1_MAX_PINS) {
+    reg_idx_data_out_ = 0; // DR @ 0x00
+    reg_idx_data_in_  = 0; // DR @ 0x00
+    reg_idx_dir_      = 1; // GDIR @ 0x04
+  }
 };
 
 class Imx95RgpioController : public GpioControllerBase {
 public:
-  Imx95RgpioController() : GpioControllerBase(IMX95_GPIO1_BASE, IMX95_GPIO1_MAX_PINS) {}
+  Imx95RgpioController() : GpioControllerBase(IMX95_GPIO1_BASE, IMX95_GPIO1_MAX_PINS) {
+    reg_idx_data_out_ = 0; // PDOR @ 0x00
+    reg_idx_data_in_  = 1; // PDIR @ 0x04
+    reg_idx_dir_      = 2; // PDDR @ 0x08
+  }
 };
 
 // =============================================================================

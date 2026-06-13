@@ -9,42 +9,64 @@ function GpioPanel() {
       <div className="panel-header"><ToggleRight size={16} /> GPIO / Pin Array (118ch)</div>
       <div className="gpio-viewport" style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
         {gpioDevices.map((dev, i) => {
-          const devDataRegs = registers.filter(r => r.deviceName === dev.name && r.name.startsWith('DATA'));
-          
-          if (devDataRegs.length === 0) return null;
+          // Find registers for this device
+          const devRegs = registers.filter(r => r.deviceName === dev.name);
+          if (devRegs.length === 0) return null;
 
-          return devDataRegs.map((dataReg, chIndex) => {
-            // Find matching TRI register (e.g., DATA -> TRI, DATA2 -> TRI2)
-            const suffix = dataReg.name.replace('DATA', '');
-            const triReg = registers.find(r => r.deviceName === dev.name && r.name === `TRI${suffix}`);
-            
-            const dataVal = dataReg?.decimal || 0;
-            const triVal = triReg?.decimal || 0;
-            const labelName = devDataRegs.length > 1 ? `${dev.name} (${dataReg.name})` : dev.name;
-            
-            return (
-              <div key={`gpio-${i}-ch${chIndex}`} className="gpio-dev-group">
-                <div className="gpio-dev-label">{labelName}</div>
-                <div className="gpio-grid">
-                  {Array.from({ length: 32 }).map((_, bitIndex) => {
-                    const isInput = (triVal & (1 << bitIndex)) !== 0;
-                    const isOn = (dataVal & (1 << bitIndex)) !== 0;
-                    return (
-                      <div 
-                        key={bitIndex} 
-                        className={`gpio-bit ${isInput ? 'input' : 'output'} ${isOn ? 'on' : 'off'}`}
-                        onClick={() => isInput && handleGpioToggle(dev.name, bitIndex, isOn, dataReg.name)}
-                        title={`${labelName} Bit ${bitIndex} (${isInput ? 'Input' : 'Output'})`}
-                      >
-                        <div className="gpio-indicator"></div>
-                        <span className="gpio-label">B{bitIndex}</span>
-                      </div>
-                    );
-                  })}
-                </div>
+          // Find direction register (TRI or GDIR)
+          const dirReg = devRegs.find(r => 
+            (r.logical_name || r.name).startsWith('TRI') || 
+            (r.logical_name || r.name).startsWith('GDIR')
+          );
+
+          // Find DATA registers (Data Out vs Data In)
+          const dataRegs = devRegs.filter(r => (r.logical_name || r.name).startsWith('DATA'));
+          if (dataRegs.length === 0) return null;
+
+          // If there are multiple DATA registers, try to distinguish by physical name (PDOR vs PDIR)
+          let dataOutReg = dataRegs.find(r => r.name.includes('PDOR') || r.name.includes('OUT') || r.name === 'DR') || dataRegs[0];
+          let dataInReg = dataRegs.find(r => r.name.includes('PDIR') || r.name.includes('IN')) || dataRegs[0];
+
+          // If we couldn't distinguish, fallback to the same register
+          if (!dataOutReg) dataOutReg = dataRegs[0];
+          if (!dataInReg) dataInReg = dataRegs[0];
+
+          const dirVal = dirReg?.decimal || 0;
+          const dataOutVal = dataOutReg?.decimal || 0;
+          const dataInVal = dataInReg?.decimal || 0;
+
+          const isGdir = dirReg && (dirReg.logical_name || dirReg.name).startsWith('GDIR');
+          const labelName = dev.name;
+
+          return (
+            <div key={`gpio-${i}`} className="gpio-dev-group">
+              <div className="gpio-dev-label">{labelName}</div>
+              <div className="gpio-grid">
+                {Array.from({ length: 32 }).map((_, bitIndex) => {
+                  const isInput = isGdir 
+                    ? (dirVal & (1 << bitIndex)) === 0 
+                    : (dirVal & (1 << bitIndex)) !== 0;
+
+                  // Read from dataInReg if input, dataOutReg if output
+                  const isOn = isInput 
+                    ? (dataInVal & (1 << bitIndex)) !== 0
+                    : (dataOutVal & (1 << bitIndex)) !== 0;
+
+                  return (
+                    <div 
+                      key={bitIndex} 
+                      className={`gpio-bit ${isInput ? 'input' : 'output'} ${isOn ? 'on' : 'off'}`}
+                      onClick={() => isInput && handleGpioToggle(dev.name, bitIndex, isOn, dataInReg.name)}
+                      title={`${labelName} Bit ${bitIndex} (${isInput ? 'Input' : 'Output'})`}
+                    >
+                      <div className="gpio-indicator"></div>
+                      <span className="gpio-label">B{bitIndex}</span>
+                    </div>
+                  );
+                })}
               </div>
-            );
-          });
+            </div>
+          );
         })}
       </div>
     </div>

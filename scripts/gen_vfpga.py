@@ -8,10 +8,11 @@ import sys
 # =============================================================================
 
 class Register:
-    def __init__(self, name, offset, direction='RW'):
+    def __init__(self, name, offset, direction='RW', logical_name=None):
         self.name = name
         self.offset = offset
         self.direction = direction.upper()
+        self.logical_name = logical_name
 
 class Device:
     def __init__(self, name, path, dev_type, base_reg):
@@ -87,7 +88,18 @@ class DTSParser:
                             reg_parts = r_str.split('@')
                             reg_name = reg_parts[0].strip()
                             reg_offset = reg_parts[1].strip()
-                            device.registers.append(Register(reg_name, reg_offset, 'RW'))
+                            
+                            # Parse parenthesis syntax: "PHYSICAL(LOGICAL)"
+                            logical_name = None
+                            paren_match = re.match(r'^([a-zA-Z0-9_]+)\s*\(\s*([a-zA-Z0-9_]+)\s*\)$', reg_name)
+                            if paren_match:
+                                reg_name = paren_match.group(1)
+                                logical_name = paren_match.group(2)
+                            else:
+                                # Fallback: No explicit logical name, use physical name as logical name
+                                logical_name = reg_name
+                            
+                            device.registers.append(Register(reg_name, reg_offset, 'RW', logical_name))
                 devices.append(device)
         
         # 共有メモリ名として使用するボード名を決定（UIO > GPIO > デフォルト）
@@ -638,7 +650,7 @@ class ManifestGenerator(BaseGenerator):
                 "path": dev.path,
                 "base_addr": dev.base_addr,
                 "base_reg": dev.base_reg,
-                "registers": [{"name": r.name, "offset": r.offset} for r in dev.registers],
+                "registers": [{"name": r.name, "logical_name": r.logical_name or r.name, "offset": r.offset} for r in dev.registers],
                 "extra": dev.extra_props
             }
             manifest["devices"].append(dev_info)

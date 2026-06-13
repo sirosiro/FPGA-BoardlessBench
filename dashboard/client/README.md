@@ -25,7 +25,7 @@
 - **`components/RegisterMonitor.jsx`**: ボード上の内部レジスタ名、オフセット、現在の値をリアルタイムに監視するテーブル。
 - **`components/GpioPanel.jsx`**: 
   - UIO/GPIOデバイスの入出力ビットピンアレイ（118チャネル）を描画するグリッドパネル。
-  - `TRI` レジスタ値に基づき、LED表示（出力）とトグルスイッチ表示（入力・インジェクション対応）を切り替え。
+  - 方向レジスタ（TRI や GDIR など）の論理名に基づき、LED表示（出力）とトグルスイッチ表示（入力・インジェクション対応）を切り替え。
 - **`components/UartTerminal.jsx`**: 
   - UARTデバイス（シリアルコンソール）ごとのタブ切り替えとログ出力、およびコマンド送信を行うターミナル。
 - **`components/RegisterTracer.jsx`**: 

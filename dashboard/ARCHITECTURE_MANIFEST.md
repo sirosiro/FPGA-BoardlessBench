@@ -33,7 +33,7 @@
 ### 3.2 Dashboard Frontend (React)
 - **技術スタック**: Vite + React + Lucide-react (Icons) + Socket.io-client + **recharts** (Charting) + **dockview-react** (Docking Layout)。
 - **特徴**: 
-    - 118 チャネルの GPIO をグリッド表示し、`TRI` レジスタの値に基づき LED（出力）とトグルスイッチ（入力）を動的に切り替えて描画。
+    - 118 チャネルの GPIO をグリッド表示し、方向レジスタ（TRI や GDIR など）の論理名に基づき LED（出力）とトグルスイッチ（入力）を動的に切り替えて描画。
     - **Register State Tracer**: レジスタの変化履歴を正規化表示し、微小な変化も可視化。凡例クリックによる表示・非表示の切り替えをサポート。
     - **IDE-style Docking Layout (Dockview)**: VS Code互換のドッキングレイアウトを採用。パネルのドラッグ＆ドロップによる分割・結合・タブ化・フローティング化をネイティブサポートし、UI全体の配置リセット機能（Reset Layout）も完備。レレガシーな手動リサイズコードを撤去し、高精度なリサイズ体験を提供。
 
