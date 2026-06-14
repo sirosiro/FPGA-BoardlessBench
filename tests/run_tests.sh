@@ -39,22 +39,40 @@ cleanup_processes() {
 # --- Argument Parsing ---
 CLEAN=false
 INTERACTIVE=false
+CLEAN_TARGETS=""
 export FORCE_MESA_FALLBACK=1
 
 for arg in "$@"; do
     case $arg in
-        --clean|-c) CLEAN=true ;;
-        --interactive|-i) INTERACTIVE=true ;;
+        --clean|-c) 
+            CLEAN=true 
+            if [[ ! " $CLEAN_TARGETS " =~ " clean " ]]; then
+                CLEAN_TARGETS="$CLEAN_TARGETS clean"
+            fi
+            ;;
+        --interactive|-i) 
+            INTERACTIVE=true 
+            ;;
+        --*) 
+            target=${arg#--}
+            CLEAN=true
+            CLEAN_TARGETS="$CLEAN_TARGETS $target"
+            ;;
     esac
 done
 
+CLEAN_TARGETS=$(echo "$CLEAN_TARGETS" | xargs)
+
 if [ "$CLEAN" = true ]; then
-    echo "[Runner] Cleaning project artifacts and logs..."
+    if [ -z "$CLEAN_TARGETS" ]; then
+        CLEAN_TARGETS="clean"
+    fi
+    echo "[Runner] Cleaning project artifacts and logs with targets: ${CLEAN_TARGETS}..."
     make clean
     rm -f tests/scenarios/*/test_bin tests/scenarios/*/*.bin
     for scenario in tests/scenarios/*; do
         if [ -f "${scenario}/Makefile" ]; then
-            make -C "${scenario}" clean > /dev/null 2>&1 || true
+            make -C "${scenario}" ${CLEAN_TARGETS} > /dev/null 2>&1 || true
         fi
     done
     rm -f tests/scenarios/*/*.log

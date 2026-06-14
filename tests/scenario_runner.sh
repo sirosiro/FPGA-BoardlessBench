@@ -12,33 +12,57 @@
 PROJECT_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SCENARIO_PATH=""
 CLEAN=false
+CLEAN_TARGETS=""
 
 # --- 引数解析 ---
 for arg in "$@"; do
     case $arg in
-        --clean|-c) CLEAN=true ;;
-        *) if [ -d "$arg" ]; then SCENARIO_PATH="$arg"; fi ;;
+        --clean|-c) 
+            CLEAN=true 
+            if [[ ! " $CLEAN_TARGETS " =~ " clean " ]]; then
+                CLEAN_TARGETS="$CLEAN_TARGETS clean"
+            fi
+            ;;
+        --*) 
+            target=${arg#--}
+            CLEAN=true
+            CLEAN_TARGETS="$CLEAN_TARGETS $target"
+            ;;
+        *) 
+            if [ -d "$arg" ]; then 
+                SCENARIO_PATH="$arg"; 
+            fi 
+            ;;
     esac
 done
 
-if [ -z "$SCENARIO_PATH" ]; then
+CLEAN_TARGETS=$(echo "$CLEAN_TARGETS" | xargs)
+
+if [ -z "$SCENARIO_PATH" ] && [ "$CLEAN" = false ]; then
     echo "Usage: $0 <scenario_directory_path> [--clean|-c]"
     exit 1
 fi
 
-# シナリオの絶対パスを取得
-SCENARIO_DIR=$(cd "$SCENARIO_PATH" && pwd)
-SCENARIO_NAME=$(basename "$SCENARIO_DIR")
+# シナリオの絶対パスを取得 (クリーンモードで引数が指定されていない場合はカレントディレクトリまたは推測)
+if [ -n "$SCENARIO_PATH" ]; then
+    SCENARIO_DIR=$(cd "$SCENARIO_PATH" && pwd)
+    SCENARIO_NAME=$(basename "$SCENARIO_DIR")
+fi
 
 # --- クリーンアップモード ---
 if [ "$CLEAN" = true ]; then
-    echo "[Runner] Cleaning artifacts for scenario: ${SCENARIO_NAME}..."
+    if [ -z "$CLEAN_TARGETS" ]; then
+        CLEAN_TARGETS="clean"
+    fi
+    echo "[Runner] Cleaning artifacts for scenario: ${SCENARIO_NAME} with targets: ${CLEAN_TARGETS}..."
     cd "${PROJECT_ROOT}"
     make clean > /dev/null 2>&1 || true
-    if [ -f "${SCENARIO_DIR}/Makefile" ]; then
-        make -C "${SCENARIO_DIR}" clean > /dev/null 2>&1 || true
+    if [ -n "$SCENARIO_DIR" ] && [ -f "${SCENARIO_DIR}/Makefile" ]; then
+        make -C "${SCENARIO_DIR}" ${CLEAN_TARGETS} > /dev/null 2>&1 || true
     fi
-    rm -f "${SCENARIO_DIR}/"*.log
+    if [ -n "$SCENARIO_DIR" ]; then
+        rm -f "${SCENARIO_DIR}/"*.log
+    fi
     rm -f "${PROJECT_ROOT}/controller.log" "${PROJECT_ROOT}/simulator.log"
     echo "[Runner] Clean finished."
     exit 0
