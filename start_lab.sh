@@ -29,6 +29,15 @@ cleanup() {
     pkill -f "node dashboard/server.js" 2>/dev/null
     pkill test_bin 2>/dev/null
     
+    # remoteproc M-core processes cleanup
+    if [ -f "/tmp/fbb/sys/class/remoteproc/remoteproc0/pid" ]; then
+        MCORE_PID=$(cat /tmp/fbb/sys/class/remoteproc/remoteproc0/pid 2>/dev/null)
+        if [ -n "$MCORE_PID" ]; then
+            kill -9 $MCORE_PID 2>/dev/null
+        fi
+    fi
+    rm -rf /tmp/fbb 2>/dev/null
+
     # 共有メモリファイルとマニフェストの削除
     echo "Cleaning up temporary files..."
     rm -f /tmp/vfpga_* 2>/dev/null
@@ -50,6 +59,7 @@ echo "===================================================="
 echo "[0/3] Cleaning up previous state..."
 rm -f dashboard/data/vfpga_uart_* 2>/dev/null
 rm -f /tmp/hdmi_output.bmp 2>/dev/null
+rm -rf /tmp/fbb 2>/dev/null
 pkill -f "node dashboard/server.js" 2>/dev/null
 make clean > /dev/null 2>&1
 
@@ -129,7 +139,11 @@ echo "   Starting firmware application..."
 export VFPGA_INTERACTIVE=1
 export FORCE_MESA_FALLBACK=1
 export FORCE_HOST_DISPLAY=1
-LD_PRELOAD="$PWD/libfpgashim.so" "${SCENARIO_DIR}/test_bin"
+export LD_PRELOAD="$PWD/libfpgashim.so"
+export FBB_ACTIVE=1
+"${SCENARIO_DIR}/run.sh"
+unset FBB_ACTIVE
+unset LD_PRELOAD
 
 # アプリ終了後もバックエンドの状態を監視し続ける
 while true; do

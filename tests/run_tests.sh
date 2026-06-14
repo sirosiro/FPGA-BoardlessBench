@@ -25,6 +25,15 @@ cleanup_processes() {
     pkill -9 -f vlogic_controller || true
     pkill -9 -f vfpga_sim || true
     pkill -9 -f "dashboard/server.js" || true
+    
+    # remoteproc M-core processes cleanup
+    if [ -f "/tmp/fbb/sys/class/remoteproc/remoteproc0/pid" ]; then
+        MCORE_PID=$(cat /tmp/fbb/sys/class/remoteproc/remoteproc0/pid 2>/dev/null)
+        if [ -n "$MCORE_PID" ]; then
+            kill -9 $MCORE_PID 2>/dev/null
+        fi
+    fi
+    rm -rf /tmp/fbb 2>/dev/null
 }
 
 # --- Argument Parsing ---
@@ -108,10 +117,14 @@ for scenario in ${SCENARIOS_DIR}/*; do
     
     # Run the test
     echo "[Runner] Running test..."
-    LD_PRELOAD=./${SHIM} ./${scenario}/test_bin
-
+    export LD_PRELOAD=$PWD/${SHIM}
+    export FBB_ACTIVE=1
+    ./${scenario}/run.sh
+    RESULT=$?
+    unset FBB_ACTIVE
+    unset LD_PRELOAD
     
-    if [ $? -eq 0 ]; then
+    if [ $RESULT -eq 0 ]; then
         echo "[Runner] RESULT: $(basename ${scenario}) PASSED"
     else
         echo "[Runner] RESULT: $(basename ${scenario}) FAILED"

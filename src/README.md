@@ -19,10 +19,10 @@
 ## 各コンポーネントの詳細
 
 ### 1. controller (Python)
-- **vlogic_controller.py**: プロジェクトの心臓部。共有メモリの初期化、RTLシミュレータの起動監視、UARTブリッジの管理を行います。
+- **vlogic_controller.py**: プロジェクトの心臓部。共有メモリの初期化、RTLシミュレータの起動監視、UARTブリッジの管理に加え、仮想 remoteproc インターフェース (`state`, `firmware`) の状態変化を自律監視し、Mコアプロセスの安全な起動・停止（ライフサイクル管理）を行います。
 
 ### 2. shim (C)
-- **libfpgashim.c**: アプリケーションの `open`, `mmap`, `ioctl` をフックして共有メモリにリダイレクトします。
+- **libfpgashim.c**: アプリケーションの `open`, `mmap`, `ioctl` をフックして共有メモリにリダイレクトします。また、仮想 remoteproc API (`/sys/class/remoteproc/...`) やファームウェアロードパス (`/lib/firmware/...`) へのアクセスを `/tmp/fbb/` 以下に透過的にリダイレクトします。
 - **注意**: このファイルはビルド時に `gen_vfpga.py` によって上書きされるため、直接編集しないでください。
 
 ### 3. sim (C++)

@@ -42,5 +42,11 @@ fi
 echo "[P01_frdmIMX] Preparing config.dts for SOC: ${SOC_TYPE}"
 cp "${SCRIPT_DIR}/${SOC_TYPE}_config.dts" "${SCRIPT_DIR}/config.dts"
 
-cd ../../../
-./start_lab.sh tests/scenarios/P01_frdmIMX/ "$@"
+if [ "$FBB_ACTIVE" = "1" ]; then
+    cd "${SCRIPT_DIR}/../../.."
+    ./tests/scenarios/P01_frdmIMX/test_bin
+else
+    cd ../../../
+    ./start_lab.sh tests/scenarios/P01_frdmIMX/ "$@"
+fi
+

@@ -46,7 +46,7 @@ fi
 
 # --- 設定 ---
 CONTROLLER="${PROJECT_ROOT}/src/controller/vlogic_controller.py"
-SIMULATOR="${PROJECT_ROOT}/obj_dir/Vvfpga_top"
+SIMULATOR="${PROJECT_ROOT}/vfpga_sim"
 SHIM="${PROJECT_ROOT}/libfpgashim.so"
 DTS="${SCENARIO_DIR}/config.dts"
 
@@ -56,6 +56,15 @@ cleanup() {
     pkill -f vlogic_controller || true
     pkill -f Vvfpga_top || true
     pkill -f "node dashboard/server.js" || true
+    
+    # remoteproc M-core processes cleanup
+    if [ -f "/tmp/fbb/sys/class/remoteproc/remoteproc0/pid" ]; then
+        MCORE_PID=$(cat /tmp/fbb/sys/class/remoteproc/remoteproc0/pid 2>/dev/null)
+        if [ -n "$MCORE_PID" ]; then
+            kill -9 $MCORE_PID 2>/dev/null
+        fi
+    fi
+    rm -rf /tmp/fbb 2>/dev/null
 }
 
 # 異常終了時や中断時（Ctrl+C）にプロセスを掃除するように設定
@@ -92,10 +101,12 @@ make -C "${SCENARIO_DIR}" || exit 1
 # 6. アプリケーションの実行 (LD_PRELOADを使用)
 echo "[Runner] Executing application with LD_PRELOAD..."
 cd "${SCENARIO_DIR}"
-LD_PRELOAD="${SHIM}" ./test_bin
-
-# 結果を保持
+export LD_PRELOAD="${SHIM}"
+export FBB_ACTIVE=1
+./run.sh
 RESULT=$?
+unset FBB_ACTIVE
+unset LD_PRELOAD
 
 if [ $RESULT -eq 0 ]; then
     echo -e "\n[Runner] RESULT: SUCCESS"

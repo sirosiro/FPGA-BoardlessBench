@@ -135,6 +135,122 @@ def uart_discovery_thread():
             update_uart_map({f: v[2] for f, v in active_bridges.items()})
         time.sleep(1)
 
+import subprocess
+import signal
+
+def remoteproc_monitor_thread():
+    print("[Python] remoteproc Monitor thread started.")
+    state_file = "/tmp/fbb/sys/class/remoteproc/remoteproc0/state"
+    fw_file = "/tmp/fbb/sys/class/remoteproc/remoteproc0/firmware"
+    pid_file = "/tmp/fbb/sys/class/remoteproc/remoteproc0/pid"
+    
+    current_proc = None
+    
+    while True:
+        try:
+            if os.path.exists(state_file):
+                with open(state_file, "r") as f:
+                    state = f.read().strip()
+                
+                if state == "start":
+                    fw_name = ""
+                    if os.path.exists(fw_file):
+                        with open(fw_file, "r") as f:
+                            fw_name = f.read().strip()
+                    
+                    if not fw_name or fw_name == "none":
+                        print("[Python] remoteproc ERROR: No firmware specified!")
+                        with open(state_file, "w") as f:
+                            f.write("offline\n")
+                        time.sleep(0.1)
+                        continue
+                    
+                    mcore_path = ""
+                    fw_try1 = f"/tmp/fbb/lib/firmware/{fw_name}"
+                    fw_try2 = f"/lib/firmware/{fw_name}"
+                    
+                    if os.path.exists(fw_try1):
+                        mcore_path = fw_try1
+                    elif os.path.exists(fw_try2):
+                        mcore_path = fw_try2
+                    elif fw_name.startswith("/") or fw_name.startswith("."):
+                        mcore_path = fw_name
+                    else:
+                        mcore_path = fw_name
+
+                    existing_pid = 0
+                    if os.path.exists(pid_file):
+                        with open(pid_file, "r") as f:
+                            try:
+                                existing_pid = int(f.read().strip())
+                            except:
+                                pass
+                    
+                    process_running = False
+                    if existing_pid > 0:
+                        try:
+                            os.kill(existing_pid, 0)
+                            process_running = True
+                        except OSError:
+                            pass
+                    
+                    if not process_running:
+                        print(f"[Python] remoteproc: Starting M-Core with FW: {mcore_path}")
+                        env = os.environ.copy()
+                        env["FBB_MCORE"] = "1"
+                        env["LD_PRELOAD"] = os.path.join(PROJECT_ROOT, "libfpgashim.so")
+                        
+                        try:
+                            current_proc = subprocess.Popen([mcore_path], env=env, stdin=subprocess.DEVNULL)
+                            with open(pid_file, "w") as f:
+                                f.write(f"{current_proc.pid}\n")
+                            with open(state_file, "w") as f:
+                                f.write("running\n")
+                            print(f"[Python] remoteproc: M-Core started successfully (PID: {current_proc.pid})")
+                        except Exception as e:
+                            print(f"[Python] remoteproc ERROR: Failed to execute {mcore_path}: {e}")
+                            with open(state_file, "w") as f:
+                                f.write("offline\n")
+                    else:
+                        with open(state_file, "w") as f:
+                            f.write("running\n")
+                            
+                elif state == "stop":
+                    existing_pid = 0
+                    if os.path.exists(pid_file):
+                        with open(pid_file, "r") as f:
+                            try:
+                                existing_pid = int(f.read().strip())
+                            except:
+                                pass
+                    
+                    if existing_pid > 0:
+                        print(f"[Python] remoteproc: Stopping M-Core (PID: {existing_pid})...")
+                        try:
+                            os.kill(existing_pid, signal.SIGTERM)
+                            for _ in range(20):
+                                try:
+                                    os.kill(existing_pid, 0)
+                                    time.sleep(0.1)
+                                except OSError:
+                                    break
+                            else:
+                                os.kill(existing_pid, signal.SIGKILL)
+                        except OSError:
+                            pass
+                    
+                    with open(state_file, "w") as f:
+                        f.write("offline\n")
+                    with open(pid_file, "w") as f:
+                        f.write("\n")
+                    current_proc = None
+                    print("[Python] remoteproc: M-Core stopped.")
+            
+        except Exception as e:
+            print(f"[Python] remoteproc monitor error: {e}")
+            
+        time.sleep(0.1)
+
 def main():
     if len(sys.argv) < 2:
         print("Usage: vlogic_controller.py <dts_path>")
@@ -143,6 +259,10 @@ def main():
     # Start discovery
     t = threading.Thread(target=uart_discovery_thread, daemon=True)
     t.start()
+
+    # Start remoteproc monitor
+    t_rproc = threading.Thread(target=remoteproc_monitor_thread, daemon=True)
+    t_rproc.start()
 
     dts_path = sys.argv[1]
     regions = get_shm_info_from_dts(dts_path)

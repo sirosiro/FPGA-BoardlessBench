@@ -46,3 +46,7 @@ board_manifest.json
 .cache/
 compile_commands.json
 *.vcd
+
+# Scratch/Temporary scripts
+scratch/
+

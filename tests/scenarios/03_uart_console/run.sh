@@ -4,4 +4,9 @@
 # オプション: --clean (または -c) で成果物を削除します。
 
 SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
-"$SCRIPT_DIR/../../scenario_runner.sh" "$SCRIPT_DIR" "$@"
+if [ "$FBB_ACTIVE" = "1" ]; then
+    cd "$SCRIPT_DIR"
+    ./test_bin
+else
+    "$SCRIPT_DIR/../../scenario_runner.sh" "$SCRIPT_DIR" "$@"
+fi

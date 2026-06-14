@@ -128,6 +128,7 @@ class DTSParser:
         model = BoardModel(devices, name=board_name)
         model.compatible_bytes = compatible_bytes
         model.model_name = model_name
+        model.scenario_dir = os.path.dirname(dts_path)
         return model
 
 # =============================================================================
@@ -157,17 +158,19 @@ class ConfigGenerator(BaseGenerator):
         shm_size = self.compute_shm_size(model)
         # プロジェクトルートを動的に取得
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../"))
+        scenario_dir = getattr(model, "scenario_dir", "")
         
         return """/* Auto-generated Config from DTS */
 #ifndef VFPGA_CONFIG_H
 #define VFPGA_CONFIG_H
 #define PROJECT_ROOT "%s"
+#define SCENARIO_DIR "%s"
 #define SHM_NAME "%s"
 #define SHM_FILE "/tmp/%s"
 #define SHM_SIZE %d
 #define GPIO_COUNT 118
 #endif
-""" % (project_root, shm_name, shm_name, shm_size)
+""" % (project_root, scenario_dir, shm_name, shm_name, shm_size)
 
 class ShimGenerator(BaseGenerator):
     def generate(self, model: BoardModel):
@@ -195,6 +198,9 @@ class ShimGenerator(BaseGenerator):
 #include <fcntl.h>
 #include <sys/mman.h>
 #include <sys/stat.h>
+#include <sys/types.h>
+#include <sys/wait.h>
+#include <signal.h>
 #include <unistd.h>
 #include <stdlib.h>
 #include <termios.h>
@@ -202,6 +208,7 @@ class ShimGenerator(BaseGenerator):
 #include <linux/i2c.h>
 #include <sys/ioctl.h>
 #include <errno.h>
+#include <stdint.h>
 #include "vfpga_config.h"
 
 #define MAX_FDS 1024
@@ -213,6 +220,8 @@ static int (*original_openat)(int dirfd, const char *pathname, int flags, mode_t
 static int (*original_openat64)(int dirfd, const char *pathname, int flags, mode_t mode) = NULL;
 static int (*original_ioctl)(int fd, unsigned long request, void *argp) = NULL;
 static void* (*original_mmap)(void *addr, size_t length, int prot, int flags, int fd, off_t offset) = NULL;
+static ssize_t (*original_write)(int fd, const void *buf, size_t count) = NULL;
+static ssize_t (*original_read)(int fd, void *buf, size_t count) = NULL;
 
 struct mmap_route { unsigned long base_addr; unsigned long size; const char *shm_path; const char *path; };
 static struct mmap_route routes[] = { %s };
@@ -228,9 +237,40 @@ static int find_route_by_path(const char *pathname) {
 static int is_i2c_device(const char *pathname) { (void)pathname; %s return 0; }
 static int is_uart_device(const char *pathname) { (void)pathname; %s return 0; }
 
+static const char *redirect_firmware_path(const char *pathname) {
+    if (pathname != NULL && strncmp(pathname, "/lib/firmware/", 14) == 0) {
+        static char redirected_path[1024];
+        mkdir("/tmp", 0777);
+        mkdir("/tmp/fbb", 0777);
+        mkdir("/tmp/fbb/lib", 0777);
+        mkdir("/tmp/fbb/lib/firmware", 0777);
+        snprintf(redirected_path, sizeof(redirected_path), "/tmp/fbb/lib/firmware/%%s", pathname + 14);
+        return redirected_path;
+    }
+    return pathname;
+}
+
+static void ensure_dir(void) {
+    mkdir("/tmp", 0777);
+    mkdir("/tmp/fbb", 0777);
+    mkdir("/tmp/fbb/sys", 0777);
+    mkdir("/tmp/fbb/sys/class", 0777);
+    mkdir("/tmp/fbb/sys/class/remoteproc", 0777);
+    mkdir("/tmp/fbb/sys/class/remoteproc/remoteproc0", 0777);
+}
+
 int open(const char *pathname, int flags, ...) {
     mode_t mode = 0; if (flags & O_CREAT) { va_list arg; va_start(arg, flags); mode = va_arg(arg, mode_t); va_end(arg); }
     if (!original_open) original_open = dlsym(RTLD_NEXT, "open");
+    pathname = redirect_firmware_path(pathname);
+    if (pathname != NULL && strcmp(pathname, "/sys/class/remoteproc/remoteproc0/firmware") == 0) {
+        ensure_dir();
+        return original_open("/tmp/fbb/sys/class/remoteproc/remoteproc0/firmware", flags | O_CREAT, mode ? mode : 0666);
+    }
+    if (pathname != NULL && strcmp(pathname, "/sys/class/remoteproc/remoteproc0/state") == 0) {
+        ensure_dir();
+        return original_open("/tmp/fbb/sys/class/remoteproc/remoteproc0/state", flags | O_CREAT, mode ? mode : 0666);
+    }
     if (pathname != NULL && strcmp(pathname, "/sys/firmware/devicetree/base/compatible") == 0) {
         pathname = "/tmp/fbb_compatible";
     }
@@ -274,6 +314,15 @@ int open(const char *pathname, int flags, ...) {
 int open64(const char *pathname, int flags, ...) {
     mode_t mode = 0; if (flags & O_CREAT) { va_list arg; va_start(arg, flags); mode = va_arg(arg, mode_t); va_end(arg); }
     if (!original_open64) original_open64 = dlsym(RTLD_NEXT, "open64");
+    pathname = redirect_firmware_path(pathname);
+    if (pathname != NULL && strcmp(pathname, "/sys/class/remoteproc/remoteproc0/firmware") == 0) {
+        ensure_dir();
+        return original_open64("/tmp/fbb/sys/class/remoteproc/remoteproc0/firmware", flags | O_CREAT, mode ? mode : 0666);
+    }
+    if (pathname != NULL && strcmp(pathname, "/sys/class/remoteproc/remoteproc0/state") == 0) {
+        ensure_dir();
+        return original_open64("/tmp/fbb/sys/class/remoteproc/remoteproc0/state", flags | O_CREAT, mode ? mode : 0666);
+    }
     if (pathname != NULL && strcmp(pathname, "/sys/firmware/devicetree/base/compatible") == 0) {
         pathname = "/tmp/fbb_compatible";
     }
@@ -317,6 +366,15 @@ int open64(const char *pathname, int flags, ...) {
 int openat(int dirfd, const char *pathname, int flags, ...) {
     mode_t mode = 0; if (flags & O_CREAT) { va_list arg; va_start(arg, flags); mode = va_arg(arg, mode_t); va_end(arg); }
     if (!original_openat) original_openat = dlsym(RTLD_NEXT, "openat");
+    pathname = redirect_firmware_path(pathname);
+    if (pathname != NULL && strcmp(pathname, "/sys/class/remoteproc/remoteproc0/firmware") == 0) {
+        ensure_dir();
+        return original_openat(dirfd, "/tmp/fbb/sys/class/remoteproc/remoteproc0/firmware", flags | O_CREAT, mode ? mode : 0666);
+    }
+    if (pathname != NULL && strcmp(pathname, "/sys/class/remoteproc/remoteproc0/state") == 0) {
+        ensure_dir();
+        return original_openat(dirfd, "/tmp/fbb/sys/class/remoteproc/remoteproc0/state", flags | O_CREAT, mode ? mode : 0666);
+    }
     if (pathname != NULL && strcmp(pathname, "/sys/firmware/devicetree/base/compatible") == 0) {
         pathname = "/tmp/fbb_compatible";
     }
@@ -360,6 +418,15 @@ int openat(int dirfd, const char *pathname, int flags, ...) {
 int openat64(int dirfd, const char *pathname, int flags, ...) {
     mode_t mode = 0; if (flags & O_CREAT) { va_list arg; va_start(arg, flags); mode = va_arg(arg, mode_t); va_end(arg); }
     if (!original_openat64) original_openat64 = dlsym(RTLD_NEXT, "openat64");
+    pathname = redirect_firmware_path(pathname);
+    if (pathname != NULL && strcmp(pathname, "/sys/class/remoteproc/remoteproc0/firmware") == 0) {
+        ensure_dir();
+        return original_openat64(dirfd, "/tmp/fbb/sys/class/remoteproc/remoteproc0/firmware", flags | O_CREAT, mode ? mode : 0666);
+    }
+    if (pathname != NULL && strcmp(pathname, "/sys/class/remoteproc/remoteproc0/state") == 0) {
+        ensure_dir();
+        return original_openat64(dirfd, "/tmp/fbb/sys/class/remoteproc/remoteproc0/state", flags | O_CREAT, mode ? mode : 0666);
+    }
     if (pathname != NULL && strcmp(pathname, "/sys/firmware/devicetree/base/compatible") == 0) {
         pathname = "/tmp/fbb_compatible";
     }
@@ -447,6 +514,45 @@ int ioctl(int fd, unsigned long request, ...) {
         if (request == I2C_SLAVE || request == I2C_SLAVE_FORCE) return 0;
     }
     return original_ioctl(fd, request, argp);
+}
+
+ssize_t write(int fd, const void *buf, size_t count) {
+    if (!original_write) original_write = dlsym(RTLD_NEXT, "write");
+    return original_write(fd, buf, count);
+}
+
+ssize_t read(int fd, void *buf, size_t count) {
+    if (!original_read) original_read = dlsym(RTLD_NEXT, "read");
+    return original_read(fd, buf, count);
+}
+
+
+
+static void __attribute__((constructor)) init_mcore_mapping(void) {
+    char *fbb_mcore = getenv("FBB_MCORE");
+    if (fbb_mcore && strcmp(fbb_mcore, "1") == 0) {
+        if (!original_open) original_open = dlsym(RTLD_NEXT, "open");
+        if (!original_mmap) original_mmap = dlsym(RTLD_NEXT, "mmap");
+        for (int i = 0; i < (int)(sizeof(routes)/sizeof(routes[0])); i++) {
+            int shm_fd = original_open(routes[i].shm_path, O_RDWR, 0666);
+            if (shm_fd < 0) {
+                fprintf(stderr, "[Shim M-Core] ERROR: Failed to open %%s (errno: %%d)\\n", routes[i].shm_path, errno);
+                continue;
+            }
+            void *addr = (void *)(uintptr_t)routes[i].base_addr;
+            off_t offset = (off_t)(routes[i].base_addr - routes[0].base_addr);
+            void *mapped = original_mmap(addr, routes[i].size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, shm_fd, offset);
+            if (mapped == MAP_FAILED) {
+                fprintf(stderr, "[Shim M-Core] ERROR: MAP_FIXED failed for address 0x%%lx, size %%ld, offset %%ld (errno: %%d)\\n",
+                        routes[i].base_addr, (long)routes[i].size, (long)offset, errno);
+            } else {
+                fprintf(stdout, "[Shim M-Core] Successfully mapped 0x%%lx -> %%p (size: %%ld, offset: %%ld)\\n",
+                        routes[i].base_addr, mapped, (long)routes[i].size, (long)offset);
+                fflush(stdout);
+            }
+            close(shm_fd);
+        }
+    }
 }
 """ % (", ".join(mmap_routes), " ".join(i2c_matches), " ".join(uart_matches))
 

@@ -15,7 +15,7 @@ FPGA-BoardlessBench (F-BB) の中心的なエンジンです。**DTSファイル
 
 ### 生成されるファイルと役割
 - **`src/include/vfpga_config.h`**: レジスタマップ、ビット幅、共有メモリパスを含むCヘッダー。
-- **`src/shim/libfpgashim.c`**: UIO, I2C, UART, `/dev/mem` 等のアクセスをフックし、シミュレータへリダイレクトする Shim ライブラリ。
+- **`src/shim/libfpgashim.c`**: UIO, I2C, UART, `/dev/mem` 等のアクセスをフックし、シミュレータへリダイレクトする Shim ライブラリ。仮想 `remoteproc` の API 制御パス (`/sys/class/remoteproc/...`) や、ファームウェア配置パス (`/lib/firmware/...`) の `/tmp/fbb` へのリダイレクトも自動生成されます。
 - **`src/rtl/vfpga_top.v`**: DTSの定義に基づいた **118ピン標準インターフェース** を備えた Verilog のトップモジュール・スケルトン。
 - **`src/sim/sim_main.cpp`**: Verilator 用の C++ ラッパー。共有メモリと RTL 信号の同期を司るブリッジエンジン。
 - **`dashboard/data/board_manifest.json`**: ダッシュボードがデバイス構成やレジスタ一覧、およびHDMIプレビュー用出力パス（`hdmi_output_path`）を把握するためのメタデータファイル。
@@ -57,7 +57,8 @@ python3 scripts/test_gen_vfpga.py
 
 ## 3. uart_bridge.py (The Bridge)
 
-UART（シリアル通信）のエミュレーションを担当します。
+UART（シリアル通信）のエミュレーションを担当するスタンドアロン・スクリプトです。
 
 - **役割**: Shim が作成した PTY (Pseudo Terminal) デバイスを監視し、その入出力を TCP ポート（標準: 2000）へブリッジします。
+- **備考**: **現在、この機能は `vlogic_controller.py` の中に統合されており**、システム起動時に自動的に検出・ブリッジ処理が並行実行されます。そのため、本スクリプトを手動で起動する必要はありません（個別のデバッグ用途などのために残されています）。
 - **意義**: これにより、ホストPCから Tera Term や telnet を使って、仮想FPGA上のコンソールへリアルタイムにアクセス可能になります。
