@@ -54,7 +54,7 @@ DTS="${SCENARIO_DIR}/config.dts"
 cleanup() {
     echo -e "\n[Runner] Stopping background processes..."
     pkill -f vlogic_controller || true
-    pkill -f Vvfpga_top || true
+    pkill -f vfpga_sim || true
     pkill -f "node dashboard/server.js" || true
     
     # remoteproc M-core processes cleanup

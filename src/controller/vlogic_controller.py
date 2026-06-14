@@ -201,7 +201,44 @@ def remoteproc_monitor_thread():
                         env["LD_PRELOAD"] = os.path.join(PROJECT_ROOT, "libfpgashim.so")
                         
                         try:
-                            current_proc = subprocess.Popen([mcore_path], env=env, stdin=subprocess.DEVNULL)
+                            current_proc = subprocess.Popen(
+                                [mcore_path], 
+                                env=env, 
+                                stdin=subprocess.DEVNULL,
+                                stdout=subprocess.PIPE,
+                                stderr=subprocess.STDOUT,
+                                bufsize=1,
+                                universal_newlines=True
+                            )
+                            
+                            def forward_output(proc):
+                                tty_out = None
+                                try:
+                                    tty_out = open('/dev/tty', 'w')
+                                except Exception:
+                                    pass
+                                try:
+                                    for line in proc.stdout:
+                                        sys.stdout.write(line)
+                                        sys.stdout.flush()
+                                        if tty_out:
+                                            try:
+                                                tty_out.write(line)
+                                                tty_out.flush()
+                                            except Exception:
+                                                pass
+                                except Exception:
+                                    pass
+                                finally:
+                                    if tty_out:
+                                        try:
+                                            tty_out.close()
+                                        except Exception:
+                                            pass
+                                            
+                            t_forward = threading.Thread(target=forward_output, args=(current_proc,), daemon=True)
+                            t_forward.start()
+
                             with open(pid_file, "w") as f:
                                 f.write(f"{current_proc.pid}\n")
                             with open(state_file, "w") as f:
@@ -313,7 +350,7 @@ def main():
     except KeyboardInterrupt:
         print("\n[Python] Stopping Controller...")
     finally:
-        for shm in shm_objects:
+        if shm is not None:
             shm.close()
         # The files in /tmp can stay or be cleaned up by start_lab.sh
 
