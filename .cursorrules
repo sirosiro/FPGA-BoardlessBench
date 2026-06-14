@@ -1,0 +1,5 @@
+# AI Assistant Custom Instructions
+
+## Documentation-Only Edits
+- **Skip Test/Build Verification**: If changes are purely documentation-only (e.g., Markdown `.md` files, license files, plaintext documentation) and do not modify functional code or configuration files that affect system execution, **do NOT run tests (`run_tests.sh`, etc.) or build commands**.
+- **Efficiency**: Skip unnecessary command execution and verification steps for doc-only changes to minimize token consumption and response time.

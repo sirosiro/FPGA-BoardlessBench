@@ -1,6 +1,7 @@
-# ARCHITECTURE PROPOSAL: Remoteproc-Driven Automated Memory Mapping
-**Status:** PROPOSED  
-**Target Version:** v2.1.0-alpha  
+# ARCHITECTURE SPECIFICATION: Remoteproc-Driven Automated Memory Mapping
+**Status:** IMPLEMENTED  
+**Release Version:** v3.0  
+
 **Author:** F-BB Core Architect Group  
 
 ---
