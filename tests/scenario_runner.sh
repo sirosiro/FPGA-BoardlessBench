@@ -99,6 +99,8 @@ trap cleanup EXIT
 # 確実にプロジェクトルートから実行を開始する
 cd "${PROJECT_ROOT}"
 
+mkdir -p /lib/firmware 2>/dev/null || true
+
 echo -e "\n[Runner] >>> Starting Scenario: ${SCENARIO_NAME} <<<"
 
 # 1. DTSからコード生成

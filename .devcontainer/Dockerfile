@@ -42,5 +42,8 @@ RUN pip3 install --no-cache-dir \
     matplotlib \
     pytest
 
+# Ensure remoteproc firmware directory exists
+RUN mkdir -p /lib/firmware
+
 # Set workspace directory
 WORKDIR /workspace

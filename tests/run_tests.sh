@@ -89,6 +89,7 @@ trap cleanup_processes EXIT
 start_environment() {
     local scenario_dir=$1
     local dts="${scenario_dir}/config.dts"
+    mkdir -p /lib/firmware 2>/dev/null || true
     echo -e "\n[Runner] >>> SCENARIO: $(basename ${scenario_dir}) <<<"
 
     # 中間ファイルの削除

@@ -62,6 +62,7 @@ rm -f /tmp/hdmi_output.bmp 2>/dev/null
 rm -rf /tmp/fbb 2>/dev/null
 pkill -f "node dashboard/server.js" 2>/dev/null
 make clean > /dev/null 2>&1
+mkdir -p /lib/firmware 2>/dev/null || true
 
 # ダッシュボードの依存関係とビルドチェック
 if [ ! -d "dashboard/node_modules" ] || [ ! -d "dashboard/client/dist" ]; then
