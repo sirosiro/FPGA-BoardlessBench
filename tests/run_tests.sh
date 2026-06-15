@@ -75,6 +75,8 @@ if [ "$CLEAN" = true ]; then
     if [[ " $CLEAN_TARGETS " =~ " distclean " || " $CLEAN_TARGETS " =~ " cleanall " ]]; then
         echo "[Runner] Performing distclean: removing FreeRTOS-Kernel..."
         rm -rf tests/scenarios/10_amp_mcore_freertos/FreeRTOS-Kernel 2>/dev/null
+        echo "[Runner] Performing distclean: removing ThreadX source..."
+        rm -rf tests/scenarios/11_amp_mcore_threadx/threadx 2>/dev/null
     fi
 
     rm -f tests/scenarios/*/*.log

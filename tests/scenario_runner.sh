@@ -56,9 +56,13 @@ if [ "$CLEAN" = true ]; then
     fi
     echo "[Runner] Cleaning artifacts for scenario: ${SCENARIO_NAME} with targets: ${CLEAN_TARGETS}..."
     cd "${PROJECT_ROOT}"
-    make clean > /dev/null 2>&1 || true
-    if [ -n "$SCENARIO_DIR" ] && [ -f "${SCENARIO_DIR}/Makefile" ]; then
-        make -C "${SCENARIO_DIR}" ${CLEAN_TARGETS} > /dev/null 2>&1 || true
+    rm -rf build 2>/dev/null
+    rm -f libfpgashim.so vfpga_sim
+    if [ -n "$SCENARIO_DIR" ]; then
+        if [[ " $CLEAN_TARGETS " =~ " distclean " || " $CLEAN_TARGETS " =~ " cleanall " ]]; then
+            rm -rf "${SCENARIO_DIR}/FreeRTOS-Kernel" "${SCENARIO_DIR}/threadx" 2>/dev/null
+        fi
+        rm -f "${SCENARIO_DIR}/test_bin" "${SCENARIO_DIR}/"*.elf "${SCENARIO_DIR}/"*.bin
     fi
     if [ -n "$SCENARIO_DIR" ]; then
         rm -f "${SCENARIO_DIR}/"*.log
@@ -110,7 +114,8 @@ python3 "${PROJECT_ROOT}/scripts/gen_vfpga.py" "${DTS}"
 # 3. エンジンのビルド
 echo "[Runner] Building simulation engine (this may take a few seconds)..."
 cd "${PROJECT_ROOT}"
-make engine SCENARIO_DIR="${SCENARIO_DIR}" -j$(nproc) || exit 1
+cmake -B build -DSCENARIO_DIR="${SCENARIO_DIR}" || exit 1
+cmake --build build --target fpgashim --target vfpga_sim || exit 1
 
 # 4. バックグラウンドプロセスの起動
 echo "[Runner] Starting Backend Controller & RTL Simulator..."
@@ -121,8 +126,8 @@ python3 -u "${CONTROLLER}" "${DTS}" > "${SCENARIO_DIR}/controller.log" 2>&1 &
 sleep 2
 
 # 5. アプリケーションのビルド
-echo "[Runner] Building application via Makefile in ${SCENARIO_DIR}..."
-make -C "${SCENARIO_DIR}" || exit 1
+echo "[Runner] Building application via CMake..."
+cmake --build build || exit 1
 
 # 6. アプリケーションの実行 (LD_PRELOADを使用)
 echo "[Runner] Executing application with LD_PRELOAD..."

@@ -1,0 +1,5 @@
+/threadx/
+/test_bin
+/mcore_threadx.elf
+/*.o
+/*.log
