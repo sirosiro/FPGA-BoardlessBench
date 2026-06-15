@@ -5,10 +5,10 @@
 #include "task.h"
 #include "queue.h"
 
-#define REG_CMD      (*(volatile uint32_t*)(0x40000010))
-#define REG_STATUS   (*(volatile uint32_t*)(0x40000014))
-#define REG_DATA_IN  (*(volatile uint32_t*)(0x40000018))
-#define REG_DATA_OUT (*(volatile uint32_t*)(0x4000001c))
+#define REG_CMD      (*(volatile uint32_t*)(uintptr_t)(0x40000010))
+#define REG_STATUS   (*(volatile uint32_t*)(uintptr_t)(0x40000014))
+#define REG_DATA_IN  (*(volatile uint32_t*)(uintptr_t)(0x40000018))
+#define REG_DATA_OUT (*(volatile uint32_t*)(uintptr_t)(0x4000001c))
 
 static QueueHandle_t xQueue = NULL;
 

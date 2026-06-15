@@ -61,7 +61,8 @@ rm -f dashboard/data/vfpga_uart_* 2>/dev/null
 rm -f /tmp/hdmi_output.bmp 2>/dev/null
 rm -rf /tmp/fbb 2>/dev/null
 pkill -f "node dashboard/server.js" 2>/dev/null
-make clean > /dev/null 2>&1
+rm -rf build 2>/dev/null
+rm -f libfpgashim.so vfpga_sim
 mkdir -p /lib/firmware 2>/dev/null || true
 
 # ダッシュボードの依存関係とビルドチェック
@@ -93,10 +94,11 @@ echo "[1/3] Generating code and building artifacts..."
 python3 scripts/gen_vfpga.py "${DTS_PATH}" || exit 1
 
 # シミュレータとShimのビルド
-make engine SCENARIO_DIR="${SCENARIO_DIR}" || { echo "[Error] Simulator build failed!"; exit 1; }
+cmake -B build -DSCENARIO_DIR="${SCENARIO_DIR}" || { echo "[Error] CMake configuration failed!"; exit 1; }
+cmake --build build --target fpgashim --target vfpga_sim || { echo "[Error] Simulator build failed!"; exit 1; }
 
 # アプリケーションのビルド
-make -C "${SCENARIO_DIR}" || { echo "[Error] App build failed!"; exit 1; }
+cmake --build build || { echo "[Error] App build failed!"; exit 1; }
 
 # 3. 起動
 echo "[2/3] Starting background processes..."

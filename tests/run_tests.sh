@@ -67,14 +67,16 @@ if [ "$CLEAN" = true ]; then
     if [ -z "$CLEAN_TARGETS" ]; then
         CLEAN_TARGETS="clean"
     fi
-    echo "[Runner] Cleaning project artifacts and logs with targets: ${CLEAN_TARGETS}..."
-    make clean
-    rm -f tests/scenarios/*/test_bin tests/scenarios/*/*.bin
-    for scenario in tests/scenarios/*; do
-        if [ -f "${scenario}/Makefile" ]; then
-            make -C "${scenario}" ${CLEAN_TARGETS} > /dev/null 2>&1 || true
-        fi
-    done
+    echo "[Runner] Cleaning project artifacts and logs..."
+    rm -rf build 2>/dev/null
+    rm -f libfpgashim.so vfpga_sim
+    rm -f tests/scenarios/*/test_bin tests/scenarios/*/*.bin tests/scenarios/*/*.elf
+    
+    if [[ " $CLEAN_TARGETS " =~ " distclean " || " $CLEAN_TARGETS " =~ " cleanall " ]]; then
+        echo "[Runner] Performing distclean: removing FreeRTOS-Kernel..."
+        rm -rf tests/scenarios/10_amp_mcore_freertos/FreeRTOS-Kernel 2>/dev/null
+    fi
+
     rm -f tests/scenarios/*/*.log
     rm -f *.log
     rm -f board_manifest.json
@@ -98,15 +100,17 @@ start_environment() {
     rm -f /tmp/hdmi_output.bmp
 
     # 前のシナリオの残骸を削除し、クリーンな状態にする
-    make clean > /dev/null 2>&1
+    rm -rf build 2>/dev/null
+    rm -f libfpgashim.so vfpga_sim
 
     echo "[Runner] Setting up environment with ${dts}..."
     
     # 1. Generate code from DTS
     python3 scripts/gen_vfpga.py ${dts}
     
-    make libfpgashim.so || exit 1
-    make engine SCENARIO_DIR="${scenario_dir}" || exit 1
+    cmake -B build -DSCENARIO_DIR="${scenario_dir}" || exit 1
+    cmake --build build --target fpgashim || exit 1
+    cmake --build build --target vfpga_sim || exit 1
     
     # 3. Start Controller
     python3 -u ${CONTROLLER} ${dts} > "${scenario_dir}/controller.log" 2>&1 &
@@ -130,9 +134,9 @@ for scenario in ${SCENARIOS_DIR}/*; do
     
     start_environment "${scenario}"
     
-    # Build the scenario via Makefile
-    echo "[Runner] Building ${scenario} via Makefile..."
-    make -C "${scenario}" || exit 1
+    # Build the scenario via CMake
+    echo "[Runner] Building ${scenario} via CMake..."
+    cmake --build build || exit 1
     
     # Run the test
     echo "[Runner] Running test..."
