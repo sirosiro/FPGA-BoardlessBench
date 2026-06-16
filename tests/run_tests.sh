@@ -77,6 +77,13 @@ if [ "$CLEAN" = true ]; then
         rm -rf tests/scenarios/10_amp_mcore_freertos/FreeRTOS-Kernel 2>/dev/null
         echo "[Runner] Performing distclean: removing ThreadX source..."
         rm -rf tests/scenarios/11_amp_mcore_threadx/threadx 2>/dev/null
+        echo "[Runner] Performing distclean: removing CMSIS-RTOS2 scenario external sources..."
+        rm -rf tests/scenarios/12_amp_mcore_cmsis-rtos2-freertos/FreeRTOS-Kernel 2>/dev/null
+        rm -rf tests/scenarios/12_amp_mcore_cmsis-rtos2-freertos/CMSIS-FreeRTOS 2>/dev/null
+        rm -rf tests/scenarios/12_amp_mcore_cmsis-rtos2-freertos/CMSIS_5 2>/dev/null
+        rm -rf tests/scenarios/13_amp_mcore_cmsis-rtos2-threadx/threadx 2>/dev/null
+        rm -rf tests/scenarios/13_amp_mcore_cmsis-rtos2-threadx/stm32-mw-cmsis-rtos-tx 2>/dev/null
+        rm -rf tests/scenarios/13_amp_mcore_cmsis-rtos2-threadx/CMSIS_5 2>/dev/null
     fi
 
     rm -f tests/scenarios/*/*.log
@@ -142,6 +149,7 @@ for scenario in ${SCENARIOS_DIR}/*; do
     
     # Run the test
     echo "[Runner] Running test..."
+    chmod +x ./${scenario}/run.sh
     export LD_PRELOAD=$PWD/${SHIM}
     export FBB_ACTIVE=1
     ./${scenario}/run.sh

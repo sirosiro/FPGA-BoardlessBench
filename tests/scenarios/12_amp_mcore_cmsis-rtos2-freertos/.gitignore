@@ -1,0 +1,6 @@
+/FreeRTOS-Kernel/
+/CMSIS-FreeRTOS/
+/test_bin
+/mcore_rtos.elf
+/*.o
+/*.log

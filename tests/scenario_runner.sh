@@ -60,7 +60,7 @@ if [ "$CLEAN" = true ]; then
     rm -f libfpgashim.so vfpga_sim
     if [ -n "$SCENARIO_DIR" ]; then
         if [[ " $CLEAN_TARGETS " =~ " distclean " || " $CLEAN_TARGETS " =~ " cleanall " ]]; then
-            rm -rf "${SCENARIO_DIR}/FreeRTOS-Kernel" "${SCENARIO_DIR}/threadx" 2>/dev/null
+            rm -rf "${SCENARIO_DIR}/FreeRTOS-Kernel" "${SCENARIO_DIR}/threadx" "${SCENARIO_DIR}/CMSIS-FreeRTOS" "${SCENARIO_DIR}/stm32-mw-cmsis-rtos-tx" "${SCENARIO_DIR}/CMSIS_5" 2>/dev/null
         fi
         rm -f "${SCENARIO_DIR}/test_bin" "${SCENARIO_DIR}/"*.elf "${SCENARIO_DIR}/"*.bin
     fi
@@ -132,6 +132,7 @@ cmake --build build || exit 1
 # 6. アプリケーションの実行 (LD_PRELOADを使用)
 echo "[Runner] Executing application with LD_PRELOAD..."
 cd "${SCENARIO_DIR}"
+chmod +x ./run.sh
 export LD_PRELOAD="${SHIM}"
 export FBB_ACTIVE=1
 ./run.sh
