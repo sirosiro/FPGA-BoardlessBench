@@ -12,9 +12,7 @@ import {
 import { useDashboard } from './DashboardContext';
 
 const RegisterTracer = () => {
-  const { traceHistory: historyData, handleClearTrace: onClear } = useDashboard();
-  // 非表示にするレジスタを管理する状態
-  const [hiddenKeys, setHiddenKeys] = useState({});
+  const { traceHistory: historyData, handleClearTrace: onClear, hiddenTraceKeys: hiddenKeys, toggleTraceKey } = useDashboard();
 
   // 履歴データからレジスタ名のリストを抽出
   const registerKeys = useMemo(() => {
@@ -56,10 +54,7 @@ const RegisterTracer = () => {
   const handleLegendClick = (e) => {
     const { dataKey } = e;
     const key = dataKey.replace('_norm', '');
-    setHiddenKeys(prev => ({
-      ...prev,
-      [key]: !prev[key]
-    }));
+    toggleTraceKey(key);
   };
 
   return (
@@ -140,20 +135,23 @@ const RegisterTracer = () => {
                 wrapperStyle={{ fontSize: '0.7rem', paddingTop: '0', cursor: 'pointer' }}
                 onClick={handleLegendClick}
               />
-              {registerKeys.map((key, i) => (
-                <Line
-                  key={key}
-                  type="stepAfter"
-                  dataKey={`${key}_norm`}
-                  stroke={getColor(i)}
-                  dot={false}
-                  activeDot={{ r: 3 }}
-                  name={key.replace(/_/g, ': ')}
-                  strokeWidth={1.5}
-                  isAnimationActive={false}
-                  hide={hiddenKeys[key]}
-                />
-              ))}
+              {registerKeys
+                .map((key, i) => ({ key, originalIndex: i }))
+                .filter(({ key }) => !hiddenKeys[key])
+                .map(({ key, originalIndex }) => (
+                  <Line
+                    key={key}
+                    type="stepAfter"
+                    dataKey={`${key}_norm`}
+                    stroke={getColor(originalIndex)}
+                    dot={false}
+                    activeDot={{ r: 3 }}
+                    name={key.replace(/_/g, ': ')}
+                    strokeWidth={1.5}
+                    isAnimationActive={false}
+                  />
+                ))
+              }
             </LineChart>
           </ResponsiveContainer>
         ) : (

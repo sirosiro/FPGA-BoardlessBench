@@ -13,6 +13,7 @@ export const DashboardProvider = ({ children }) => {
   const [uartLogs, setUartLogs] = useState({});
   const [traceHistory, setTraceHistory] = useState([]);
   const [hdmiFrame, setHdmiFrame] = useState(null);
+  const [hiddenTraceKeys, setHiddenTraceKeys] = useState({});
 
 
   useEffect(() => {
@@ -62,6 +63,13 @@ export const DashboardProvider = ({ children }) => {
     socket.emit('trace-history-clear');
   };
 
+  const toggleTraceKey = (key) => {
+    setHiddenTraceKeys(prev => ({
+      ...prev,
+      [key]: !prev[key]
+    }));
+  };
+
   const gpioDevices = manifest?.devices?.filter(d => d.type === 'gpio' || d.type === 'uio') || [];
 
   return (
@@ -77,6 +85,8 @@ export const DashboardProvider = ({ children }) => {
         handleGpioToggle,
         handleClearTrace,
         hdmiFrame,
+        hiddenTraceKeys,
+        toggleTraceKey,
       }}
 
     >
