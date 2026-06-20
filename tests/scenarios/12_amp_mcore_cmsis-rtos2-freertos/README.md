@@ -62,7 +62,8 @@ graph TD
 
 ### タイムスタンプ比較による自動同期とフォールバック設計
 12と13のそれぞれに `mcore_rtos.c` の実ファイルを配置しつつ、開発時の更新漏れや片方の削除に耐えられるよう、CMakeによるビルド構成時に以下の同期ロジックが自動実行されます：
-1. **両方のファイルが存在する場合**: シナリオ12とシナリオ13の `mcore_rtos.c` の最終更新タイムスタンプを比較し、**より新しい（更新された）ファイルを自動的にもう一方へ上書きコピー（同期）**します。これにより、どちらのディレクトリのファイルを編集しても自動的に同期が維持されます。
+1. **両方のファイルが存在する場合**: シナリオ12とシナリオ13の `mcore_rtos.c` の最終更新タイムスタンプを比較し、**より新しい（更新された）ファイルを自動的もう一方へ上書きコピー（同期）**します。これにより、どちらのディレクトリのファイルを編集しても自動的に同期が維持されます。
+   * **無限ループ防止策**: 同期時のタイムスタンプ更新による「無限ビルド同期ループ（無限ビルドピンポン）」を防ぐため、コピー処理の前にファイル内容の差分（`compare_files`）を検出し、**実際に内容に差異がある場合のみ**上書きコピーを実行します。
 2. **片方のファイルが失われている場合**: もう一方のディレクトリが存在する限り、残っている側の `mcore_rtos.c` を欠損している側へ自動的にコピーして自己修復します。
 3. **相手のディレクトリ自体が削除されている場合**: コピー処理をスキップし、本ディレクトリ内にあるローカルの `mcore_rtos.c` を使ってビルドを継続します。
 
@@ -83,6 +84,12 @@ graph TD
 
 3. **アセンブラ依存コードのバイパス**:
    - Linux POSIX ポート上で Cortex-M 用のアセンブラ命令（`__get_IPSR` や `__get_CONTROL` など）がビルドエラーになるのを防ぐため、ダミーの [cmsis_compiler.h](file:///workspaces/FPGA-BoardlessBench-main/tests/scenarios/12_amp_mcore_cmsis-rtos2-freertos/cmsis_compiler.h) 内でこれらを安全なダミーマクロとして定義しバイパスしています。
+
+4. **OS_Tick リンカ要件の解決（スタブ実装）**:
+   - FreeRTOSのPOSIXポートを使用するにあたり、CMSIS-RTOS2ラッパーのリンクに必要なOS Tick APIスタブ関数群 (`OS_Tick_Setup`, `OS_Tick_Enable`, `OS_Tick_Disable`, `OS_Tick_AcknowledgeIRQ`, `OS_Tick_GetIRQn`, `OS_Tick_GetClock`, `OS_Tick_GetInterval`, `OS_Tick_GetCount`, `OS_Tick_GetOverflow`) を [mcore_rtos.c](file:///workspaces/FPGA-BoardlessBench/tests/scenarios/12_amp_mcore_cmsis-rtos2-freertos/mcore_rtos.c) の末尾にダミー実装として定義し、ビルドエラーを回避しています。
+
+5. **SystemCoreClock グローバル変数の定義**:
+   - CMSIS ラッパーが参照するグローバルクロック変数である `uint32_t SystemCoreClock = 1000000U;` (1MHz想定) を定義し、リンク時の未定義シンボルエラー（`undefined reference to 'SystemCoreClock'`）を解消しています。
 
 ---
 
