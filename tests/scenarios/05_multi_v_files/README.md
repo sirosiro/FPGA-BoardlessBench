@@ -24,11 +24,11 @@ graph TD
         end
     end
 
-    App -- "書き込み (addr: 0x40000000)" --> Reg0
-    App -- "書き込みデータ (w_data)" --> Logic
-    Reg0 -- "in_a" --> Logic
-    Logic -- "演算結果 (sub_out)" --> ReadSel
-    ReadSel -- "読み出し (addr: 0x40000004)" --> App
+    App -->|"書き込み (addr: 0x40000000)"| Reg0
+    App -->|"書き込みデータ (w_data)"| Logic
+    Reg0 -->|"in_a"| Logic
+    Logic -->|"演算結果 (sub_out)"| ReadSel
+    ReadSel -->|"読み出し (addr: 0x40000004)"| App
 ```
 
 ## 学習のポイント

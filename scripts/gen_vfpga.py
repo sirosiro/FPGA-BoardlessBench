@@ -73,6 +73,7 @@ class DTSParser:
                 elif 'i2c' in compatible or 'cdns,i2c' in compatible: dev_type = 'i2c'
                 elif 'uart' in compatible or 'xlnx,xps-uart' in compatible: dev_type = 'uart'
                 elif 'gpio' in compatible or 'xlnx,xps-gpio' in compatible: dev_type = 'gpio'
+                elif 'rpmsg' in compatible: dev_type = 'rpmsg'
                 # label が /dev/uio で始まるデバイスも UIO として扱う (カスタムIP対応)
                 if dev_type == 'unknown' and label.startswith('/dev/uio'):
                     dev_type = 'uio'
@@ -174,7 +175,7 @@ class ConfigGenerator(BaseGenerator):
 
 class ShimGenerator(BaseGenerator):
     def generate(self, model: BoardModel):
-        mmap_routes, i2c_matches, uart_matches = [], [], []
+        mmap_routes, i2c_matches, uart_matches, rpmsg_matches = [], [], [], []
         uart_count = 0
         for i, dev in enumerate(model.devices):
             if dev.type in ['uio', 'gpio']:
@@ -187,10 +188,18 @@ class ShimGenerator(BaseGenerator):
             elif dev.type == 'uart':
                 uart_count += 1
                 uart_matches.append('    if (pathname != NULL && strcmp(pathname, "%s") == 0) return %d;' % (dev.path, uart_count))
+            elif dev.type == 'rpmsg':
+                rpmsg_matches.append(
+                    '    if (pathname != NULL && strcmp(pathname, "%s") == 0) {\n'
+                    '        return handle_rpmsg_open();\n'
+                    '    }' % dev.path
+                )
         
         return """
 #define _GNU_SOURCE
+#ifndef __clang__
 #pragma GCC diagnostic ignored "-Wnonnull-compare"
+#endif
 #include <stdio.h>
 #include <dlfcn.h>
 #include <string.h>
@@ -209,7 +218,13 @@ class ShimGenerator(BaseGenerator):
 #include <sys/ioctl.h>
 #include <errno.h>
 #include <stdint.h>
+#include <sys/socket.h>
+#include <sys/un.h>
 #include "vfpga_config.h"
+
+#ifndef MAP_FIXED_NOREPLACE
+#define MAP_FIXED_NOREPLACE 0x100000
+#endif
 
 #define MAX_FDS 1024
 static int virtual_fd_route_idx[MAX_FDS] = {0};
@@ -225,6 +240,8 @@ static ssize_t (*original_read)(int fd, void *buf, size_t count) = NULL;
 
 struct mmap_route { unsigned long base_addr; unsigned long size; const char *shm_path; const char *path; };
 static struct mmap_route routes[] = { %s };
+
+static int handle_rpmsg_open(void);
 
 static int find_route_by_path(const char *pathname) {
     if (pathname == NULL) return 0;
@@ -260,9 +277,10 @@ static void ensure_dir(void) {
 }
 
 int open(const char *pathname, int flags, ...) {
-    mode_t mode = 0; if (flags & O_CREAT) { va_list arg; va_start(arg, flags); mode = va_arg(arg, mode_t); va_end(arg); }
+    mode_t mode = 0; if (flags & O_CREAT) { va_list arg; va_start(arg, flags); mode = (mode_t)va_arg(arg, int); va_end(arg); }
     if (!original_open) original_open = dlsym(RTLD_NEXT, "open");
     pathname = redirect_firmware_path(pathname);
+%s
     if (pathname != NULL && strcmp(pathname, "/sys/class/remoteproc/remoteproc0/firmware") == 0) {
         ensure_dir();
         return original_open("/tmp/fbb/sys/class/remoteproc/remoteproc0/firmware", flags | O_CREAT, mode ? mode : 0666);
@@ -312,9 +330,10 @@ int open(const char *pathname, int flags, ...) {
 }
 
 int open64(const char *pathname, int flags, ...) {
-    mode_t mode = 0; if (flags & O_CREAT) { va_list arg; va_start(arg, flags); mode = va_arg(arg, mode_t); va_end(arg); }
+    mode_t mode = 0; if (flags & O_CREAT) { va_list arg; va_start(arg, flags); mode = (mode_t)va_arg(arg, int); va_end(arg); }
     if (!original_open64) original_open64 = dlsym(RTLD_NEXT, "open64");
     pathname = redirect_firmware_path(pathname);
+%s
     if (pathname != NULL && strcmp(pathname, "/sys/class/remoteproc/remoteproc0/firmware") == 0) {
         ensure_dir();
         return original_open64("/tmp/fbb/sys/class/remoteproc/remoteproc0/firmware", flags | O_CREAT, mode ? mode : 0666);
@@ -364,9 +383,10 @@ int open64(const char *pathname, int flags, ...) {
 }
 
 int openat(int dirfd, const char *pathname, int flags, ...) {
-    mode_t mode = 0; if (flags & O_CREAT) { va_list arg; va_start(arg, flags); mode = va_arg(arg, mode_t); va_end(arg); }
+    mode_t mode = 0; if (flags & O_CREAT) { va_list arg; va_start(arg, flags); mode = (mode_t)va_arg(arg, int); va_end(arg); }
     if (!original_openat) original_openat = dlsym(RTLD_NEXT, "openat");
     pathname = redirect_firmware_path(pathname);
+%s
     if (pathname != NULL && strcmp(pathname, "/sys/class/remoteproc/remoteproc0/firmware") == 0) {
         ensure_dir();
         return original_openat(dirfd, "/tmp/fbb/sys/class/remoteproc/remoteproc0/firmware", flags | O_CREAT, mode ? mode : 0666);
@@ -416,9 +436,10 @@ int openat(int dirfd, const char *pathname, int flags, ...) {
 }
 
 int openat64(int dirfd, const char *pathname, int flags, ...) {
-    mode_t mode = 0; if (flags & O_CREAT) { va_list arg; va_start(arg, flags); mode = va_arg(arg, mode_t); va_end(arg); }
+    mode_t mode = 0; if (flags & O_CREAT) { va_list arg; va_start(arg, flags); mode = (mode_t)va_arg(arg, int); va_end(arg); }
     if (!original_openat64) original_openat64 = dlsym(RTLD_NEXT, "openat64");
     pathname = redirect_firmware_path(pathname);
+%s
     if (pathname != NULL && strcmp(pathname, "/sys/class/remoteproc/remoteproc0/firmware") == 0) {
         ensure_dir();
         return original_openat64(dirfd, "/tmp/fbb/sys/class/remoteproc/remoteproc0/firmware", flags | O_CREAT, mode ? mode : 0666);
@@ -503,6 +524,9 @@ void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
 int ioctl(int fd, unsigned long request, ...) {
     va_list args; va_start(args, request); void *argp = va_arg(args, void *); va_end(args);
     if (!original_ioctl) original_ioctl = dlsym(RTLD_NEXT, "ioctl");
+    if (fd >= 0 && fd < MAX_FDS && virtual_fd_route_idx[fd] == -300) {
+        return 0; // RPMsg ioctl dummy success
+    }
     if (fd >= 0 && fd < MAX_FDS && virtual_fd_route_idx[fd] <= -101) {
         int i2c_bus_id = -(virtual_fd_route_idx[fd] + 100);
         if (request == I2C_RDWR) {
@@ -526,7 +550,264 @@ ssize_t read(int fd, void *buf, size_t count) {
     return original_read(fd, buf, count);
 }
 
+void fbb_ipi_notify(int dest_cpu) {
+    if (!original_open) original_open = dlsym(RTLD_NEXT, "open");
+    char path[256];
+    if (dest_cpu == 0) {
+        strcpy(path, "/tmp/fbb/sys/class/remoteproc/remoteproc0/proxy_pid");
+    } else {
+        strcpy(path, "/tmp/fbb/sys/class/remoteproc/remoteproc0/pid");
+    }
+    
+    int fd = original_open(path, O_RDONLY, 0);
+    if (fd < 0) {
+        fprintf(stderr, "[Shim] fbb_ipi_notify error: failed to open %%s (errno=%%d)\\n", path, errno);
+    } else {
+        char buf[32];
+        ssize_t r = read(fd, buf, sizeof(buf) - 1);
+        close(fd);
+        if (r > 0) {
+            buf[r] = '\\0';
+            pid_t pid = (pid_t)atoi(buf);
+            if (pid > 0) {
+                fprintf(stderr, "[Shim] fbb_ipi_notify(dest_cpu=%%d) sending signal to PID=%%d\\n", dest_cpu, pid);
+                kill(pid, dest_cpu == 0 ? SIGUSR2 : SIGUSR1);
+            } else {
+                fprintf(stderr, "[Shim] fbb_ipi_notify error: invalid pid string '%%s'\\n", buf);
+            }
+        } else {
+            fprintf(stderr, "[Shim] fbb_ipi_notify error: read returned %%zd (errno=%%d)\\n", r, errno);
+        }
+    }
+}
 
+#ifdef FBB_WITH_OPENAMP
+#include <metal/sys.h>
+#include <metal/device.h>
+#include <metal/alloc.h>
+#include <metal/io.h>
+#include <openamp/open_amp.h>
+#include <openamp/rpmsg_virtio.h>
+#include <pthread.h>
+#include <poll.h>
+
+static struct rpmsg_virtio_device rvdev;
+static struct rpmsg_endpoint ept;
+static pthread_t rpmsg_thread;
+static int rpmsg_running = 0;
+static int app_socket_fd = -1;
+static int shim_socket_fd = -1;
+static int signal_pipe[2] = {-1, -1};
+static void *rpmsg_shm_ptr = NULL;
+
+static uint8_t shim_virtio_get_status(struct virtio_device *vdev) {
+    (void)vdev;
+    if (!rpmsg_shm_ptr) return 0;
+    return *(volatile uint8_t *)((char *)rpmsg_shm_ptr + 0x7ff0);
+}
+
+static void shim_virtio_set_status(struct virtio_device *vdev, uint8_t status) {
+    (void)vdev;
+    if (rpmsg_shm_ptr) {
+        *(volatile uint8_t *)((char *)rpmsg_shm_ptr + 0x7ff0) = status;
+    }
+}
+
+static uint32_t shim_virtio_get_features(struct virtio_device *vdev) {
+    (void)vdev;
+    return 0;
+}
+
+static void shim_virtio_set_features(struct virtio_device *vdev, uint32_t features) {
+    (void)vdev;
+    (void)features;
+}
+
+static void shim_virtio_notify(struct virtqueue *vq) {
+    (void)vq;
+    fbb_ipi_notify(1); // Notify M-Core
+}
+
+static const struct virtio_dispatch shim_virtio_dispatch = {
+    .get_status = shim_virtio_get_status,
+    .set_status = shim_virtio_set_status,
+    .get_features = shim_virtio_get_features,
+    .set_features = shim_virtio_set_features,
+    .notify = shim_virtio_notify,
+};
+
+static int shim_ept_cb(struct rpmsg_endpoint *ept, void *data, size_t len, uint32_t src, void *priv) {
+    (void)ept;
+    (void)priv;
+    (void)src;
+    fprintf(stderr, "[Shim] shim_ept_cb received reply of %%zu bytes from M-core, writing to app\\n", len);
+    if (shim_socket_fd != -1) {
+        if (!original_write) original_write = dlsym(RTLD_NEXT, "write");
+        original_write(shim_socket_fd, data, len);
+    }
+    return RPMSG_SUCCESS;
+}
+
+static void *rpmsg_worker_thread(void *arg) {
+    (void)arg;
+    fprintf(stderr, "[Shim] rpmsg_worker_thread started\\n");
+    struct pollfd fds[2];
+    fds[0].fd = shim_socket_fd;
+    fds[0].events = POLLIN;
+    fds[1].fd = signal_pipe[0];
+    fds[1].events = POLLIN;
+
+    while (rpmsg_running) {
+        int ret = poll(fds, 2, 100);
+        if (ret > 0) {
+            if (fds[1].revents & POLLIN) {
+                char dummy;
+                read(signal_pipe[0], &dummy, 1);
+                fprintf(stderr, "[Shim] Worker received signal notification, notifying rproc\\n");
+                rproc_virtio_notified(rvdev.vdev, 100);
+            }
+            if (fds[0].revents & POLLIN) {
+                char buf[512];
+                ssize_t len = read(shim_socket_fd, buf, sizeof(buf));
+                if (len > 0) {
+                    fprintf(stderr, "[Shim] Worker received %%zd bytes from app, sending to OpenAMP\\n", len);
+                    rpmsg_send(&ept, buf, len);
+                }
+            }
+        }
+    }
+    fprintf(stderr, "[Shim] rpmsg_worker_thread exiting\\n");
+    return NULL;
+}
+
+static void shim_sigusr2_handler(int sig) {
+    (void)sig;
+    fprintf(stderr, "[Shim] shim_sigusr2_handler fired!\\n");
+    if (signal_pipe[1] != -1) {
+        char dummy = 1;
+        if (!original_write) original_write = dlsym(RTLD_NEXT, "write");
+        original_write(signal_pipe[1], &dummy, 1);
+    }
+}
+
+static int handle_rpmsg_open(void) {
+    fprintf(stderr, "[Shim] handle_rpmsg_open entering\\n");
+    if (app_socket_fd != -1) {
+        return app_socket_fd;
+    }
+    int sv[2];
+    if (socketpair(AF_UNIX, SOCK_STREAM, 0, sv) < 0) {
+        return -1;
+    }
+    app_socket_fd = sv[0];
+    shim_socket_fd = sv[1];
+
+    if (pipe(signal_pipe) < 0) {
+        close(sv[0]); close(sv[1]);
+        return -1;
+    }
+
+    int shm_fd = original_open(SHM_FILE, O_RDWR, 0);
+    if (shm_fd < 0) {
+        close(sv[0]); close(sv[1]);
+        close(signal_pipe[0]); close(signal_pipe[1]);
+        return -1;
+    }
+    rpmsg_shm_ptr = mmap(NULL, SHM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0);
+    close(shm_fd);
+    if (rpmsg_shm_ptr == MAP_FAILED) {
+        close(sv[0]); close(sv[1]);
+        close(signal_pipe[0]); close(signal_pipe[1]);
+        return -1;
+    }
+
+    struct metal_init_params init_params = METAL_INIT_DEFAULTS;
+    if (metal_init(&init_params) != 0) {
+        munmap(rpmsg_shm_ptr, SHM_SIZE);
+        close(sv[0]); close(sv[1]);
+        close(signal_pipe[0]); close(signal_pipe[1]);
+        return -1;
+    }
+
+    struct metal_device *mdev = NULL;
+    struct metal_io_region *io = NULL;
+    static metal_phys_addr_t shm_phys[] = { 0x3ee00000 };
+    static struct metal_device shm_dev = {
+        .name = "shm",
+        .num_regions = 1,
+        .regions = {
+            {
+                .virt = NULL,
+                .physmap = shm_phys,
+                .size = SHM_SIZE,
+                .page_shift = 18,
+                .page_mask = -1,
+                .mem_flags = 0,
+            }
+        }
+    };
+    shm_dev.regions[0].virt = rpmsg_shm_ptr;
+    metal_register_generic_device(&shm_dev);
+    metal_device_open("generic", "shm", &mdev);
+    io = metal_device_io_region(mdev, 0);
+
+    static struct virtio_device vdev;
+    vdev.role = VIRTIO_DEV_DRIVER;
+    vdev.vrings_num = 2;
+    vdev.func = &shim_virtio_dispatch;
+
+    static struct virtio_vring_info vrings[2];
+    vrings[0].io = io;
+    vrings[0].info.align = 4096;
+    vrings[0].info.num_descs = 16;
+    vrings[0].info.vaddr = (void*)((uintptr_t)rpmsg_shm_ptr + 0x0000);
+    vrings[0].vq = virtqueue_allocate(16);
+    vrings[0].notifyid = 100;
+    vrings[1].io = io;
+    vrings[1].info.align = 4096;
+    vrings[1].info.num_descs = 16;
+    vrings[1].info.vaddr = (void*)((uintptr_t)rpmsg_shm_ptr + 0x4000);
+    vrings[1].vq = virtqueue_allocate(16);
+    vrings[1].notifyid = 101;
+
+    vdev.vrings_info = vrings;
+
+    static struct rpmsg_virtio_shm_pool shpool;
+    rpmsg_virtio_init_shm_pool(&shpool, (void*)((uintptr_t)rpmsg_shm_ptr + 0x8000), SHM_SIZE - 0x8000);
+    rpmsg_init_vdev(&rvdev, &vdev, NULL, io, &shpool);
+    struct rpmsg_device *rdev = rpmsg_virtio_get_rpmsg_device(&rvdev);
+
+    rpmsg_create_ept(&ept, rdev, "rpmsg-openamp-demo-channel", 100, 101, shim_ept_cb, NULL);
+
+    signal(SIGUSR2, shim_sigusr2_handler);
+
+    /* Write proxy_pid only for the actual application opening RPMsg */
+    ensure_dir();
+    if (!original_open) original_open = dlsym(RTLD_NEXT, "open");
+    int proxy_fd = original_open("/tmp/fbb/sys/class/remoteproc/remoteproc0/proxy_pid", O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    if (proxy_fd >= 0) {
+        char buf[32];
+        int len = snprintf(buf, sizeof(buf), "%%d\\n", getpid());
+        if (!original_write) original_write = dlsym(RTLD_NEXT, "write");
+        original_write(proxy_fd, buf, len);
+        close(proxy_fd);
+    }
+
+    rpmsg_running = 1;
+    pthread_create(&rpmsg_thread, NULL, rpmsg_worker_thread, NULL);
+
+    if (app_socket_fd < MAX_FDS) {
+        virtual_fd_route_idx[app_socket_fd] = -300;
+    }
+    fprintf(stderr, "[Shim] handle_rpmsg_open initialized successfully\\n");
+    return app_socket_fd;
+}
+#else
+static int handle_rpmsg_open(void) {
+    errno = ENODEV;
+    return -1;
+}
+#endif
 
 static void __attribute__((constructor)) init_mcore_mapping(void) {
     char *fbb_mcore = getenv("FBB_MCORE");
@@ -541,12 +822,28 @@ static void __attribute__((constructor)) init_mcore_mapping(void) {
             }
             void *addr = (void *)(uintptr_t)routes[i].base_addr;
             off_t offset = (off_t)(routes[i].base_addr - routes[0].base_addr);
-            void *mapped = original_mmap(addr, routes[i].size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, shm_fd, offset);
+            
+            // Try safest first: MAP_FIXED_NOREPLACE (prevents overriding existing stack/heap mappings)
+            void *mapped = original_mmap(addr, routes[i].size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED_NOREPLACE, shm_fd, offset);
             if (mapped == MAP_FAILED) {
-                fprintf(stderr, "[Shim M-Core] ERROR: MAP_FIXED failed for address 0x%%lx, size %%ld, offset %%ld (errno: %%d)\\n",
-                        routes[i].base_addr, (long)routes[i].size, (long)offset, errno);
+                if (errno == EEXIST) {
+                    fprintf(stderr, "[Shim M-Core] CRITICAL ERROR: Address collision at 0x%%lx (already mapped, EEXIST)\\n", routes[i].base_addr);
+                } else {
+                    fprintf(stderr, "[Shim M-Core] ERROR: mmap MAP_FIXED_NOREPLACE failed for address 0x%%lx (errno: %%d)\\n", routes[i].base_addr, errno);
+                }
+            } else if (mapped != addr) {
+                // If MAP_FIXED_NOREPLACE is ignored by an older kernel, it maps to a different address.
+                // We must unmap it and fall back to MAP_FIXED.
+                munmap(mapped, routes[i].size);
+                mapped = original_mmap(addr, routes[i].size, PROT_READ | PROT_WRITE, MAP_SHARED | MAP_FIXED, shm_fd, offset);
+                if (mapped == MAP_FAILED) {
+                    fprintf(stderr, "[Shim M-Core] ERROR: Fallback MAP_FIXED failed for address 0x%%lx (errno: %%d)\\n", routes[i].base_addr, errno);
+                } else {
+                    fprintf(stdout, "[Shim M-Core] Successfully mapped 0x%%lx -> %%p with fallback MAP_FIXED\\n", routes[i].base_addr, mapped);
+                    fflush(stdout);
+                }
             } else {
-                fprintf(stdout, "[Shim M-Core] Successfully mapped 0x%%lx -> %%p (size: %%ld, offset: %%ld)\\n",
+                fprintf(stdout, "[Shim M-Core] Successfully mapped 0x%%lx -> %%p with MAP_FIXED_NOREPLACE (size: %%ld, offset: %%ld)\\n",
                         routes[i].base_addr, mapped, (long)routes[i].size, (long)offset);
                 fflush(stdout);
             }
@@ -554,7 +851,36 @@ static void __attribute__((constructor)) init_mcore_mapping(void) {
         }
     }
 }
-""" % (", ".join(mmap_routes), " ".join(i2c_matches), " ".join(uart_matches))
+
+static void __attribute__((destructor)) cleanup_shim(void) {
+    char *fbb_mcore = getenv("FBB_MCORE");
+    if (!fbb_mcore || strcmp(fbb_mcore, "1") != 0) {
+        unlink("/tmp/fbb/sys/class/remoteproc/remoteproc0/proxy_pid");
+#ifdef FBB_WITH_OPENAMP
+        if (rpmsg_running) {
+            rpmsg_running = 0;
+            pthread_join(rpmsg_thread, NULL);
+            rpmsg_destroy_ept(&ept);
+            rpmsg_deinit_vdev(&rvdev);
+            if (app_socket_fd != -1) close(app_socket_fd);
+            if (shim_socket_fd != -1) close(shim_socket_fd);
+            if (signal_pipe[0] != -1) close(signal_pipe[0]);
+            if (signal_pipe[1] != -1) close(signal_pipe[1]);
+            if (rpmsg_shm_ptr) munmap(rpmsg_shm_ptr, SHM_SIZE);
+            metal_finish();
+        }
+#endif
+    }
+}
+""" % (
+            ", ".join(mmap_routes),
+            " ".join(i2c_matches),
+            " ".join(uart_matches),
+            "\n".join(rpmsg_matches),
+            "\n".join(rpmsg_matches),
+            "\n".join(rpmsg_matches),
+            "\n".join(rpmsg_matches)
+        )
 
 class RTLGenerator(BaseGenerator):
     def generate(self, model: BoardModel):
@@ -597,7 +923,7 @@ module vfpga_top (
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-%s
+            %s
         end else if (w_en) begin
             case (addr)
 %s
@@ -637,9 +963,12 @@ class SimulatorGenerator(BaseGenerator):
 #include <unistd.h>
 #include <stdint.h>
 #include <string.h>
+#include <signal.h>
 #include <verilated_vcd_c.h>
 #include "vfpga_config.h"
 #include "sim_traits.h"
+
+double sc_time_stamp() { return 0; }
 
 #define SHM_BASE_ADDR 0x%08xU
 
@@ -676,6 +1005,26 @@ void run_sim_loop(T* top, uint32_t* shm, uint32_t* old_shm, VerilatedVcdC* m_tra
                     
                     if constexpr (has_w_en<T>::value) top->w_en = 0;
                     old_shm[off] = shm[off];
+
+                    // Virtual IPI Register (TRIG) detection, signal relay and auto-clear
+                    if (strcmp(registers[i].name, "TRIG") == 0 && shm[off] == 0) {
+                        FILE* pf = fopen("/tmp/fbb/sys/class/remoteproc/remoteproc0/proxy_pid", "r");
+                        if (pf) {
+                            int pid = 0;
+                            if (fscanf(pf, "%%d", &pid) == 1 && pid > 0) {
+                                kill(pid, SIGUSR2);
+                            }
+                            fclose(pf);
+                        }
+                        shm[off] = 0xFFFFFFFF;
+                        old_shm[off] = 0xFFFFFFFF;
+                        if constexpr (has_addr<T>::value) top->addr = registers[i].addr;
+                        if constexpr (has_w_data<T>::value) top->w_data = 0xFFFFFFFF;
+                        if constexpr (has_w_en<T>::value) top->w_en = 1;
+                        top->eval();
+                        if constexpr (has_clk<T>::value) { top->clk = 1; top->eval(); top->clk = 0; top->eval(); }
+                        if constexpr (has_w_en<T>::value) top->w_en = 0;
+                    }
                 }
             }
 

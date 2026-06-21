@@ -1,0 +1,38 @@
+/dts-v1/;
+
+/ {
+    /* VirtIO Ring 0 (A-Core -> M-Core) */
+    vring0@3ee00000 {
+        compatible = "generic-uio";
+        reg = <0x3ee00000 0x4000>; /* 16KB */
+        label = "/dev/uio0";
+    };
+
+    /* VirtIO Ring 1 (M-Core -> A-Core) */
+    vring1@3ee04000 {
+        compatible = "generic-uio";
+        reg = <0x3ee04000 0x4000>; /* 16KB */
+        label = "/dev/uio1";
+    };
+
+    /* Shared Message Buffers */
+    vringbuf@3ee08000 {
+        compatible = "generic-uio";
+        reg = <0x3ee08000 0x20000>; /* 128KB */
+        label = "/dev/uio2";
+    };
+
+    /* Virtual IPI Controller */
+    ipi@3ee2c000 {
+        compatible = "generic-uio";
+        reg = <0x3ee2c000 0x1000>;
+        label = "/dev/uio3";
+        registers = "TRIG @ 0x00";
+    };
+
+    /* A-Core アプリケーションがアクセスする RPMsg デバイス */
+    rpmsg0 {
+        compatible = "rpmsg";
+        label = "/dev/rpmsg0";
+    };
+};

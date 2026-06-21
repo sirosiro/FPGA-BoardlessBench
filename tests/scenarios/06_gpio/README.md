@@ -29,10 +29,10 @@ graph TD
         Dash["Node.js Dashboard (Port 8080)"]
     end
 
-    Main -- "mmap(/dev/uio0)" --> Shim
-    Shim -- "Route to" --> SHM
-    Main -- "regs[0] = 0x01 (Output)" --> DATA
-    Main -- "val = regs[2] (Input)" --> DATA2
+    Main -->|"mmap(/dev/uio0)"| Shim
+    Shim -->|"Route to"| SHM
+    Main -->|"regs[0] = 0x01 (Output)"| DATA
+    Main -->|"val = regs[2] (Input)"| DATA2
 
     DATA <--> VLogic
     TRI  <--> VLogic

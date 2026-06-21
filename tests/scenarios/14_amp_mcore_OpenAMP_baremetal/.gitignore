@@ -1,0 +1,4 @@
+/test_bin
+/mcore_baremetal.elf
+/*.o
+/*.log

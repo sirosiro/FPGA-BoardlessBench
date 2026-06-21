@@ -32,8 +32,8 @@ graph TD
     end
 
     App --> RegClass
-    RegClass -- "mmap access" --> Shim
-    Shim -- "Physical Address Routing" --> Hardware
+    RegClass -->|"mmap access"| Shim
+    Shim -->|"Physical Address Routing"| Hardware
     Hardware <--> Dash
     Hardware <--> Wave
 ```

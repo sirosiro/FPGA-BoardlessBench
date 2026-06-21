@@ -34,6 +34,7 @@ cleanup_processes() {
         fi
     fi
     rm -rf /tmp/fbb 2>/dev/null
+    rm -f /tmp/vring0 /tmp/vfpga_reg /tmp/fbb_compatible /tmp/fbb_model 2>/dev/null
 }
 
 # --- Argument Parsing ---
@@ -68,7 +69,7 @@ if [ "$CLEAN" = true ]; then
         CLEAN_TARGETS="clean"
     fi
     echo "[Runner] Cleaning project artifacts and logs..."
-    rm -rf build 2>/dev/null
+    if [ -d "build" ]; then rm -rf build/* build/.[!.]* 2>/dev/null; fi
     rm -f libfpgashim.so vfpga_sim
     rm -f tests/scenarios/*/test_bin tests/scenarios/*/*.bin tests/scenarios/*/*.elf
     
@@ -84,6 +85,7 @@ if [ "$CLEAN" = true ]; then
         rm -rf tests/scenarios/13_amp_mcore_cmsis-rtos2-threadx/threadx 2>/dev/null
         rm -rf tests/scenarios/13_amp_mcore_cmsis-rtos2-threadx/stm32-mw-cmsis-rtos-tx 2>/dev/null
         rm -rf tests/scenarios/13_amp_mcore_cmsis-rtos2-threadx/CMSIS_5 2>/dev/null
+        rm -rf tests/scenarios/15_amp_mcore_OpenAMP_freertos/FreeRTOS-Kernel 2>/dev/null
     fi
 
     rm -f tests/scenarios/*/*.log
@@ -109,8 +111,11 @@ start_environment() {
     rm -f /tmp/hdmi_output.bmp
 
     # 前のシナリオの残骸を削除し、クリーンな状態にする
-    rm -rf build 2>/dev/null
+    if [ -d "build" ]; then rm -rf build/* build/.[!.]* 2>/dev/null; fi
+    sync
+    sleep 1
     rm -f libfpgashim.so vfpga_sim
+    rm -f /tmp/vring0 /tmp/vfpga_reg /tmp/fbb_compatible /tmp/fbb_model 2>/dev/null
 
     echo "[Runner] Setting up environment with ${dts}..."
     
@@ -132,7 +137,7 @@ start_environment() {
 
 # --- Main Execution ---
 
-for scenario in ${SCENARIOS_DIR}/*; do
+for scenario in ${SCENARIOS_DIR}/13_amp_mcore_cmsis-rtos2-threadx ${SCENARIOS_DIR}/14_amp_mcore_OpenAMP_baremetal ${SCENARIOS_DIR}/15_amp_mcore_OpenAMP_freertos; do
     if [ ! -d "${scenario}" ]; then continue; fi
     
     # Skip showcase scenarios starting with 'S'

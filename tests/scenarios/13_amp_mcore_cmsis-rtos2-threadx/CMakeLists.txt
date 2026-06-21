@@ -33,14 +33,22 @@ if(NOT EXISTS "${CMSIS_THREADX_DIR}/cmsis_os2.c")
     if(EXISTS "${CMSIS_THREADX_DIR}")
         execute_process(COMMAND ${CMAKE_COMMAND} -E remove_directory "${CMSIS_THREADX_DIR}")
     endif()
-    message(STATUS "Cloning stm32-mw-cmsis-rtos-tx (depth 1)...")
+    message(STATUS "Cloning stm32-mw-cmsis-rtos-tx (sparse, depth 1)...")
     execute_process(
-        COMMAND git clone --depth 1 https://github.com/STMicroelectronics/stm32-mw-cmsis-rtos-tx.git stm32-mw-cmsis-rtos-tx
+        COMMAND git clone --depth 1 --filter=blob:none --sparse https://github.com/STMicroelectronics/stm32-mw-cmsis-rtos-tx.git stm32-mw-cmsis-rtos-tx
         WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
         RESULT_VARIABLE CLONE_RES
     )
     if(NOT CLONE_RES EQUAL 0)
         message(FATAL_ERROR "Failed to clone stm32-mw-cmsis-rtos-tx")
+    endif()
+    execute_process(
+        COMMAND git sparse-checkout set Include cmsis_os2.c
+        WORKING_DIRECTORY "${CMSIS_THREADX_DIR}"
+        RESULT_VARIABLE SPARSE_RES
+    )
+    if(NOT SPARSE_RES EQUAL 0)
+        message(FATAL_ERROR "Failed to configure stm32-mw-cmsis-rtos-tx sparse checkout")
     endif()
 endif()
 

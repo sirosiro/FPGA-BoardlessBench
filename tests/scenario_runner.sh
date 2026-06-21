@@ -56,8 +56,9 @@ if [ "$CLEAN" = true ]; then
     fi
     echo "[Runner] Cleaning artifacts for scenario: ${SCENARIO_NAME} with targets: ${CLEAN_TARGETS}..."
     cd "${PROJECT_ROOT}"
-    rm -rf build 2>/dev/null
-    rm -f libfpgashim.so vfpga_sim
+    if [ -d "build" ]; then rm -rf build/* build/.[!.]* 2>/dev/null; fi
+    rm -f libfpgashim.so vfpga_sim 2>/dev/null
+    rm -f /tmp/vring0 /tmp/vfpga_reg /tmp/fbb_compatible /tmp/fbb_model 2>/dev/null
     if [ -n "$SCENARIO_DIR" ]; then
         if [[ " $CLEAN_TARGETS " =~ " distclean " || " $CLEAN_TARGETS " =~ " cleanall " ]]; then
             rm -rf "${SCENARIO_DIR}/FreeRTOS-Kernel" "${SCENARIO_DIR}/threadx" "${SCENARIO_DIR}/CMSIS-FreeRTOS" "${SCENARIO_DIR}/stm32-mw-cmsis-rtos-tx" "${SCENARIO_DIR}/CMSIS_5" 2>/dev/null
@@ -93,6 +94,7 @@ cleanup() {
         fi
     fi
     rm -rf /tmp/fbb 2>/dev/null
+    rm -f /tmp/vring0 /tmp/vfpga_reg /tmp/fbb_compatible /tmp/fbb_model 2>/dev/null
 }
 
 # 異常終了時や中断時（Ctrl+C）にプロセスを掃除するように設定
@@ -114,7 +116,7 @@ python3 "${PROJECT_ROOT}/scripts/gen_vfpga.py" "${DTS}"
 # 3. エンジンのビルド
 echo "[Runner] Building simulation engine (this may take a few seconds)..."
 cd "${PROJECT_ROOT}"
-cmake -B build -DSCENARIO_DIR="${SCENARIO_DIR}" || exit 1
+cmake -B build -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DSCENARIO_DIR="${SCENARIO_DIR}" || exit 1
 cmake --build build --target fpgashim --target vfpga_sim || exit 1
 
 # 4. バックグラウンドプロセスの起動

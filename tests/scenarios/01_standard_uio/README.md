@@ -20,12 +20,12 @@ graph LR
         end
     end
     
-    App -- "Write / Read" <--> AXI
-    AXI -- "w_data" --> RST
-    AXI -- "w_data" --> EN
+    App <-->|"Write / Read"| AXI
+    AXI -->|"w_data"| RST
+    AXI -->|"w_data"| EN
     EN --> CounterLogic
     CounterLogic --> CNT
-    CNT -- "r_data" --> AXI
+    CNT -->|"r_data"| AXI
 ```
 
 ## ハードウェア（Verilog）の主要な信号線について

@@ -21,6 +21,7 @@
 ### 4. サブ・マニフェスト (Sub-Manifests)
 - **[Scripts Generator](./scripts/ARCHITECTURE_MANIFEST.md)**: DTS から環境を自動生成するコア・ロジックの設計。
 - **[Dashboard Interface](./dashboard/ARCHITECTURE_MANIFEST.md)**: 診断ダッシュボードと可視化レイヤーの設計。
+- **[Test Scenarios](./tests/scenarios/ARCHITECTURE_MANIFEST.md)**: 各テストシナリオの共通原則、禁止事項、および個別シナリオの役割定義。
 
 ---
 
@@ -45,6 +46,9 @@
 - **原則 6: シナリオの自律性と可搬性 (Scenario Autonomy & Portability)**
   - **内容:** 各テストシナリオは、単体で「ビルド (`Makefile`)」「実行 (`run.sh`)」「解説 (`README.md`)」を完結させなければならない。また、ビルド環境は特定のOSやツールに依存させず、標準的な環境変数を尊重する。
   - **理由:** 学習者が特定の課題に集中して取り組めるようにするとともに、FPGA-BoardlessBench (F-BB) で作成したソースコード一式を、そのまま PetaLinux 等の実機プロジェクトへ移行可能にするため。
+- **原則 7: 学習者視点の徹底と内部ロジックの隠蔽 (Learner-Centric Purity)**
+  - **内容:** `tests/`（およびその配下の `scenarios/`）ディレクトリには、学習の対象となるファイル（`config.dts`, `vfpga_top.v`, `main.c` 等）のみを配置し、FPGA-BoardlessBench (F-BB)特有の内部事情に関するファイル（例：シミュレータのC++ドライバなど）は絶対に配置しない。内部ロジックは `src/` や `scripts/` で隠蔽、または自動生成によって解決する。
+  - **理由:** 学習者が「どこまでが一般的なFPGA/Linux開発の知識で、どこからがFPGA-BoardlessBench (F-BB)特有の仕組みなのか」を混同して混乱するのを防ぐため。学習のノイズとなる情報は裏側に隠し、本来の学習対象（Verilog, DTS, FW）に100%集中できるピュアな学習環境を維持する。
 
 ### 2. 主要なアーキテクチャ決定の記録 (Key Architectural Decisions)
 - **2026-04-25: システムコール・インターセプトの採用**
@@ -223,6 +227,16 @@
         1. マルチOS検証の透過性向上: 共通の CMSIS-RTOS2 API を用いることで、Mコア側のファームウェアを変更せず、バックエンドのRTOSカーネルを自由に入れ替えてシステムシーケンスを検証できるようにするため。
         2. コード透過性と堅牢性の担保: 上流の公式ソースコードの直接改変を排除し、ツールのコンパイル設定のみで 64bit 環境（Linux/WSL2）への適応とリンクエラーの解消を完結させるため。
         3. 無限ビルド再実行の防止: 共通ファームウェアの修正漏れを防ぎつつ、コピー時のタイムスタンプ更新による CMake の無限再ビルドループを構造的に回避するため。
+
+- **2026-06-21: OpenAMPによる非対称マルチコア(AMP)間通信エミュレーションの導入 (Introduction of OpenAMP Asymmetric Multiprocessing Emulation)**
+  - **Decision:**
+        1. OpenAMPシナリオ（14_amp_mcore_OpenAMP_baremetal および 15_amp_mcore_OpenAMP_freertos）の追加。
+        2. Aコア（Linux）とMコア（ベアメタル / FreeRTOS）間で、仮想 VirtIO vring 共有メモリを用いた RPMsg 通信エミュレーションを確立。
+        3. DTSに仮想IPIコントローラを定義し、レジスタ書き込みをトリガーとしたシミュレータ中継によるホスト間シグナル（SIGUSR1/SIGUSR2）送受信の隠蔽。
+        4. remoteproc インターフェース（stateへのstart/stop書き込み）によるMコアの確実な起動・停止ライフサイクル管理の導入。
+  - **Rationale:**
+        1. ヘテロジニアス通信プロトコルのエミュレーション: 実機上のAMP開発で標準的に使用される OpenAMP フレームワークをホストシミュレータ上で動かし、RPMsgによる双方向メッセージ送受信やハンドシェイクのシーケンスを実機透過に検証するため。
+        2. ホスト依存コードの徹底排除: ファームウェアコード内からシグナル送信や `/tmp` 上のpidファイル監視といったホスト依存処理を完全に排除し、純粋なレジスタアクセスにカプセル化することで、実機へのソース透過性と可搬性を維持するため。
 
 ### 3. AIとの協調に関する指針 (AI Collaboration Policy)
 - **未知の問題への対処:** 憲章にないデバイス（SPI, UART等）の追加が必要になった際、AIは既存のI2Cエミュレーションのパターンを継承し、複数のインターセプト案を提示すること。

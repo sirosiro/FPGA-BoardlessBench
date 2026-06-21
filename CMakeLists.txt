@@ -1,5 +1,6 @@
 cmake_minimum_required(VERSION 3.12)
 project(FPGA-BoardlessBench C CXX)
+cmake_policy(SET CMP0079 NEW)
 
 set(CMAKE_C_STANDARD 99)
 set(CMAKE_CXX_STANDARD 17)
@@ -61,12 +62,25 @@ if(NOT SCENARIO_DIR STREQUAL "")
     
     add_custom_target(generate_verilator DEPENDS "${VERILATOR_OUTPUT_DIR}/Vvfpga_top__ALL.a")
     
-    set(VERILATOR_ROOT "/usr/share/verilator")
-    add_executable(vfpga_sim
+    # Find verilator root directory
+    if(NOT DEFINED VERILATOR_ROOT)
+        execute_process(
+            COMMAND verilator --getenv VERILATOR_ROOT
+            OUTPUT_VARIABLE VERILATOR_ROOT
+            OUTPUT_STRIP_TRAILING_WHITESPACE
+        )
+        if(VERILATOR_ROOT STREQUAL "")
+            set(VERILATOR_ROOT "/usr/share/verilator")
+        endif()
+    endif()
+    
+    set(SIM_SRCS
         src/sim/sim_main.cpp
         ${VERILATOR_ROOT}/include/verilated.cpp
         ${VERILATOR_ROOT}/include/verilated_vcd_c.cpp
     )
+    
+    add_executable(vfpga_sim ${SIM_SRCS})
     add_dependencies(vfpga_sim generate_verilator)
     
     target_include_directories(vfpga_sim PRIVATE
@@ -93,6 +107,8 @@ if(NOT SCENARIO_DIR STREQUAL "")
     # 3. Add active scenario subdirectory if CMakeLists.txt exists
     if(EXISTS "${SCENARIO_DIR}/CMakeLists.txt")
         add_subdirectory("${SCENARIO_DIR}" "${CMAKE_BINARY_DIR}/scenarios/${SCENARIO_NAME}")
+        
+
     endif()
 endif()
 

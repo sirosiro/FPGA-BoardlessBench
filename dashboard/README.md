@@ -31,16 +31,16 @@ graph TD
         ExtClient["External Client (Tera Term etc.)"]
     end
 
-    VLogic -- "Generates" --> Manifest
-    VLogic -- "Updates" --> Map
-    Srv -- "Polls (Dynamic Reload)" --> Manifest
-    Srv -- "Polls" --> SHM
-    Srv -- "Broadcasts" --> Client
-    Client -- "GPIO Toggle (Injection)" --> Srv
-    Client -- "UART Terminal" --> Client
+    VLogic -->|"Generates"| Manifest
+    VLogic -->|"Updates"| Map
+    Srv -->|"Polls (Dynamic Reload)"| Manifest
+    Srv -->|"Polls"| SHM
+    Srv -->|"Broadcasts"| Client
+    Client -->|"GPIO Toggle (Injection)"| Srv
+    Client -->|"UART Terminal"| Client
     
-    ExtClient -- "Connects (Port 3000+)" --> Proxy
-    Proxy -- "Bidirectional Pipe" --> Srv
+    ExtClient -->|"Connects (Port 3000+)"| Proxy
+    Proxy -->|"Bidirectional Pipe"| Srv
 ```
 
 ## 主要なファイル

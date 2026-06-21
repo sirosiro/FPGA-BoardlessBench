@@ -31,11 +31,11 @@ Linuxのシステムコール・フッキング技術を用いてハードウェ
 ```mermaid
 graph TD
     subgraph "User Space (App Side)"
-        App["App (ELF Binary)"] -- "open / ioctl / mmap" --> Shim["Interception Shim (libfpgashim.so)"]
+        App["App (ELF Binary)"] -->|"open / ioctl / mmap"| Shim["Interception Shim (libfpgashim.so)"]
     end
 
     subgraph "The Bridge"
-        Shim -- "Redirect" --> SHM["Shared Memory File (/tmp)"]
+        Shim -->|"Redirect"| SHM["Shared Memory File (/tmp)"]
     end
 
     subgraph "Backend (Logic Side)"

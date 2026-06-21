@@ -41,6 +41,7 @@ cleanup() {
     # 共有メモリファイルとマニフェストの削除
     echo "Cleaning up temporary files..."
     rm -f /tmp/vfpga_* 2>/dev/null
+    rm -f /tmp/vring0 /tmp/vfpga_reg /tmp/fbb_compatible /tmp/fbb_model 2>/dev/null
     rm -f /tmp/hdmi_output.bmp 2>/dev/null
     rm -f dashboard/data/board_manifest.json 2>/dev/null
     
@@ -58,10 +59,13 @@ echo "===================================================="
 # 1. 準備
 echo "[0/3] Cleaning up previous state..."
 rm -f dashboard/data/vfpga_uart_* 2>/dev/null
+rm -f /tmp/vring0 /tmp/vfpga_reg /tmp/fbb_compatible /tmp/fbb_model 2>/dev/null
 rm -f /tmp/hdmi_output.bmp 2>/dev/null
 rm -rf /tmp/fbb 2>/dev/null
 pkill -f "node dashboard/server.js" 2>/dev/null
-rm -rf build 2>/dev/null
+if [ -d "build" ]; then rm -rf build/* build/.[!.]* 2>/dev/null; fi
+sync
+sleep 1
 rm -f libfpgashim.so vfpga_sim
 mkdir -p /lib/firmware 2>/dev/null || true
 
