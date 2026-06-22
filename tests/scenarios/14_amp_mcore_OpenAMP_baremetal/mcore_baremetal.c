@@ -210,6 +210,16 @@ int main(int argc, char **argv) {
     fflush(stdout);
 
     /* Main Dispatch Loop */
+    /* 
+     * 【F-BBの工夫：仮想IPIとCPU Yieldによる協調制御】
+     * 実機では通常、AコアがIPIをキックすると、Mコア側の NVIC（Cortex-Mの割り込みコントローラ）が
+     * ハードウェア割り込みを検知し、登録されたISR（割り込みサービスルーチン）が直接 rproc_virtio_notified を叩きます
+     * (メインループ側でポーリングしてフラグを待つ必要すらありません)。
+     * 
+     * F-BBでは、ホストPC上のプロセスとしてCPUリソースを100%食いつぶさないよう、
+     * メインループの末尾に usleep(500); を挟むことでホストOSにCPUを適度に譲り（Yield）つつ、
+     * シグナルハンドラ（SIGUSR1）をハードウェア割り込みに見立てて協調制御（疑似的な割り込み駆動）しています。
+     */
     while (running) {
         if (sigusr1_fired) {
             sigusr1_fired = 0;

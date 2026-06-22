@@ -76,7 +76,6 @@ private:
   std::unique_ptr<IDisplaySink> display_;
   SocType soc_type_;
   std::atomic<bool> running_{true};
-  std::atomic<bool> preview_running_{true};
   std::thread hdmi_thread_;
 
   // 共通のGPIO割り込みイベントハンドラ (プライベートメンバ関数)
@@ -142,7 +141,6 @@ public:
         {11, DIR::INPUT}, // 予備入力
         {12, DIR::INPUT}, // 予備入力
         {13, DIR::INPUT}, // 予備入力
-        {14, DIR::INPUT}, // 予備入力
         {15, DIR::INPUT}  // 予備入力
     };
 
@@ -174,7 +172,6 @@ public:
           "  [Pin 11] INPUT  - DEMO 1 Trigger (Normal write to interlocked Pin 4 -> Aborts)\r\n"
           "  [Pin 12] INPUT  - DEMO 2 Trigger (Turn on both Pin 4 & 5 -> Aborts)\r\n"
           "  [Pin 13] INPUT  - DEMO 3 Trigger (Clean application shutdown)\r\n"
-          "  [Pin 14] INPUT  - Switch to Automotive Stitching Test (Stops rotation preview)\r\n"
           "  [Pin 15] INPUT  - Spare input\r\n"
           "==============================================================\r\n";
       printf("%s", pin_assign_msg);
@@ -486,15 +483,6 @@ public:
       stop();
     } else {
       printf("[App] Interactive Mode. Starting HDMI display preview thread (20 fps)...\n");
-      preview_running_ = true;
-
-      // Pin 14: 車載合成テストへの移行トリガー登録
-      gpio_->registerInterrupt(14, [this](int pin, bool state) {
-        if (state) {
-          printf("\n[App] [Triggered on Pin %d (Switch to Automotive Stitching Test)] Stopping rotation preview thread...\n", pin);
-          preview_running_ = false;
-        }
-      });
 
       hdmi_thread_ = std::thread([this]() {
         auto processor = HalFactory::createVideoProcessor(soc_type_);
@@ -551,7 +539,7 @@ public:
         const int preview_h = 540;
         std::vector<uint8_t> preview_buf(preview_w * preview_h * 4, 0);
 
-        while (running_ && preview_running_) {
+        while (running_) {
           auto frame_start = std::chrono::steady_clock::now();
 
           theta += 0.033f;
@@ -617,118 +605,15 @@ public:
         processor->terminate();
       });
 
-      printf("[App] Setup complete. Waiting for Pin 8, 9, 10 (UART notify), Pin 11, 12, 13 (Demo triggers), or Pin 14 (Automotive Switch)...\n");
+      printf("[App] Setup complete. Waiting for Pin 8, 9, 10 (UART notify), or Pin 11, 12, 13 (Demo triggers)...\n");
 
       if (hdmi_thread_.joinable()) {
         hdmi_thread_.join();
       }
-
-      if (running_) {
-        runAutomotiveStitchingTest();
-      }
     }
   }
 
-  static void resizeRGBA(const uint8_t* src, int src_w, int src_h, uint8_t* dst, int dst_w, int dst_h) {
-    for (int y = 0; y < dst_h; y++) {
-      int src_y = (y * src_h) / dst_h;
-      for (int x = 0; x < dst_w; x++) {
-        int src_x = (x * src_w) / dst_w;
-        int src_idx = (src_y * src_w + src_x) * 4;
-        int dst_idx = (y * dst_w + x) * 4;
-        dst[dst_idx + 0] = src[src_idx + 0];
-        dst[dst_idx + 1] = src[src_idx + 1];
-        dst[dst_idx + 2] = src[src_idx + 2];
-        dst[dst_idx + 3] = src[src_idx + 3];
-      }
-    }
-  }
 
-  void runAutomotiveStitchingTest() {
-    printf("\n--- 6. Running Automotive Stitching Test (BMP Loader from images/) ---\n");
-
-    std::vector<std::vector<uint8_t>> camera_frames(4);
-    int cam_w = 0, cam_h = 0;
-
-    for (int i = 0; i < 4; ++i) {
-      std::string filename = "tests/scenarios/P01_frdmIMX/images/cam" + std::to_string(i) + ".bmp";
-      printf("[App] Loading Simulation Camera Frame: %s\n", filename.c_str());
-      int w = 0, h = 0;
-      if (!loadBMP(filename, camera_frames[i], w, h)) {
-        fprintf(stderr, "[App] Error: Failed to load %s\n", filename.c_str());
-        return;
-      }
-      if (i == 0) {
-        cam_w = w;
-        cam_h = h;
-      } else if (w != cam_w || h != cam_h) {
-        fprintf(stderr, "[App] Error: Image dimensions mismatch between cameras.\n");
-        return;
-      }
-    }
-    printf("[App] Loaded 4 camera frames. Frame size: %dx%d\n", cam_w, cam_h);
-
-    auto processor = HalFactory::createVideoProcessor(soc_type_);
-    if (processor && processor->initialize()) {
-      // 歪み補正係数 k1 (4台のカメラは同じレンズを使用しているため共通にするべきです)
-      // 過補正を防ぐため、小さめの負の値（例: -0.05f 〜 -0.08f）に設定します。
-      // もし補正の方向自体が逆である場合は、正の値（例: +0.05f）を試してください。
-      float k1_val = -0.12f; 
-      for (int i = 0; i < 4; i++) {
-        CalibrationData params;
-        params.distortion_k1 = k1_val;
-        params.distortion_k2 = 0.0f;
-        memset(params.affine_matrix, 0, sizeof(params.affine_matrix));
-        params.affine_matrix[10] = 1.0f; // z-scale
-        
-        // 各カメラごとのアラウンドビュー用透視投影行列 (ホモグラフィ)
-        // 車体サイズ分の空間 (X: ±0.2, Y: ±0.4) を確保し、Y反転テクスチャに対応したシフトでボディを完全に隠す
-        // 新しいAroundViewシェーダーではシェーダー内部でUV座標を直接計算するため、
-        // アフィン行列はアイデンティティ（微調整用）に設定する。
-        params.affine_matrix[0] = 1.0f;   // X scale
-        params.affine_matrix[5] = 1.0f;   // Y scale
-        params.affine_matrix[15] = 1.0f;  // W
-
-        params.color_balance[0] = 1.0f;
-        params.color_balance[1] = 1.0f;
-        params.color_balance[2] = 1.0f;
-        params.color_balance[3] = -1.0f; // ガンマが負なら色反転をオフにする
-        processor->setCalibrationParams(i, params);
-      }
-
-      VideoFrame inputs[4];
-      for (int i = 0; i < 4; i++) {
-        inputs[i].cpu_data = camera_frames[i].data();
-        inputs[i].dma_buf_fd = -1;
-        inputs[i].width = cam_w;
-        inputs[i].height = cam_h;
-        inputs[i].stride = cam_w * 4;
-      }
-
-      VideoFrame output;
-      if (display_) {
-        output = display_->getBackBuffer();
-      } else {
-        static std::vector<uint8_t> dummy_buf(1920 * 1080 * 4);
-        output.cpu_data = dummy_buf.data();
-        output.dma_buf_fd = -1;
-        output.width = 1920;
-        output.height = 1080;
-        output.stride = 1920 * 4;
-      }
-
-      printf("[App] Stitching 4 camera frames into display output %dx%d (zero-copy GPU rendering)...\n", output.width, output.height);
-      if (processor->processFrame(inputs, output)) {
-        printf("[App] Stitching successful. Outputting to display...\n");
-        if (display_) {
-          display_->outputFrame(output);
-        }
-      } else {
-        fprintf(stderr, "[App] Error: Failed to composite frames.\n");
-      }
-      processor->terminate();
-    }
-  }
 };
 
 int main() {

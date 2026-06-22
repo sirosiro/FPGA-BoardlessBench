@@ -67,7 +67,12 @@ static void mcore_virtio_set_features(struct virtio_device *vdev, uint32_t featu
 /* OpenAMP VirtIO notification callback */
 static void virtio_notify(struct virtqueue *vq) {
     (void)vq;
-    // Write 0 to TRIG register at offset 0x2c000 to notify A-Core
+    /* 
+     * 【F-BBの工夫：仮想IPI（プロセッサ間割り込み）の発火方法】
+     * 実機では通常、SoC固有のレジスタ（ZynqならGICのIPIトリガーレジスタ等）を叩いてAコアに割り込みを入れます。
+     * F-BBでは、F-BBシステムが用意した仮想FPGAのレジスタ（VRING0_ADDR + 0x2c000）に0を書き込むことで、
+     * F-BBのコアエンジン（Verilator側）に対して「Aコアへ通知（IPIシグナル送信）せよ」と伝えています。
+     */
     *(volatile uint32_t*)((char *)VRING0_ADDR + 0x2c000) = 0;
 }
 
@@ -99,6 +104,14 @@ static int demo_ept_cb(struct rpmsg_endpoint *ept, void *data, size_t len, uint3
     return RPMSG_SUCCESS;
 }
 
+/* 
+ * 【F-BBの工夫：通知チェックのタスク化】
+ * 実機では通常、Aコアからデータが届くとMコア側に本物のハードウェア割り込みが入るため、
+ * その割り込みハンドラ（ISR）内で rproc_virtio_notified を呼び出します。
+ * F-BBでは、PC上のFreeRTOS環境（POSIXシミュレーション）で安全かつ低負荷で動かすため、
+ * 5ms周期で定期実行されるFreeRTOSタスクがポーリングで通知をチェックし、
+ * 受信があれば rproc_virtio_notified を呼び出す形にエスケープしています。
+ */
 void vOpenAmpTask(void *pvParameters) {
     (void)pvParameters;
     printf("[M-Core] OpenAMP processing task started.\n");
@@ -140,6 +153,14 @@ int main(int argc, char **argv) {
     struct metal_device *mdev = NULL;
     struct metal_io_region *io = NULL;
     static metal_phys_addr_t shm_phys[] = { VRING0_ADDR };
+    /*
+     * 【F-BBの工夫：メモリマップの静的定義と generic デバイス登録】
+     * 実機では通常、0x3ee00000 といった共有メモリのアドレスはデバイスツリー（Linux側）や
+     * リンカスクリプト .ld（RTOS側）で定義され、FW側は変数名やセクション指定でアクセスします。
+     * F-BBでは、ホストPC上のプロセス空間で動かすため、libmetalのデバイス抽象化機能を用いて、
+     * 「0x3ee00000 にある192KBのメモリ空間を、仮想的なハードウェアデバイス（shm）として扱う」
+     * という登録手続きを generic デバイスとしてCコード内で明示的に行っています。
+     */
     static struct metal_device shm_dev = {
         .name = "shm",
         .num_regions = 1,
