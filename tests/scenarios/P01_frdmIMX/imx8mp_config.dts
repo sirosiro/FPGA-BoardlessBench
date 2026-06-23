@@ -12,7 +12,7 @@
         label = "/dev/uio0";
         registers = 
             "DR(DATA) @ 0x00",
-            "GDIR(GDIR) @ 0x04";
+            "GDIR(INV_TRI) @ 0x04";
     };
 
     /* 

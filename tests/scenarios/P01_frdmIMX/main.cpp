@@ -141,6 +141,7 @@ public:
         {11, DIR::INPUT}, // 予備入力
         {12, DIR::INPUT}, // 予備入力
         {13, DIR::INPUT}, // 予備入力
+        {14, DIR::INPUT}, // 予備入力
         {15, DIR::INPUT}  // 予備入力
     };
 
@@ -172,6 +173,7 @@ public:
           "  [Pin 11] INPUT  - DEMO 1 Trigger (Normal write to interlocked Pin 4 -> Aborts)\r\n"
           "  [Pin 12] INPUT  - DEMO 2 Trigger (Turn on both Pin 4 & 5 -> Aborts)\r\n"
           "  [Pin 13] INPUT  - DEMO 3 Trigger (Clean application shutdown)\r\n"
+          "  [Pin 14] INPUT  - Spare input\r\n"
           "  [Pin 15] INPUT  - Spare input\r\n"
           "==============================================================\r\n";
       printf("%s", pin_assign_msg);

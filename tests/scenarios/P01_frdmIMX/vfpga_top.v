@@ -52,8 +52,6 @@ module vfpga_top (
             32'h30200004:               r_data = GDIR;
             // i.MX95 PDIR (offset 0x04): reads internal PDIR register
             32'h47400004:               r_data = PDIR;
-            // i.MX 8M Plus TRI (offset 0x08): virtual register returning ~GDIR
-            32'h30200008:               r_data = ~GDIR;
             // i.MX95 PDDR (offset 0x08)
             32'h47400008:               r_data = GDIR;
             default:                    r_data = 32'hDEADBEEF;

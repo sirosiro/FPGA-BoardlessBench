@@ -13,7 +13,7 @@
         registers = 
             "PDOR(DATA) @ 0x00",
             "PDIR(DATA) @ 0x04",
-            "PDDR(GDIR) @ 0x08";
+            "PDDR(INV_TRI) @ 0x08";
     };
 
     /* 

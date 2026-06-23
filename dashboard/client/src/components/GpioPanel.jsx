@@ -13,10 +13,9 @@ function GpioPanel() {
           const devRegs = registers.filter(r => r.deviceName === dev.name);
           if (devRegs.length === 0) return null;
 
-          // Find direction register (TRI or GDIR)
+          // Find direction register (TRI or INV_TRI)
           const dirReg = devRegs.find(r => 
-            (r.logical_name || r.name).startsWith('TRI') || 
-            (r.logical_name || r.name).startsWith('GDIR')
+            (r.logical_name || r.name).includes('TRI')
           );
 
           // Find DATA registers (Data Out vs Data In)
@@ -35,7 +34,7 @@ function GpioPanel() {
           const dataOutVal = dataOutReg?.decimal || 0;
           const dataInVal = dataInReg?.decimal || 0;
 
-          const isGdir = dirReg && (dirReg.logical_name || dirReg.name).startsWith('GDIR');
+          const isInverted = dirReg && (dirReg.logical_name || dirReg.name).includes('INV');
           const labelName = dev.name;
 
           return (
@@ -43,9 +42,11 @@ function GpioPanel() {
               <div className="gpio-dev-label">{labelName}</div>
               <div className="gpio-grid">
                 {Array.from({ length: 32 }).map((_, bitIndex) => {
-                  const isInput = isGdir 
-                    ? (dirVal & (1 << bitIndex)) === 0 
-                    : (dirVal & (1 << bitIndex)) !== 0;
+                  const isInput = dirReg 
+                    ? (isInverted 
+                        ? (dirVal & (1 << bitIndex)) === 0 
+                        : (dirVal & (1 << bitIndex)) !== 0)
+                    : false;
 
                   // Read from dataInReg if input, dataOutReg if output
                   const isOn = isInput 
