@@ -137,7 +137,7 @@ start_environment() {
 
 # --- Main Execution ---
 
-for scenario in ${SCENARIOS_DIR}/13_amp_mcore_cmsis-rtos2-threadx ${SCENARIOS_DIR}/14_amp_mcore_OpenAMP_baremetal ${SCENARIOS_DIR}/15_amp_mcore_OpenAMP_freertos; do
+for scenario in ${SCENARIOS_DIR}/13_amp_mcore_cmsis-rtos2-threadx ${SCENARIOS_DIR}/14_amp_mcore_OpenAMP_baremetal ${SCENARIOS_DIR}/15_amp_mcore_OpenAMP_freertos ${SCENARIOS_DIR}/16_amp_mcore_Rust_baremetal; do
     if [ ! -d "${scenario}" ]; then continue; fi
     
     # Skip showcase scenarios starting with 'S'
