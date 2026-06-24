@@ -45,5 +45,9 @@ RUN pip3 install --no-cache-dir \
 # Ensure remoteproc firmware directory exists
 RUN mkdir -p /lib/firmware
 
+# Install Rust (Non-interactive -y flag)
+RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
+ENV PATH="/root/.cargo/bin:${PATH}"
+
 # Set workspace directory
 WORKDIR /workspace
