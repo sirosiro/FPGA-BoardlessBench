@@ -6,9 +6,12 @@
         reg = <0x40000000 0x1000>;
         label = "/dev/uio0";
         registers = 
-            "CMD      @ 0x10",
-            "STATUS   @ 0x14",
-            "DATA_IN  @ 0x18",
-            "DATA_OUT @ 0x1C";
+            "CMD            @ 0x10",
+            "STATUS         @ 0x14",
+            "DATA_IN        @ 0x18",
+            "DATA_OUT       @ 0x1C",
+            "TIMER_TARGET   @ 0x20",
+            "TIMER_CURRENT  @ 0x24",
+            "TIMER_IRQ      @ 0x28";
     };
 };

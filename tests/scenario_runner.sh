@@ -63,7 +63,7 @@ if [ "$CLEAN" = true ]; then
         if [[ " $CLEAN_TARGETS " =~ " distclean " || " $CLEAN_TARGETS " =~ " cleanall " ]]; then
             rm -rf "${SCENARIO_DIR}/FreeRTOS-Kernel" "${SCENARIO_DIR}/threadx" "${SCENARIO_DIR}/CMSIS-FreeRTOS" "${SCENARIO_DIR}/stm32-mw-cmsis-rtos-tx" "${SCENARIO_DIR}/CMSIS_5" 2>/dev/null
         fi
-        rm -f "${SCENARIO_DIR}/test_bin" "${SCENARIO_DIR}/"*.elf "${SCENARIO_DIR}/"*.bin
+        rm -f "${SCENARIO_DIR}/test_bin" "${SCENARIO_DIR}/"*.elf "${SCENARIO_DIR}/"*.bin "${SCENARIO_DIR}/"*.o
     fi
     if [ -n "$SCENARIO_DIR" ]; then
         rm -f "${SCENARIO_DIR}/"*.log

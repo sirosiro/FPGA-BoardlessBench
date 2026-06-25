@@ -31,7 +31,7 @@ if [ "$FBB_ACTIVE" = "1" ]; then
     echo stop > /sys/class/remoteproc/remoteproc0/state
     
     # 5. 一時的に作成したバイナリのクリーンアップ
-    rm -f mcore_rust.elf
+    rm -f mcore_rust.elf host_bsp.o
     
     exit $RESULT
 else

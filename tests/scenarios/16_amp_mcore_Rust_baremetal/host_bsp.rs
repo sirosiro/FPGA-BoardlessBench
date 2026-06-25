@@ -1,15 +1,19 @@
 #![no_std]
 #![no_main]
 
-// Declarations to import the Linux C library's sleep function
-extern "C" {
-    fn usleep(usecs: u32) -> i32;
-}
+mod fbb_pac;
 
-// Host simulation implementation of delay_ms using usleep
+// Host simulation implementation of delay_ms using RTL hardware timer
 #[no_mangle]
 pub unsafe extern "C" fn delay_ms(ms: u32) {
-    usleep(ms * 1000);
+    let vfpga = fbb_pac::Vfpga::new();
+    // Set timer target: 1ms delay maps to 10 timer clock cycles
+    vfpga.timer_target.write(ms * 10);
+
+    // Poll TIMER_IRQ until it becomes 1 (timeout)
+    while vfpga.timer_irq.read() == 0 {
+        core::hint::spin_loop();
+    }
 }
 
 // Mandatory panic handler for no_std Rust

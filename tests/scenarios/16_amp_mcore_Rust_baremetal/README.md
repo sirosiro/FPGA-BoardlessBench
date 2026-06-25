@@ -11,6 +11,7 @@ graph TD
     subgraph "Host OS Processes (F-BB Simulation)"
         ACore["main.c (A-Core Linux App)"]
         MCore["mcore.rs (M-Core Rust Firmware)"]
+        PAC["fbb_pac.rs (PAC Layer)"]
     end
     
     subgraph "Virtual FPGA Interface"
@@ -22,7 +23,8 @@ graph TD
     end
     
     ACore -->|mmap| UIO
-    MCore -->|unsafe pointer deref| UIO
+    MCore -->|use| PAC
+    PAC -->|volatile MMIO read/write| UIO
     
     UIO --- CMD
     UIO --- STATUS
@@ -34,8 +36,8 @@ graph TD
 
 1. **他言語（Rust）によるMコアの開発:**
    F-BBの仮想MコアはホストOSのネイティブプロセスとして起動するため、ホストコンパイラ (`rustc`) でビルドしたバイナリに `libfpgashim.so` をロードすることで、C言語のファームウェアと全く同等に機能します。
-2. **揮発性ポインタ操作 (Volatile Access) in Rust:**
-   Rustからは、レジスタ物理アドレスに対して `core::ptr::read_volatile` / `write_volatile` を用いることで、C言語の `volatile uint32_t *` アクセスと同様にハードウェアへの入出力を表現できます。
+2. **PAC (Peripheral Access Crate) によるレジスタアクセス:**
+   DTSから自動生成される `fbb_pac.rs` を使い、生ポインタの直接操作（`unsafe` を伴う `read_volatile` / `write_volatile`）をカプセル化した `Register<T>` や `Peripherals` シングルトンパターンによる、安全で本来のEmbedded Rustに近いペリフェラル制御を学習します。
 3. **remoteproc ライフサイクル管理:**
    Linuxアプリケーションが `/sys/class/remoteproc/` にコマンドを書き込むことで、F-BBコントローラが背後でRustバイナリの起動・停止を完全に制御します。
 
@@ -82,8 +84,16 @@ extern "C" {
 * **`rust_eh_personality` のダミー定義:**
   標準の `libcore`（事前コンパイル済みのコアラリ）が例外処理用のシンボルを参照するため、`host_bsp.rs` 内にダミーの `#[no_mangle] pub extern "C" fn rust_eh_personality() {}` を定義してリンクエラーを防いでいます。
 
-### 4. レジスタアクセスの共通化
-メモリマップ上のレジスタアドレス（`0x40000000` 付近）に対して直接 `core::ptr::read_volatile` / `write_volatile` を用いてアクセスします。F-BBの Shim レイヤー（`libfpgashim.so`）が実機と同じアドレス空間に共有メモリを仮想マッピングしているため、ファームウェアは実機と全く同じメモリアドレスを叩くコードのままで動作します。
+### 4. PAC (Peripheral Access Crate) を用いた型安全なアクセス
+本シナリオでは、自動生成された `fbb_pac.rs` を使用してレジスタへのアクセスを抽象化しています。
+
+* **`Register<T>` 構造体:** 生ポインタに対する `volatile` な読み書き（`read()` / `write()`）を安全にカプセル化します。
+* **`Peripherals` シングルトン:** グローバルな `TAKEN` フラグを用いて `Peripherals::take()` から排他的にペリフェラルオブジェクト（`Vfpga`）を取得することで、マルチスレッドや割り込みによる競合アクセスをRustの所有権モデルに基づいてコンパイル時・実行時に防止します。
+
+### 5. `MAP_FIXED_NOREPLACE` による実機アドレス空間のエミュレーション
+PACがどれほど型安全でも、アクセスするメモリアドレス自体がホスト環境と実機環境で異なれば、コードの書き換え（あるいは実行時アドレス変換）が必要になります。
+
+F-BBでは、Shimレイヤー（`libfpgashim.so`）がホストプロセス起動時に `mmap` の `MAP_FIXED_NOREPLACE` フラグを利用し、DTSに記述された実機と同じ物理ベースアドレス（例: `0x40000000`）へ共有メモリ空間を強制マッピングします。これにより、PACの `Vfpga::new()` が内部で保持するアドレス（`0x40000010` 等）は、**ホスト上でも実機上でも物理的に全く同一のアドレス値**となり、ポインタ変換やアドレスの再定義を一切挟むことなく、完全な実機透過性（アドレスレベルでの等価性）が担保されます。
 
 ---
 
@@ -97,6 +107,16 @@ extern "C" {
    `no_std` 環境では、異常終了時の `#[panic_handler]` を定義する必要があります。これはシミュレータ用（`host_bsp.rs` 内）と、実機用（実機BSP内）でそれぞれ別個に実装されたものがリンクされるように設定します。
 3. **リンクスクリプト（`memory.x` 等）の用意:**
    実機マイコンの物理的な ROM/RAM アドレス配置に合わせて、適切なリンクスクリプトを用意してクロスコンパイル（リンク）時に指定する必要があります（これはソースコードの変更ではなく、ビルド構成の追加です）。
+4. **実機PACと自動生成PACのエイリアス化による統合:**
+   シミュレータ環境で開発した `mcore.rs` を実機ビルドに統合する際は、実機のSVDから生成した本物のPACを `fbb_pac` としてエイリアス定義（インポート名の変更）することで、ロジック側のコード修正を完全に不要にします。
+   
+   * **シミュレータ（F-BB）ビルド時:** 自動生成された `fbb_pac.rs` をそのままモジュールとして読み込みます。
+   * **実機ターゲットビルド時:** 実機BSP側で以下のようにモジュール名をエイリアス定義してエクスポートします。
+     ```rust
+     // 実機BSP側で本物のPACを fbb_pac という名前でエクスポートする
+     pub use stm32f4xx_pac as fbb_pac; 
+     ```
+     これにより、`mcore.rs` 内の `fbb_pac::Peripherals::take()` という呼び出しがそのまま実機PACの初期化処理としてリンクされ、ソースコードの完全な共通化（透過性）が維持されます。
 
 
 ---

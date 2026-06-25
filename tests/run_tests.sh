@@ -71,7 +71,7 @@ if [ "$CLEAN" = true ]; then
     echo "[Runner] Cleaning project artifacts and logs..."
     if [ -d "build" ]; then rm -rf build/* build/.[!.]* 2>/dev/null; fi
     rm -f libfpgashim.so vfpga_sim
-    rm -f tests/scenarios/*/test_bin tests/scenarios/*/*.bin tests/scenarios/*/*.elf
+    rm -f tests/scenarios/*/test_bin tests/scenarios/*/*.bin tests/scenarios/*/*.elf tests/scenarios/*/*.o
     
     if [[ " $CLEAN_TARGETS " =~ " distclean " || " $CLEAN_TARGETS " =~ " cleanall " ]]; then
         echo "[Runner] Performing distclean: removing FreeRTOS-Kernel..."

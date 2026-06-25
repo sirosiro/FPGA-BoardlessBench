@@ -1132,9 +1132,84 @@ class ManifestGenerator(BaseGenerator):
             manifest["devices"].append(dev_info)
         return json.dumps(manifest, indent=4)
 
+class RustPACGenerator(BaseGenerator):
+    def generate(self, model: BoardModel) -> str:
+        devs = model.get_uio_devices()
+        if not devs:
+            return "// No UIO/GPIO devices defined in DTS for PAC generation.\n"
+        
+        struct_fields = []
+        reg_instantiations = []
+        
+        for dev in devs:
+            for r in dev.registers:
+                phys_addr = dev.base_addr + int(r.offset, 0)
+                field_name = r.name.lower()
+                struct_fields.append(f"    pub {field_name}: Register<u32>,")
+                reg_instantiations.append(f"            {field_name}: Register::new(0x{phys_addr:08x}),")
+                
+        struct_fields_str = "\n".join(struct_fields)
+        reg_instantiations_str = "\n".join(reg_instantiations)
+        
+        return f"""// Auto-generated PAC (Peripheral Access Crate)
+#![allow(unused)]
+
+pub struct Register<T> {{
+    ptr: *mut T,
+}}
+
+impl<T> Register<T> {{
+    pub const fn new(address: usize) -> Self {{
+        Self {{ ptr: address as *mut T }}
+    }}
+    
+    pub fn read(&self) -> T where T: Copy {{
+        unsafe {{ core::ptr::read_volatile(self.ptr) }}
+    }}
+    
+    pub fn write(&self, value: T) where T: Copy {{
+        unsafe {{ core::ptr::write_volatile(self.ptr, value) }}
+    }}
+}}
+
+pub struct Vfpga {{
+{struct_fields_str}
+}}
+
+impl Vfpga {{
+    pub const fn new() -> Self {{
+        Self {{
+{reg_instantiations_str}
+        }}
+    }}
+}}
+
+pub struct Peripherals {{
+    pub vfpga: Vfpga,
+}}
+
+static mut TAKEN: bool = false;
+
+impl Peripherals {{
+    pub fn take() -> Option<Self> {{
+        unsafe {{
+            if TAKEN {{
+                None
+            }} else {{
+                TAKEN = true;
+                Some(Self {{
+                    vfpga: Vfpga::new(),
+                }})
+            }}
+        }}
+    }}
+}}
+"""
+
 class GeneratorOrchestrator:
-    def __init__(self, model: BoardModel):
+    def __init__(self, model: BoardModel, dts_path: str = None):
         self.model = model
+        self.dts_path = dts_path
         # プロジェクトルートを取得
         self.project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../"))
         self.generators = {
@@ -1154,6 +1229,17 @@ class GeneratorOrchestrator:
                 os.makedirs(dir_name, exist_ok=True)
             with open(abs_path, "w") as f:
                 f.write(content)
+        
+        # Check if there is a .rs file in the directory of the DTS file
+        if self.dts_path:
+            dts_dir = os.path.dirname(self.dts_path)
+            if os.path.exists(dts_dir):
+                rs_files = [f for f in os.listdir(dts_dir) if f.endswith('.rs')]
+                if rs_files:
+                    pac_content = RustPACGenerator().generate(self.model)
+                    pac_path = os.path.join(dts_dir, "fbb_pac.rs")
+                    with open(pac_path, "w") as f:
+                        f.write(pac_content)
         
         # /tmp/fbb_compatible を生成
         compatible_path = "/tmp/fbb_compatible"
@@ -1182,4 +1268,4 @@ class GeneratorOrchestrator:
 if __name__ == "__main__":
     if len(sys.argv) < 2: sys.exit(1)
     model = DTSParser.parse(sys.argv[1])
-    GeneratorOrchestrator(model).generate_all()
+    GeneratorOrchestrator(model, sys.argv[1]).generate_all()
