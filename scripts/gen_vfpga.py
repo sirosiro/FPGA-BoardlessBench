@@ -280,6 +280,7 @@ int open(const char *pathname, int flags, ...) {
     mode_t mode = 0; if (flags & O_CREAT) { va_list arg; va_start(arg, flags); mode = (mode_t)va_arg(arg, int); va_end(arg); }
     if (!original_open) original_open = dlsym(RTLD_NEXT, "open");
     pathname = redirect_firmware_path(pathname);
+    fprintf(stderr, "[Shim Debug] open: %%s\\n", pathname); fflush(stderr);
 %s
     if (pathname != NULL && strcmp(pathname, "/sys/class/remoteproc/remoteproc0/firmware") == 0) {
         ensure_dir();
@@ -970,13 +971,22 @@ class SimulatorGenerator(BaseGenerator):
 
 double sc_time_stamp() { return 0; }
 
+VerilatedVcdC* volatile_trace = nullptr;
+
+void handle_sigterm(int sig) {
+    if (volatile_trace) {
+        volatile_trace->close();
+    }
+    _exit(sig);
+}
+
 #define SHM_BASE_ADDR 0x%08xU
 
 struct RegMeta { const char* name; uint32_t addr; };
 static RegMeta registers[] = { %s };
 
 template <typename T>
-void run_sim_loop(T* top, uint32_t* shm, uint32_t* old_shm, VerilatedVcdC* m_trace, uint64_t& vtime) {
+void run_sim_loop(T* top, volatile uint32_t* shm, uint32_t* old_shm, VerilatedVcdC* m_trace, uint64_t& vtime) {
     // Initial Reset Sequence
     if constexpr (has_rst_n<T>::value) top->rst_n = 1;
     if constexpr (has_clk<T>::value) top->clk = 0;
@@ -991,7 +1001,15 @@ void run_sim_loop(T* top, uint32_t* shm, uint32_t* old_shm, VerilatedVcdC* m_tra
     top->eval(); m_trace->dump(vtime++);
 
     printf("[Sim] Simulator Started (SHM: %%s)\\n", SHM_FILE); fflush(stdout);
+        int loop_count = 0;
         while (!Verilated::gotFinish()) {
+            if (loop_count++ %% 10000 == 0) {
+                printf("[Sim Debug] ");
+                for (int j = 0; j < 16; j++) {
+                    printf("shm[%%d]=0x%%x ", j, shm[j]);
+                }
+                printf("\\n"); fflush(stdout);
+            }
             // Synchronize Write from SHM to RTL
             for (int i = 0; i < %d; i++) {
                 uint32_t off = (registers[i].addr - SHM_BASE_ADDR) / 4;
@@ -1065,11 +1083,14 @@ int main(int argc, char** argv) {
         perror("ftruncate");
         return 1;
     }
-    uint32_t* shm = (uint32_t*)mmap(NULL, SHM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    volatile uint32_t* shm = (volatile uint32_t*)mmap(NULL, SHM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
     uint32_t* old_shm = new uint32_t[SHM_SIZE/4]; memset(old_shm, 0, SHM_SIZE);
 
     Verilated::traceEverOn(true);
     VerilatedVcdC* m_trace = new VerilatedVcdC;
+    volatile_trace = m_trace;
+    signal(SIGTERM, handle_sigterm);
+    signal(SIGINT, handle_sigterm);
     top->trace(m_trace, 99);
     m_trace->open("vfpga.vcd");
     uint64_t vtime = 0;
