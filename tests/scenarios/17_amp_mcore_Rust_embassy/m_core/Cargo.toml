@@ -1,0 +1,12 @@
+[package]
+name = "mcore_embassy"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+embassy-executor = { git = "https://github.com/embassy-rs/embassy.git", features = ["platform-std", "executor-thread"] }
+libc = "0.2"
+
+[[bin]]
+name = "mcore_embassy"
+path = "src/main.rs"

@@ -18,6 +18,7 @@ CONTROLLER="src/controller/vlogic_controller.py"
 SIMULATOR="vfpga_sim"
 SHIM="libfpgashim.so"
 SCENARIOS_DIR="tests/scenarios"
+BUILD_DIR="/tmp/fbb_build"
 
 # --- Functions ---
 cleanup_processes() {
@@ -69,9 +70,11 @@ if [ "$CLEAN" = true ]; then
         CLEAN_TARGETS="clean"
     fi
     echo "[Runner] Cleaning project artifacts and logs..."
-    if [ -d "build" ]; then rm -rf build/* build/.[!.]* 2>/dev/null; fi
+    if [ -d "${BUILD_DIR}" ]; then rm -rf ${BUILD_DIR}/* ${BUILD_DIR}/.[!.]* 2>/dev/null; fi
     rm -f libfpgashim.so vfpga_sim
     rm -f tests/scenarios/*/test_bin tests/scenarios/*/*.bin tests/scenarios/*/*.elf tests/scenarios/*/*.o
+    rm -rf tests/scenarios/*/m_core/target 2>/dev/null
+    rm -f tests/scenarios/*/m_core/Cargo.lock 2>/dev/null
     
     if [[ " $CLEAN_TARGETS " =~ " distclean " || " $CLEAN_TARGETS " =~ " cleanall " ]]; then
         echo "[Runner] Performing distclean: removing FreeRTOS-Kernel..."
@@ -111,7 +114,7 @@ start_environment() {
     rm -f /tmp/hdmi_output.bmp
 
     # 前のシナリオの残骸を削除し、クリーンな状態にする
-    if [ -d "build" ]; then rm -rf build/* build/.[!.]* 2>/dev/null; fi
+    if [ -d "${BUILD_DIR}" ]; then rm -rf ${BUILD_DIR}/* ${BUILD_DIR}/.[!.]* 2>/dev/null; fi
     sync
     sleep 1
     rm -f libfpgashim.so vfpga_sim
@@ -122,9 +125,9 @@ start_environment() {
     # 1. Generate code from DTS
     python3 scripts/gen_vfpga.py ${dts}
     
-    cmake -B build -DSCENARIO_DIR="${scenario_dir}" || exit 1
-    cmake --build build --target fpgashim || exit 1
-    cmake --build build --target vfpga_sim || exit 1
+    cmake -B ${BUILD_DIR} -DSCENARIO_DIR="${scenario_dir}" || exit 1
+    cmake --build ${BUILD_DIR} --target fpgashim || exit 1
+    cmake --build ${BUILD_DIR} --target vfpga_sim || exit 1
     
     # 3. Start Controller
     python3 -u ${CONTROLLER} ${dts} > "${scenario_dir}/controller.log" 2>&1 &
@@ -137,7 +140,7 @@ start_environment() {
 
 # --- Main Execution ---
 
-for scenario in ${SCENARIOS_DIR}/13_amp_mcore_cmsis-rtos2-threadx ${SCENARIOS_DIR}/14_amp_mcore_OpenAMP_baremetal ${SCENARIOS_DIR}/15_amp_mcore_OpenAMP_freertos ${SCENARIOS_DIR}/16_amp_mcore_Rust_baremetal; do
+for scenario in ${SCENARIOS_DIR}/13_amp_mcore_cmsis-rtos2-threadx ${SCENARIOS_DIR}/14_amp_mcore_OpenAMP_baremetal ${SCENARIOS_DIR}/15_amp_mcore_OpenAMP_freertos ${SCENARIOS_DIR}/16_amp_mcore_Rust_baremetal ${SCENARIOS_DIR}/17_amp_mcore_Rust_embassy ${SCENARIOS_DIR}/18_amp_mcore_Rust_rtic; do
     if [ ! -d "${scenario}" ]; then continue; fi
     
     # Skip showcase scenarios starting with 'S'
@@ -150,7 +153,7 @@ for scenario in ${SCENARIOS_DIR}/13_amp_mcore_cmsis-rtos2-threadx ${SCENARIOS_DI
     
     # Build the scenario via CMake
     echo "[Runner] Building ${scenario} via CMake..."
-    cmake --build build || exit 1
+    cmake --build ${BUILD_DIR} || exit 1
     
     # Run the test
     echo "[Runner] Running test..."

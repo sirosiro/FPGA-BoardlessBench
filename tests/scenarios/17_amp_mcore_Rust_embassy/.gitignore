@@ -1,0 +1,5 @@
+/m_core/target/
+/m_core/Cargo.lock
+/test_bin
+/mcore_embassy.elf
+/*.log
