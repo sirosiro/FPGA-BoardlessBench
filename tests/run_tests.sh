@@ -93,6 +93,8 @@ if [ "$CLEAN" = true ]; then
 
     rm -f tests/scenarios/*/*.log
     rm -f *.log
+    rm -f tests/scenarios/*/*.vcd
+    rm -f *.vcd
     rm -f board_manifest.json
     rm -f dashboard/data/*.json
     rm -f /tmp/hdmi_output.bmp
