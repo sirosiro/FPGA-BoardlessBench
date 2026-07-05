@@ -1,0 +1,15 @@
+{
+  "mcpServers": {
+    "ollama-mcp": {
+      "command": "npx",
+      "args": [
+        "-y",
+        "@iflow-mcp/ollama-mcp"
+      ],
+      "env": {
+        "OLLAMA_HOST": "http://host.docker.internal:11434",
+        "OLLAMA_BASE_URL": "http://host.docker.internal:11434"
+      }
+    }
+  }
+}
