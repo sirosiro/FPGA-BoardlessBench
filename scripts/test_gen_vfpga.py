@@ -7,6 +7,8 @@ class TestVFPGAEngine(unittest.TestCase):
     def setUp(self):
         self.sample_dts = """
         / {
+            compatible = "test,device-a", "test,device-b";
+            model = "Test Board Model V1";
             vfpga_reg@40000000 {
                 compatible = "generic-uio";
                 reg = <0x40000000 0x1000>;
@@ -32,6 +34,10 @@ class TestVFPGAEngine(unittest.TestCase):
     def test_parser(self):
         model = DTSParser.parse("test_sample.dts")
         self.assertEqual(len(model.devices), 2)
+        
+        # compatible と model 名のパース結果を確認 (カンマ区切り文字列のパース検証)
+        self.assertEqual(model.compatible_bytes, b"test,device-a\x00test,device-b\x00")
+        self.assertEqual(model.model_name, "Test Board Model V1")
         
         uio = model.get_uio_device()
         self.assertIsNotNone(uio)
