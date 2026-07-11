@@ -322,7 +322,15 @@ def remoteproc_monitor_thread():
                                 pass
                     
                     process_running = False
-                    if existing_pid > 0:
+                    if current_proc is not None:
+                        status = current_proc.poll()
+                        if status is None:
+                            process_running = True
+                        else:
+                            current_proc.wait()
+                            current_proc = None
+                    
+                    if not process_running and existing_pid > 0:
                         try:
                             os.kill(existing_pid, 0)
                             process_running = True

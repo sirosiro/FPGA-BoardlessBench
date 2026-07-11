@@ -24,6 +24,19 @@ class DTSParser:
     def parse(dts_path):
         with open(dts_path, 'r') as f:
             content = f.read()
+            
+        # Extract root-level compatible and model BEFORE trimming content
+        compatible_bytes = b"generic,fbb-vfpga\x00"
+        root_compat_match = re.search(r'/\s*\{[^{]*?compatible\s*=\s*([^;]+);', content, re.DOTALL)
+        if root_compat_match:
+            parts = re.findall(r'"([^"]+)"', root_compat_match.group(1))
+            compatible_bytes = b"".join([p.encode('utf-8') + b"\x00" for p in parts if p])
+
+        model_name = "generic-vfpga"
+        root_model_match = re.search(r'/\s*\{[^{]*?model\s*=\s*"([^"]+)";', content, re.DOTALL)
+        if root_model_match:
+            model_name = root_model_match.group(1).strip()
+
         devices = []
         
         # 1. Look for root node '/'
@@ -174,20 +187,6 @@ class DTSParser:
             gpio = next((d for d in devices if d.type == 'gpio'), None)
             if gpio: board_name = gpio.name
         
-        # 最上位ノードの compatible を抽出してヌル文字区切りのバイト列にする
-        compatible_bytes = b"generic,fbb-vfpga\x00"
-        root_compat_match = re.search(r'/\s*\{[^{]*?compatible\s*=\s*([^;]+);', content, re.DOTALL)
-        if root_compat_match:
-            raw_compat = root_compat_match.group(1).strip()
-            parts = [p.strip().strip('"').strip() for p in raw_compat.split(',')]
-            compatible_bytes = b"".join([p.encode('utf-8') + b"\x00" for p in parts if p])
-
-        # 最上位ノードの model を抽出
-        model_name = "generic-vfpga"
-        root_model_match = re.search(r'/\s*\{[^{]*?model\s*=\s*"([^"]+)";', content, re.DOTALL)
-        if root_model_match:
-            model_name = root_model_match.group(1).strip()
-
         model = BoardModel(devices, name=board_name)
         model.compatible_bytes = compatible_bytes
         model.model_name = model_name
