@@ -12,6 +12,20 @@
         bus_id = <1>;
         /* 【解説】 アプリケーションが使用するデバイスファイル名 (/dev/i2c-1) */
         label = "/dev/i2c-1";
+
+        /*
+         * 【解説: スレーブデバイスの定義（I2Cバス1配下）】
+         * - eeprom_dev1: ラベル (DTS内部での他の場所からの参照名)
+         * - eeprom@50: ノード名（デバイス種類 @ I2Cスレーブアドレス）
+         * - compatible: 互換性ドライバ名 (Atmel 24C02 EEPROM)
+         * - reg: スレーブアドレス (0x50)
+         * - fbb,mock-data: F-BB独自のプロパティ（通信時にエミュレータが返却する初期値データ）
+         */
+        eeprom_dev1: eeprom@50 {
+            compatible = "atmel,24c02";
+            reg = <0x50>;
+            fbb,mock-data = <0x10>;
+        };
     };
 
     /* 
@@ -23,5 +37,19 @@
         reg = <0xe0005000 0x1000>;
         bus_id = <2>;
         label = "/dev/i2c-2";
+
+        /*
+         * 【解説: スレーブデバイスの定義（I2Cバス2配下）】
+         * - sensor_dev2: ラベル
+         * - sensor@36: ノード名（デバイス種類 @ I2Cスレーブアドレス）
+         * - compatible: 互換性ドライバ名
+         * - reg: スレーブアドレス (0x36)
+         * - fbb,mock-data: エミュレータ返却の初期値データ (0x20)
+         */
+        sensor_dev2: sensor@36 {
+            compatible = "atmel,24c02";
+            reg = <0x36>;
+            fbb,mock-data = <0x20>;
+        };
     };
 };

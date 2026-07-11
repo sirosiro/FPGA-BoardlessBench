@@ -22,4 +22,19 @@
         label = "/dev/ttyPS1";
         port = <2001>;
     };
+
+    /* 
+     * 【解説: 3つ目のUART (uart3) の定義】
+     * - uart3: ラベル
+     * - serial@e0002000: ノード名（デバイス種類 @ ベース物理アドレス）
+     * - compatible: 互換デバイス名
+     * - label: アプリケーションがアクセスする仮想シリアルポート (/dev/ttyPS2)
+     * - fbb,peripheral-type: F-BB独自の定義。外部のループバックデーモン (fbb_uart_loopback) に接続する
+     */
+    uart3: serial@e0002000 {
+        compatible = "xlnx,xps-uartlite-1.00.a";
+        reg = <0xe0002000 0x1000>;
+        label = "/dev/ttyPS2";
+        fbb,peripheral-type = "uart_loopback";
+    };
 };

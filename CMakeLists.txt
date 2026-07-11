@@ -110,6 +110,9 @@ if(NOT SCENARIO_DIR STREQUAL "")
         
 
     endif()
+
+    # 4. Add shared peripherals library
+    add_subdirectory(src/peripherals)
 endif()
 
 # Copy compile_commands.json to source root for VS Code/LSP Intellisense

@@ -14,6 +14,14 @@ class Register:
         self.direction = direction.upper()
         self.logical_name = logical_name
 
+class I2CSlave:
+    def __init__(self, name, addr, compatible, mock_file=None, init_val=0x10):
+        self.name = name
+        self.addr = addr
+        self.compatible = compatible
+        self.mock_file = mock_file
+        self.init_val = init_val
+
 class Device:
     def __init__(self, name, path, dev_type, base_reg):
         self.name = name
@@ -22,6 +30,7 @@ class Device:
         self.base_reg = base_reg
         self.registers = []
         self.extra_props = {}
+        self.i2c_slaves = []
         # Parse base_addr and size from base_reg (e.g. "0x40000000 0x1000")
         try:
             parts = base_reg.split()
@@ -48,23 +57,82 @@ class BoardModel:
 
 class DTSParser:
     @staticmethod
+    def find_matching_braces(text, start_pos):
+        brace_pos = text.find('{', start_pos)
+        if brace_pos == -1:
+            return -1, -1
+        count = 1
+        i = brace_pos + 1
+        while i < len(text) and count > 0:
+            if text[i] == '{':
+                count += 1
+            elif text[i] == '}':
+                count -= 1
+            i += 1
+        if count == 0:
+            return brace_pos, i
+        return -1, -1
+
+    @staticmethod
     def parse(dts_path):
         with open(dts_path, 'r') as f:
             content = f.read()
         devices = []
-        matches = re.finditer(r'([a-zA-Z0-9_@]+)\s*\{([^}]+)\}', content)
-        for match in matches:
+        
+        # 1. Look for root node '/'
+        root_match = re.search(r'/\s*\{', content)
+        if root_match:
+            brace_start, brace_end = DTSParser.find_matching_braces(content, root_match.start())
+            if brace_start != -1:
+                content = content[brace_start + 1 : brace_end - 1]
+                
+        pos = 0
+        while True:
+            # Match top-level nodes (e.g. node@1000 or label: node@1000)
+            match = re.search(r'([a-zA-Z0-9_@:-]+)\s*\{', content[pos:])
+            if not match:
+                break
+            match_start = pos + match.start()
             raw_name = match.group(1).strip()
-            name = raw_name.split('@')[0]
-            body = match.group(2)
+            
+            brace_start, brace_end = DTSParser.find_matching_braces(content, match_start)
+            if brace_start == -1:
+                pos = match_start + len(raw_name) + 1
+                continue
+            
+            body = content[brace_start + 1 : brace_end - 1]
+            pos = brace_end
+            
+            # Extract node name after label if colon exists
+            node_name = raw_name
+            if ':' in raw_name:
+                node_name = raw_name.split(':')[-1].strip()
+                
+            name = node_name.split('@')[0]
+
+            # Clean body by removing nested sub-node blocks to prevent property overriding
+            clean_body = body
+            while True:
+                sub_match = re.search(r'([a-zA-Z0-9_@:-]+)\s*\{', clean_body)
+                if not sub_match:
+                    break
+                sub_start = sub_match.start()
+                sub_brace_start, sub_brace_end = DTSParser.find_matching_braces(clean_body, sub_start)
+                if sub_brace_start == -1:
+                    break
+                clean_body = clean_body[:sub_start] + clean_body[sub_brace_end:]
+
             props = {}
-            prop_matches = re.finditer(r'([a-zA-Z0-9_-]+)\s*=\s*([^;]+);', body)
+            prop_matches = re.finditer(r'([a-zA-Z0-9_-]+)\s*=\s*([^;]+);', clean_body)
             for p_match in prop_matches:
                 k = p_match.group(1).strip()
                 v = p_match.group(2).strip()
+                if '{' in v or '}' in v:
+                    continue
                 if v.startswith('<') and v.endswith('>'): v = v[1:-1].strip()
                 if v.startswith('"') and v.endswith('"'): v = v[1:-1].strip()
                 props[k] = v
+                
             if 'compatible' in props:
                 compatible = props.get('compatible', '')
                 label = props.get('label', "/dev/%s" % name)
@@ -74,12 +142,61 @@ class DTSParser:
                 elif 'uart' in compatible or 'xlnx,xps-uart' in compatible: dev_type = 'uart'
                 elif 'gpio' in compatible or 'xlnx,xps-gpio' in compatible: dev_type = 'gpio'
                 elif 'rpmsg' in compatible: dev_type = 'rpmsg'
-                # label が /dev/uio で始まるデバイスも UIO として扱う (カスタムIP対応)
                 if dev_type == 'unknown' and label.startswith('/dev/uio'):
                     dev_type = 'uio'
+                
                 device = Device(name, label, dev_type, props.get('reg', '0x0 0x0'))
                 for k, v in props.items():
                     if k not in ['label', 'compatible', 'reg', 'registers']: device.extra_props[k] = v
+                
+                # Parse nested I2C slave devices
+                if dev_type == 'i2c':
+                    sub_pos = 0
+                    while True:
+                        sub_match = re.search(r'([a-zA-Z0-9_@:-]+)\s*\{', body[sub_pos:])
+                        if not sub_match:
+                            break
+                        sub_match_start = sub_pos + sub_match.start()
+                        sub_raw_name = sub_match.group(1).strip()
+                        
+                        sub_brace_start, sub_brace_end = DTSParser.find_matching_braces(body, sub_match_start)
+                        if sub_brace_start == -1:
+                            sub_pos = sub_match_start + len(sub_raw_name) + 1
+                            continue
+                        
+                        sub_body = body[sub_brace_start + 1 : sub_brace_end - 1]
+                        sub_pos = sub_brace_end
+                        
+                        s_node_name = sub_raw_name
+                        if ':' in sub_raw_name:
+                            s_node_name = sub_raw_name.split(':')[-1].strip()
+                            
+                        s_name = s_node_name.split('@')[0]
+                        s_addr_str = s_node_name.split('@')[1] if '@' in s_node_name else "0"
+                        try:
+                            s_addr = int(s_addr_str, 16)
+                        except:
+                            s_addr = 0
+                            
+                        s_props = {}
+                        s_prop_matches = re.finditer(r'([a-zA-Z0-9_-]+)\s*=\s*([^;]+);', sub_body)
+                        for sp_match in s_prop_matches:
+                            sk = sp_match.group(1).strip()
+                            sv = sp_match.group(2).strip()
+                            if sv.startswith('<') and sv.endswith('>'): sv = sv[1:-1].strip()
+                            if sv.startswith('"') and sv.endswith('"'): sv = sv[1:-1].strip()
+                            s_props[sk] = sv
+                        
+                        if 'compatible' in s_props:
+                            init_val_str = s_props.get('fbb,mock-data', '0x10')
+                            try:
+                                init_val = int(init_val_str, 0)
+                            except:
+                                init_val = 0x10
+                            mock_file = s_props.get('fbb,mock-file', None)
+                            slave = I2CSlave(s_name, s_addr, s_props['compatible'], mock_file, init_val)
+                            device.i2c_slaves.append(slave)
+                
                 if 'registers' in props:
                     reg_raw = props['registers'].replace('\\n', ' ').replace('\\"', '').replace('\\t', ' ')
                     reg_list = reg_raw.split(',')
@@ -90,14 +207,12 @@ class DTSParser:
                             reg_name = reg_parts[0].strip()
                             reg_offset = reg_parts[1].strip()
                             
-                            # Parse parenthesis syntax: "PHYSICAL(LOGICAL)"
                             logical_name = None
                             paren_match = re.match(r'^([a-zA-Z0-9_]+)\s*\(\s*([a-zA-Z0-9_]+)\s*\)$', reg_name)
                             if paren_match:
                                 reg_name = paren_match.group(1)
                                 logical_name = paren_match.group(2)
                             else:
-                                # Fallback: No explicit logical name, use physical name as logical name
                                 logical_name = reg_name
                             
                             device.registers.append(Register(reg_name, reg_offset, 'RW', logical_name))
@@ -253,6 +368,49 @@ static int find_route_by_path(const char *pathname) {
 
 static int is_i2c_device(const char *pathname) { (void)pathname; %s return 0; }
 static int is_uart_device(const char *pathname) { (void)pathname; %s return 0; }
+
+static int transfer_i2c_msg_via_socket(int bus_id, struct i2c_msg *msg) {
+    char socket_path[128];
+    snprintf(socket_path, sizeof(socket_path), "/tmp/fbb_i2c_b%%d_a%%02x", bus_id, msg->addr);
+    int sock_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (sock_fd == -1) return -1;
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, socket_path, sizeof(addr.sun_path) - 1);
+    if (connect(sock_fd, (struct sockaddr*)&addr, sizeof(addr)) == -1) {
+        close(sock_fd);
+        if (msg->flags & I2C_M_RD) memset(msg->buf, 0, msg->len);
+        return 0;
+    }
+    uint16_t msg_addr = msg->addr;
+    uint16_t msg_flags = msg->flags;
+    uint16_t msg_len = msg->len;
+    if (send(sock_fd, &msg_addr, sizeof(msg_addr), 0) < 0 ||
+        send(sock_fd, &msg_flags, sizeof(msg_flags), 0) < 0 ||
+        send(sock_fd, &msg_len, sizeof(msg_len), 0) < 0) {
+        close(sock_fd);
+        return -1;
+    }
+    if (!(msg->flags & I2C_M_RD)) {
+        if (send(sock_fd, msg->buf, msg->len, 0) < 0) {
+            close(sock_fd);
+            return -1;
+        }
+    } else {
+        uint16_t received = 0;
+        while (received < msg->len) {
+            ssize_t r = recv(sock_fd, msg->buf + received, msg->len - received, 0);
+            if (r <= 0) {
+                close(sock_fd);
+                return -1;
+            }
+            received += r;
+        }
+    }
+    close(sock_fd);
+    return 0;
+}
 
 static const char *redirect_firmware_path(const char *pathname) {
     if (pathname != NULL && strncmp(pathname, "/lib/firmware/", 14) == 0) {
@@ -532,9 +690,13 @@ int ioctl(int fd, unsigned long request, ...) {
         int i2c_bus_id = -(virtual_fd_route_idx[fd] + 100);
         if (request == I2C_RDWR) {
             struct i2c_rdwr_ioctl_data *data = (struct i2c_rdwr_ioctl_data *)argp;
-            for (unsigned int i = 0; i < data->nmsgs; i++)
-                if (data->msgs[i].flags & I2C_M_RD) memset(data->msgs[i].buf, 0x10 * i2c_bus_id, data->msgs[i].len);
-            return 0;
+            int ret = 0;
+            for (unsigned int i = 0; i < data->nmsgs; i++) {
+                if (transfer_i2c_msg_via_socket(i2c_bus_id, &data->msgs[i]) < 0) {
+                    ret = -1;
+                }
+            }
+            return ret;
         }
         if (request == I2C_SLAVE || request == I2C_SLAVE_FORCE) return 0;
     }

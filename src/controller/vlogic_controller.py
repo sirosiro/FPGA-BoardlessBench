@@ -11,6 +11,133 @@ import select
 # プロジェクトルートの動的取得 (src/controller/vlogic_controller.py から見て 2つ上の階層)
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
 SHM_NAME = "vfpga_reg"
+excluded_uarts = set()
+
+def get_peripherals_from_dts(dts_path):
+    peripherals = []
+    try:
+        if not os.path.exists(dts_path):
+            return peripherals
+        with open(dts_path, 'r') as f:
+            content = f.read()
+        
+        # Helper to matching braces
+        def find_braces(text, start):
+            b_start = text.find('{', start)
+            if b_start == -1: return -1, -1
+            count = 1
+            i = b_start + 1
+            while i < len(text) and count > 0:
+                if text[i] == '{': count += 1
+                elif text[i] == '}': count -= 1
+                i += 1
+            return b_start, i
+            
+        # 1. Look for root node '/'
+        root_match = re.search(r'/\s*\{', content)
+        if root_match:
+            brace_start, brace_end = find_braces(content, root_match.start())
+            if brace_start != -1:
+                content = content[brace_start + 1 : brace_end - 1]
+
+        pos = 0
+        uart_count = 0
+        while True:
+            match = re.search(r'([a-zA-Z0-9_@:-]+)\s*\{', content[pos:])
+            if not match: break
+            match_start = pos + match.start()
+            raw_name = match.group(1).strip()
+            b_start, b_end = find_braces(content, match_start)
+            if b_start == -1:
+                pos = match_start + len(raw_name) + 1
+                continue
+            
+            body = content[b_start + 1 : b_end - 1]
+            pos = b_end
+            
+            node_name = raw_name
+            if ':' in raw_name:
+                node_name = raw_name.split(':')[-1].strip()
+
+            # Clean body by removing nested sub-node blocks to prevent property overriding
+            clean_body = body
+            while True:
+                sub_match = re.search(r'([a-zA-Z0-9_@:-]+)\s*\{', clean_body)
+                if not sub_match:
+                    break
+                sub_start = sub_match.start()
+                sub_brace_start, sub_brace_end = find_braces(clean_body, sub_start)
+                if sub_brace_start == -1:
+                    break
+                clean_body = clean_body[:sub_start] + clean_body[sub_brace_end:]
+
+            comp_match = re.search(r'compatible\s*=\s*"([^"]+)"', clean_body)
+            compat = comp_match.group(1) if comp_match else ""
+            
+            if 'i2c' in compat or 'cdns,i2c' in compat:
+                bus_match = re.search(r'bus_id\s*=\s*<([^>]+)>', clean_body)
+                bus_id = int(bus_match.group(1).strip(), 0) if bus_match else 1
+                
+                sub_pos = 0
+                while True:
+                    sub_match = re.search(r'([a-zA-Z0-9_@:-]+)\s*\{', body[sub_pos:])
+                    if not sub_match: break
+                    sub_match_start = sub_pos + sub_match.start()
+                    sub_raw_name = sub_match.group(1).strip()
+                    sb_start, sb_end = find_braces(body, sub_match_start)
+                    if sb_start == -1:
+                        sub_pos = sub_match_start + len(sub_raw_name) + 1
+                        continue
+                    
+                    sub_body = body[sb_start + 1 : sb_end - 1]
+                    sub_pos = sb_end
+                    
+                    s_node_name = sub_raw_name
+                    if ':' in sub_raw_name:
+                        s_node_name = sub_raw_name.split(':')[-1].strip()
+
+                    s_name = s_node_name.split('@')[0]
+                    s_addr_str = s_node_name.split('@')[1] if '@' in s_node_name else "0"
+                    try:
+                        s_addr = int(s_addr_str, 16)
+                    except:
+                        s_addr = 0
+                    
+                    s_comp_match = re.search(r'compatible\s*=\s*"([^"]+)"', sub_body)
+                    s_compat = s_comp_match.group(1) if s_comp_match else ""
+                    
+                    mock_file_match = re.search(r'fbb,mock-file\s*=\s*"([^"]+)"', sub_body)
+                    mock_file = mock_file_match.group(1) if mock_file_match else None
+                    
+                    init_data_match = re.search(r'fbb,mock-data\s*=\s*<([^>]+)>', sub_body)
+                    try:
+                        init_val = int(init_data_match.group(1).strip(), 0) if init_data_match else 0x10
+                    except:
+                        init_val = 0x10
+                    
+                    if s_compat:
+                        peripherals.append({
+                            'type': 'i2c',
+                            'bus_id': bus_id,
+                            'addr': s_addr,
+                            'compatible': s_compat,
+                            'mock_file': mock_file,
+                            'init_val': init_val
+                        })
+            
+            elif 'uart' in compat or 'xlnx,xps-uart' in compat:
+                uart_count += 1
+                p_type_match = re.search(r'fbb,peripheral-type\s*=\s*"([^"]+)"', body)
+                if p_type_match:
+                    peripherals.append({
+                        'type': 'uart',
+                        'compatible': compat,
+                        'peripheral_type': p_type_match.group(1),
+                        'uart_id': uart_count
+                    })
+    except Exception as e:
+        print(f"[Python] Error parsing peripherals in DTS: {e}")
+    return peripherals
 
 def get_shm_info_from_dts(dts_path):
     regions = []
@@ -113,6 +240,14 @@ def uart_discovery_thread():
         files = glob.glob(glob_pattern)
         changed = False
         for f in files:
+            # Skip if the UART is registered as an external emulation target
+            try:
+                uart_id = int(f.split('_')[-1])
+                if uart_id in excluded_uarts:
+                    continue
+            except Exception:
+                pass
+
             try:
                 with open(f, 'r') as f_ptr:
                     pts_path = f_ptr.read().strip()
@@ -293,6 +428,22 @@ def main():
         print("Usage: vlogic_controller.py <dts_path>")
         sys.exit(1)
         
+    dts_path = sys.argv[1]
+    
+    # Clean up old virtual UART mapping files to prevent loopback daemons from reading stale PTY names
+    glob_pattern = os.path.join(PROJECT_ROOT, "dashboard/data/vfpga_uart_*")
+    for old_f in glob.glob(glob_pattern):
+        try:
+            os.remove(old_f)
+        except OSError:
+            pass
+    
+    # Load peripherals early to collect excluded PTY UARTs
+    peripherals = get_peripherals_from_dts(dts_path)
+    for p in peripherals:
+        if p.get('type') == 'uart' and p.get('peripheral_type'):
+            excluded_uarts.add(p.get('uart_id'))
+
     # Start discovery
     t = threading.Thread(target=uart_discovery_thread, daemon=True)
     t.start()
@@ -328,6 +479,48 @@ def main():
     print(f"[Python] Starting Generic Virtual Logic Controller...")
     print(f"[Python] Using DTS: {dts_path}")
     
+    # Start virtual peripherals from DTS (already populated in main start)
+    peripheral_processes = []
+    for p in peripherals:
+        if p['type'] == 'i2c':
+            if p['compatible'] == 'atmel,24c02':
+                eeprom_bin = os.path.join(PROJECT_ROOT, "build/bin/fbb_i2c_eeprom")
+                if not os.path.exists(eeprom_bin):
+                    tmp_bin = "/tmp/fbb_build/bin/fbb_i2c_eeprom"
+                    if os.path.exists(tmp_bin):
+                        eeprom_bin = tmp_bin
+                sock_path = f"/tmp/fbb_i2c_b{p['bus_id']}_a{p['addr']:02x}"
+                args = [eeprom_bin, "--socket", sock_path, "--init-val", str(p['init_val'])]
+                if p['mock_file']:
+                    m_file = p['mock_file']
+                    if not os.path.isabs(m_file):
+                        m_file = os.path.join(PROJECT_ROOT, m_file)
+                    args.extend(["--file", m_file])
+                print(f"[Python] Starting Virtual I2C EEPROM: {' '.join(args)}")
+                try:
+                    proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    peripheral_processes.append(proc)
+                except Exception as e:
+                    print(f"[Python] Error starting EEPROM daemon: {e}")
+                    
+        elif p['type'] == 'uart':
+            if p['peripheral_type'] == 'uart_loopback':
+                loopback_bin = os.path.join(PROJECT_ROOT, "build/bin/fbb_uart_loopback")
+                if not os.path.exists(loopback_bin):
+                    tmp_bin = "/tmp/fbb_build/bin/fbb_uart_loopback"
+                    if os.path.exists(tmp_bin):
+                        loopback_bin = tmp_bin
+                pts_file = os.path.join(PROJECT_ROOT, f"dashboard/data/vfpga_uart_{p['uart_id']}")
+                args = [loopback_bin, "--pts-file", pts_file]
+                print(f"[Python] Starting Virtual UART Loopback: {' '.join(args)}")
+                try:
+                    daemon_log_path = os.path.join(os.path.dirname(dts_path), "loopback_daemon.log")
+                    log_file = open(daemon_log_path, "w")
+                    proc = subprocess.Popen(args, stdout=log_file, stderr=subprocess.STDOUT)
+                    peripheral_processes.append(proc)
+                except Exception as e:
+                    print(f"[Python] Error starting UART Loopback daemon: {e}")
+
     path = f"/tmp/{board_name}"
     print(f"[Python] Creating SHM file: {path}, Size: {board_size}")
     
@@ -350,6 +543,16 @@ def main():
     except KeyboardInterrupt:
         print("\n[Python] Stopping Controller...")
     finally:
+        print("[Python] Cleaning up virtual peripheral processes...")
+        for proc in peripheral_processes:
+            try:
+                proc.terminate()
+                proc.wait(timeout=1)
+            except Exception:
+                try:
+                    proc.kill()
+                except Exception:
+                    pass
         if shm is not None:
             shm.close()
         # The files in /tmp can stay or be cleaned up by start_lab.sh
