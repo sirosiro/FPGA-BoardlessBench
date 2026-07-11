@@ -81,7 +81,9 @@ function updateShm() {
                 broadcastRegisters();
             }
         }
-    } catch (e) {}
+    } catch (e) {
+        console.error("[Backend] updateShm error:", e.message);
+    }
 }
 
 // レジスタ情報のブロードキャスト
@@ -89,7 +91,10 @@ function broadcastRegisters() {
     if (!shmBuffer || !manifest.devices) return;
     
     const uioGpioDevs = manifest.devices.filter(d => d.type === 'uio' || d.type === 'gpio');
-    if (uioGpioDevs.length === 0) return;
+    if (uioGpioDevs.length === 0) {
+        console.log("[Backend Debug] uioGpioDevs is empty!");
+        return;
+    }
     const shmBaseAddr = Math.min(...uioGpioDevs.map(d => d.base_addr || 0));
     
     const regData = [];
@@ -144,6 +149,7 @@ function broadcastRegisters() {
         lastRegState = { ...currentState };
     }
 
+    console.log("[Backend Debug] Broadcasting registers, count:", regData.length);
     io.emit('registers', regData);
 }
 
@@ -349,6 +355,21 @@ io.on('connection', (socket) => {
             } catch (e) {
                 console.error(`[Backend] Failed to write SHM: ${e.message}`);
             }
+        }
+    });
+
+    socket.on('spi-adc-inject', ({ channel, value }) => {
+        const ADC_SHM_PATH = '/dev/shm/spi_adc';
+        try {
+            if (fs.existsSync(ADC_SHM_PATH)) {
+                const fd = fs.openSync(ADC_SHM_PATH, 'r+');
+                const buf = Buffer.alloc(2);
+                buf.writeUInt16LE(value, 0);
+                fs.writeSync(fd, buf, 0, 2, channel * 2);
+                fs.closeSync(fd);
+            }
+        } catch (e) {
+            console.error(`[Backend] Failed to write SPI ADC SHM: ${e.message}`);
         }
     });
 });

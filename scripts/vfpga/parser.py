@@ -1,6 +1,6 @@
 import re
 import os
-from vfpga.models import Device, Register, I2CSlave, BoardModel
+from vfpga.models import Device, Register, I2CSlave, SPISlave, BoardModel
 
 class DTSParser:
     @staticmethod
@@ -101,6 +101,7 @@ class DTSParser:
                 elif 'i2c' in compatible or 'cdns,i2c' in compatible: dev_type = 'i2c'
                 elif 'uart' in compatible or 'xlnx,xps-uart' in compatible: dev_type = 'uart'
                 elif 'gpio' in compatible or 'xlnx,xps-gpio' in compatible: dev_type = 'gpio'
+                elif 'spi' in compatible or 'cdns,spi' in compatible or 'xlnx,zynq-spi' in compatible: dev_type = 'spi'
                 elif 'rpmsg' in compatible: dev_type = 'rpmsg'
                 if dev_type == 'unknown' and label.startswith('/dev/uio'):
                     dev_type = 'uio'
@@ -156,6 +157,55 @@ class DTSParser:
                             mock_file = s_props.get('fbb,mock-file', None)
                             slave = I2CSlave(s_name, s_addr, s_props['compatible'], mock_file, init_val)
                             device.i2c_slaves.append(slave)
+                
+
+                # Parse nested SPI slave devices
+                if dev_type == 'spi':
+                    sub_pos = 0
+                    while True:
+                        sub_match = re.search(r'([a-zA-Z0-9_@:-]+)\s*\{', body[sub_pos:])
+                        if not sub_match:
+                            break
+                        sub_match_start = sub_pos + sub_match.start()
+                        sub_raw_name = sub_match.group(1).strip()
+                        
+                        sub_brace_start, sub_brace_end = DTSParser.find_matching_braces(body, sub_match_start)
+                        if sub_brace_start == -1:
+                            sub_pos = sub_match_start + len(sub_raw_name) + 1
+                            continue
+                        
+                        sub_body = body[sub_brace_start + 1 : sub_brace_end - 1]
+                        sub_pos = sub_brace_end
+                        
+                        s_node_name = sub_raw_name
+                        if ':' in sub_raw_name:
+                            s_node_name = sub_raw_name.split(':')[-1].strip()
+                            
+                        s_name = s_node_name.split('@')[0]
+                        s_cs_str = s_node_name.split('@')[1] if '@' in s_node_name else "0"
+                        try:
+                            s_cs = int(s_cs_str, 0)
+                        except:
+                            s_cs = 0
+                            
+                        s_props = {}
+                        s_prop_matches = re.finditer(r'([a-zA-Z0-9_-]+)\s*=\s*([^;]+);', sub_body)
+                        for sp_match in s_prop_matches:
+                            sk = sp_match.group(1).strip()
+                            sv = sp_match.group(2).strip()
+                            if sv.startswith('<') and sv.endswith('>'): sv = sv[1:-1].strip()
+                            if sv.startswith('"') and sv.endswith('"'): sv = sv[1:-1].strip()
+                            s_props[sk] = sv
+                        
+                        if 'compatible' in s_props:
+                            init_val_str = s_props.get('fbb,mock-data', '2048')
+                            try:
+                                init_val = int(init_val_str, 0)
+                            except:
+                                init_val = 2048
+                            mock_file = s_props.get('fbb,mock-file', None)
+                            slave = SPISlave(s_name, s_cs, s_props['compatible'], mock_file, init_val)
+                            device.spi_slaves.append(slave)
                 
                 if 'registers' in props:
                     reg_raw = props['registers'].replace('\\n', ' ').replace('\\"', '').replace('\\t', ' ')

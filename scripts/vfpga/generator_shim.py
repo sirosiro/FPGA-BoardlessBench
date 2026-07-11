@@ -4,7 +4,7 @@ from vfpga.generator_base import BaseGenerator
 
 class ShimGenerator(BaseGenerator):
     def generate(self, model: BoardModel):
-        mmap_routes, i2c_matches, uart_matches, rpmsg_matches = [], [], [], []
+        mmap_routes, i2c_matches, uart_matches, spi_matches, rpmsg_matches = [], [], [], [], []
         uart_count = 0
         for i, dev in enumerate(model.devices):
             if dev.type in ['uio', 'gpio']:
@@ -17,6 +17,13 @@ class ShimGenerator(BaseGenerator):
             elif dev.type == 'uart':
                 uart_count += 1
                 uart_matches.append('    if (pathname != NULL && strcmp(pathname, "%s") == 0) return %d;' % (dev.path, uart_count))
+            elif dev.type == 'spi':
+                bus_id = dev.extra_props.get('bus_id', '0')
+                if hasattr(dev, 'spi_slaves'):
+                    for slave in dev.spi_slaves:
+                        dev_path = f"/dev/spidev{bus_id}.{slave.cs}"
+                        spi_code = (int(bus_id) << 8) | int(slave.cs)
+                        spi_matches.append('    if (pathname != NULL && strcmp(pathname, "%s") == 0) return 0x1%04X;' % (dev_path, spi_code))
             elif dev.type == 'rpmsg':
                 rpmsg_matches.append(
                     '    if (pathname != NULL && strcmp(pathname, "%s") == 0) {\n'
@@ -33,6 +40,7 @@ class ShimGenerator(BaseGenerator):
             ", ".join(mmap_routes),
             " ".join(i2c_matches),
             " ".join(uart_matches),
+            " ".join(spi_matches),
             "\n".join(rpmsg_matches),
             "\n".join(rpmsg_matches),
             "\n".join(rpmsg_matches),

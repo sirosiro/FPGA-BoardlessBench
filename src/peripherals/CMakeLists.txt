@@ -24,3 +24,17 @@ add_executable(fbb_uart_loopback
     common/uart_device.cpp
 )
 target_link_libraries(fbb_uart_loopback PRIVATE Threads::Threads)
+
+# 3. 仮想SPI Flashエミュレータ (W25Q128)
+add_executable(fbb_spi_flash
+    spi/spi_flash.cpp
+    common/spi_slave.cpp
+)
+target_link_libraries(fbb_spi_flash PRIVATE Threads::Threads)
+
+# 4. 仮想SPI ADCエミュレータ (MCP3208)
+add_executable(fbb_spi_adc
+    spi/spi_adc.cpp
+    common/spi_slave.cpp
+)
+target_link_libraries(fbb_spi_adc PRIVATE Threads::Threads rt) # 共有メモリ用にrtをリンク

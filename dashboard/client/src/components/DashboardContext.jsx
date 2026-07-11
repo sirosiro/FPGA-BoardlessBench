@@ -19,7 +19,10 @@ export const DashboardProvider = ({ children }) => {
   useEffect(() => {
     socket.on('connect', () => setConnected(true));
     socket.on('disconnect', () => setConnected(false));
-    socket.on('registers', (data) => setRegisters(data));
+    socket.on('registers', (data) => {
+      console.log("[Client Debug] Received registers:", data);
+      setRegisters(data);
+    });
     socket.on('uart-init', (data) => {
       setUartLogs(data);
     });
@@ -58,6 +61,10 @@ export const DashboardProvider = ({ children }) => {
   const handleGpioToggle = (deviceName, bitIndex, currentOn, dataRegName = 'DATA') => {
     socket.emit('gpio-inject', { deviceName, bitIndex, value: !currentOn, dataRegName });
   };
+  
+  const handleSpiAdcInject = (channel, value) => {
+    socket.emit('spi-adc-inject', { channel, value });
+  };
 
   const handleClearTrace = () => {
     socket.emit('trace-history-clear');
@@ -83,6 +90,7 @@ export const DashboardProvider = ({ children }) => {
         gpioDevices,
         sendUart,
         handleGpioToggle,
+        handleSpiAdcInject,
         handleClearTrace,
         hdmiFrame,
         hiddenTraceKeys,

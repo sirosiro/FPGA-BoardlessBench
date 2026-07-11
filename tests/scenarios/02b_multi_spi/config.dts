@@ -1,0 +1,57 @@
+/dts-v1/;
+
+/ {
+    /* 
+     * 【解説: SPIバス0の定義】
+     * ベースアドレス 0xe0006000 にある Zynq SPI コントローラを定義します。
+     */
+    spi0: spi@e0006000 {
+        compatible = "xlnx,zynq-spi-1.0";
+        reg = <0xe0006000 0x1000>;
+        bus_id = <0>;
+        label = "/dev/spidev0";
+
+        /*
+         * 【解説: スレーブデバイス0 (Chip Select 0)】
+         * - flash@0: Winbond W25Q128 (16MB NOR Flash)
+         * - fbb,mock-file: 不揮発保存ファイル名 (プロジェクトルートからの相対パス)
+         */
+        flash@0 {
+            compatible = "winbond,w25q128";
+            reg = <0>; /* Chip Select 0 */
+            fbb,mock-file = "spi_flash.bin";
+        };
+
+        /*
+         * 【解説: スレーブデバイス1 (Chip Select 1)】
+         * - adc@1: Microchip MCP3208 (12-bit 8ch ADC)
+         * - fbb,mock-data: F-BB独自のプロパティ（初期仮想アナログ値。中央値 2048 = 1.65V）
+         */
+        adc@1 {
+            compatible = "microchip,mcp3208";
+            reg = <1>; /* Chip Select 1 */
+            fbb,mock-data = <2048>;
+        };
+    };
+
+    uart2: serial@e0001000 {
+        compatible = "xlnx,xps-uartlite-1.00.a";
+        reg = <0xe0001000 0x1000>;
+        label = "/dev/ttyPS2";
+    };
+
+    adc_regs: uio@40000000 {
+        compatible = "generic-uio";
+        reg = <0x40000000 0x1000>;
+        label = "/dev/uio0";
+        registers = 
+            "REG_ADC_CH0 @ 0x00",
+            "REG_ADC_CH1 @ 0x04",
+            "REG_ADC_CH2 @ 0x08",
+            "REG_ADC_CH3 @ 0x0c",
+            "REG_ADC_CH4 @ 0x10",
+            "REG_ADC_CH5 @ 0x14",
+            "REG_ADC_CH6 @ 0x18",
+            "REG_ADC_CH7 @ 0x1c";
+    };
+};

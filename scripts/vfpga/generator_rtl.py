@@ -248,6 +248,10 @@ class ManifestGenerator(BaseGenerator):
                 "registers": [{"name": r.name, "logical_name": r.logical_name or r.name, "offset": r.offset} for r in dev.registers],
                 "extra": dev.extra_props
             }
+            if dev.type == 'i2c' and hasattr(dev, 'i2c_slaves'):
+                dev_info["i2c_slaves"] = [{"name": s.name, "addr": s.addr, "compatible": s.compatible} for s in dev.i2c_slaves]
+            if dev.type == 'spi' and hasattr(dev, 'spi_slaves'):
+                dev_info["spi_slaves"] = [{"name": s.name, "cs": s.cs, "compatible": s.compatible} for s in dev.spi_slaves]
             manifest["devices"].append(dev_info)
         return json.dumps(manifest, indent=4)
 

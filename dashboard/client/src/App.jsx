@@ -7,6 +7,7 @@ import GpioPanel from './components/GpioPanel';
 import UartTerminal from './components/UartTerminal';
 import RegisterTracer from './components/RegisterTracer';
 import HdmiOutput from './components/HdmiOutput';
+import SpiAdcPanel from './components/SpiAdcPanel';
 import './App.css';
 
 
@@ -17,6 +18,7 @@ const components = {
   registerTracer: () => <RegisterTracer />,
   uartTerminal: (props) => <UartTerminal {...props} />,
   hdmiOutput: () => <HdmiOutput />,
+  spiAdcPanel: () => <SpiAdcPanel />,
 };
 
 
@@ -92,6 +94,17 @@ function DashboardInner() {
       position: {
         referencePanel: 'registerMonitor',
         direction: 'below',
+      },
+    });
+
+    // 3b. Add spiAdcPanel within gpioPanel group (as a tab)
+    api.addPanel({
+      id: 'spiAdcPanel',
+      component: 'spiAdcPanel',
+      title: 'SPI ADC (12-bit)',
+      position: {
+        referencePanel: 'gpioPanel',
+        direction: 'within',
       },
     });
 

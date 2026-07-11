@@ -125,6 +125,57 @@ def get_peripherals_from_dts(dts_path):
                             'init_val': init_val
                         })
             
+            elif 'spi' in compat or 'cdns,spi' in compat or 'xlnx,zynq-spi' in compat:
+                bus_match = re.search(r'bus_id\s*=\s*<([^>]+)>', clean_body)
+                bus_id = int(bus_match.group(1).strip(), 0) if bus_match else 0
+                
+                sub_pos = 0
+                while True:
+                    sub_match = re.search(r'([a-zA-Z0-9_@:-]+)\s*\{', body[sub_pos:])
+                    if not sub_match: break
+                    sub_match_start = sub_pos + sub_match.start()
+                    sub_raw_name = sub_match.group(1).strip()
+                    sb_start, sb_end = find_braces(body, sub_match_start)
+                    if sb_start == -1:
+                        sub_pos = sub_match_start + len(sub_raw_name) + 1
+                        continue
+                    
+                    sub_body = body[sb_start + 1 : sb_end - 1]
+                    sub_pos = sb_end
+                    
+                    s_node_name = sub_raw_name
+                    if ':' in sub_raw_name:
+                        s_node_name = sub_raw_name.split(':')[-1].strip()
+
+                    s_name = s_node_name.split('@')[0]
+                    s_cs_str = s_node_name.split('@')[1] if '@' in s_node_name else "0"
+                    try:
+                        s_cs = int(s_cs_str, 0)
+                    except:
+                        s_cs = 0
+                    
+                    s_comp_match = re.search(r'compatible\s*=\s*"([^"]+)"', sub_body)
+                    s_compat = s_comp_match.group(1) if s_comp_match else ""
+                    
+                    mock_file_match = re.search(r'fbb,mock-file\s*=\s*"([^"]+)"', sub_body)
+                    mock_file = mock_file_match.group(1) if mock_file_match else None
+                    
+                    init_data_match = re.search(r'fbb,mock-data\s*=\s*<([^>]+)>', sub_body)
+                    try:
+                        init_val = int(init_data_match.group(1).strip(), 0) if init_data_match else 2048
+                    except:
+                        init_val = 2048
+                    
+                    if s_compat:
+                        peripherals.append({
+                            'type': 'spi',
+                            'bus_id': bus_id,
+                            'cs': s_cs,
+                            'compatible': s_compat,
+                            'mock_file': mock_file,
+                            'init_val': init_val
+                        })
+            
             elif 'uart' in compat or 'xlnx,xps-uart' in compat:
                 uart_count += 1
                 p_type_match = re.search(r'fbb,peripheral-type\s*=\s*"([^"]+)"', body)
@@ -506,7 +557,7 @@ def main():
                     args.extend(["--file", m_file])
                 print(f"[Python] Starting Virtual I2C EEPROM: {' '.join(args)}")
                 try:
-                    proc = subprocess.Popen(args, stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+                    proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
                     peripheral_processes.append(proc)
                 except Exception as e:
                     print(f"[Python] Error starting EEPROM daemon: {e}")
@@ -528,6 +579,43 @@ def main():
                     peripheral_processes.append(proc)
                 except Exception as e:
                     print(f"[Python] Error starting UART Loopback daemon: {e}")
+
+
+        elif p['type'] == 'spi':
+            if p['compatible'] == 'winbond,w25q128':
+                flash_bin = os.path.join(PROJECT_ROOT, "build/bin/fbb_spi_flash")
+                if not os.path.exists(flash_bin):
+                    tmp_bin = "/tmp/fbb_build/bin/fbb_spi_flash"
+                    if os.path.exists(tmp_bin):
+                        flash_bin = tmp_bin
+                sock_path = f"/tmp/fbb_spi_b{p['bus_id']}_c{p['cs']}"
+                args = [flash_bin, "--socket", sock_path]
+                if p['mock_file']:
+                    m_file = p['mock_file']
+                    if not os.path.isabs(m_file):
+                        m_file = os.path.join(PROJECT_ROOT, m_file)
+                    args.extend(["--file", m_file])
+                print(f"[Python] Starting Virtual SPI Flash: {' '.join(args)}")
+                try:
+                    proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    peripheral_processes.append(proc)
+                except Exception as e:
+                    print(f"[Python] Error starting SPI Flash daemon: {e}")
+                    
+            elif p['compatible'] == 'microchip,mcp3208':
+                adc_bin = os.path.join(PROJECT_ROOT, "build/bin/fbb_spi_adc")
+                if not os.path.exists(adc_bin):
+                    tmp_bin = "/tmp/fbb_build/bin/fbb_spi_adc"
+                    if os.path.exists(tmp_bin):
+                        adc_bin = tmp_bin
+                sock_path = f"/tmp/fbb_spi_b{p['bus_id']}_c{p['cs']}"
+                args = [adc_bin, "--socket", sock_path, "--init-val", str(p['init_val'])]
+                print(f"[Python] Starting Virtual SPI ADC: {' '.join(args)}")
+                try:
+                    proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                    peripheral_processes.append(proc)
+                except Exception as e:
+                    print(f"[Python] Error starting SPI ADC daemon: {e}")
 
     path = f"/tmp/{board_name}"
     print(f"[Python] Creating SHM file: {path}, Size: {board_size}")

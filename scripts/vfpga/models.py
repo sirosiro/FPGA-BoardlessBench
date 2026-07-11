@@ -17,6 +17,14 @@ class I2CSlave:
         self.mock_file = mock_file
         self.init_val = init_val
 
+class SPISlave:
+    def __init__(self, name, cs, compatible, mock_file=None, init_val=2048):
+        self.name = name
+        self.cs = cs
+        self.compatible = compatible
+        self.mock_file = mock_file
+        self.init_val = init_val
+
 class Device:
     def __init__(self, name, path, dev_type, base_reg):
         self.name = name
@@ -26,6 +34,7 @@ class Device:
         self.registers = []
         self.extra_props = {}
         self.i2c_slaves = []
+        self.spi_slaves = []
         # Parse base_addr and size from base_reg (e.g. "0x40000000 0x1000")
         try:
             parts = base_reg.split()

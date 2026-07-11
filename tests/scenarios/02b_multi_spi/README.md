@@ -1,0 +1,57 @@
+# 仮想SPIマルチデバイス検証シナリオ (`02b_multi_spi`)
+
+本シナリオは、単一の SPI バス上に自動リグレッションテスト検証用の **仮想 SPI Flash (Winbond W25Q128)** と、Webダッシュボード上からのデバッグ電圧操作に対応する **仮想 12-bit ADC (Microchip MCP3208)** をマルチスレーブ（CS0, CS1）として同居させ、全二重シリアル通信エミュレーションの動作を確認する総合テストデモです。
+
+![FPGA-BoardlessBench (F-BB) AroundView Dashboard](assets/dashboard.png)
+
+---
+
+## エミュレート対象の実機デバイスと公式情報
+
+本シナリオでエミュレートしているのは、以下の実在する代表的な SPI デバイスです。
+
+1. **Winbond W25Q128JV (128M-bit Serial NOR Flash Memory)**
+   * **公式製品紹介**: [W25Q128JV Product Page](https://www.winbond.com/hq/product/code-storage-flash-memory/serial-nor-flash/?__locale=en&partNo=W25Q128JV)
+   * **データシート (PDF)**: [W25Q128JV Datasheet](https://www.winbond.com/resource-files/w25q128jv%20revf%2003272018%20plus.pdf)
+   * **サポートコマンド**: JEDEC ID 読み出し (`0x9F`)、データ読み出し (`0x03`)、セクタ消去 (`0x20`)、ページ書き込み (`0x02`)、および各種ステータス制御。
+
+2. **Microchip MCP3208 (12-bit 8-Channel A/D Converter)**
+   * **公式製品紹介**: [MCP3208 Product Page](https://www.microchip.com/en-us/product/MCP3208)
+   * **データシート (PDF)**: [MCP3208 Datasheet](https://ww1.microchip.com/downloads/en/DeviceDoc/21298e.pdf)
+   * **通信仕様**: 1回の SPI 全二重通信 (3バイト) でチャンネル設定およびシングルエンド/ディファレンシャル入力を要求し、Null Bit を挟んで 12-bit のデジタル値を取得します。
+
+---
+
+## アーキテクチャ構成
+
+システムコール Shim 層 (`libfpgashim.so`) は、マスタ（Aコア）側の Linux カーネルの `/dev/spidev0.0` および `/dev/spidev0.1` へのアクセスをフックし、F-BB のバックエンドである SPI デーモンとソケットを介して同期通信（全二重）を行います。
+
+```mermaid
+graph TD
+    subgraph A_Core["A Core (Master Application)"]
+        App[test_bin] -->|ioctl SPI_IOC_MESSAGE| Shim[libfpgashim.so]
+    end
+    subgraph Backend["F-BB Backend Simulation"]
+        Shim -->|UNIX Domain Socket CS0| Flash[fbb_spi_flash]
+        Shim -->|UNIX Domain Socket CS1| ADC[fbb_spi_adc]
+        ADC <-->|Shared Memory /spi_adc| Web[Web Dashboard / User Slider]
+    end
+```
+
+---
+
+## テストの実行方法
+
+### 1. 自動テストランナーでの実行
+以下のコマンドを実行することで、自動的に環境が立ち上がり、ビルドおよびテストアサーションが実行されます。
+
+```bash
+./tests/scenario_runner.sh tests/scenarios/02b_multi_spi
+```
+
+### 2. 手動 Web デバッグ（ラボ環境）での起動
+手動で電圧値スライダーなどの UI 状態を変更しながら SPI 通信を観測したい場合は、以下のコマンドでコンテナ上のラボ環境を起動します。
+
+```bash
+./start_lab.sh tests/scenarios/02b_multi_spi/
+```

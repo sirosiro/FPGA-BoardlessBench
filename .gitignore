@@ -27,6 +27,7 @@ src/include/vfpga_config.h
 src/sim/sim_main.cpp
 tests/scenarios/*/test_bin
 tests/scenarios/*/fbb_pac.rs
+spi_flash.bin
 
 
 # CIP
