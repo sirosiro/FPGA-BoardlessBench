@@ -1,0 +1,46 @@
+/dts-v1/;
+
+/ {
+    /* PL-side AXI SPI IP config */
+    pl_spi0: spi@40001000 {
+        compatible = "xlnx,axi-quad-spi-3.2";
+        reg = <0x40001000 0x1000>;
+        bus_id = <1>; /* bus 1 */
+        label = "/dev/spidev1";
+
+        adc@0 {
+            compatible = "microchip,mcp3208";
+            reg = <0>; /* CS 0 */
+            fbb,mock-data = <2048>;
+        };
+    };
+
+    /* UART console config for interactive mode */
+    uart2: serial@e0001000 {
+        compatible = "xlnx,xps-uartlite-1.00.a";
+        reg = <0xe0001000 0x1000>;
+        label = "/dev/ttyPS2";
+    };
+
+    /* AXI-Lite registers UIO mapping (Ordered first by base_addr to keep routes[0] at the lowest address) */
+    pl_spi_ctrl: uio@40000000 {
+        compatible = "generic-uio";
+        reg = <0x40000000 0x1000>;
+        label = "/dev/uio0";
+        registers =
+            "REG_SPI_TX @ 0x00",
+            "REG_SPI_RX @ 0x04",
+            "REG_SPI_CTRL @ 0x08",
+            "REG_SPI_STATUS @ 0x0c";
+    };
+
+    /* Dummy GPIO device for dashboard rendering (Ordered second) */
+    vfpga_gpio@40002000 {
+        compatible = "xlnx,xps-gpio-1.00.a";
+        reg = <0x40002000 0x1000>;
+        label = "/dev/uio1";
+        registers =
+            "DATA @ 0x00",
+            "TRI  @ 0x04";
+    };
+};

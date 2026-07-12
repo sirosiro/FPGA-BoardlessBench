@@ -114,10 +114,13 @@ echo "[Runner] Generating code from ${DTS}..."
 python3 "${PROJECT_ROOT}/scripts/gen_vfpga.py" "${DTS}"
 
 # 3. エンジンのビルド
+# 【重要】コントローラ起動時にDTSで定義された周辺デバイスデーモン (fbb_spi_adc等) を正常に
+# 立ち上げるため、バックグラウンド起動前にプロジェクト全体 (周辺デバイスを含む) をビルド完了させておく。
+# そうしないと、対向デーモン不在によるソケット接続待ちでシミュレータがデッドロックします。
 echo "[Runner] Building simulation engine (this may take a few seconds)..."
 cd "${PROJECT_ROOT}"
 cmake -B build -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DSCENARIO_DIR="${SCENARIO_DIR}" || exit 1
-cmake --build build --target fpgashim --target vfpga_sim || exit 1
+cmake --build build || exit 1
 
 # 4. バックグラウンドプロセスの起動
 echo "[Runner] Starting Backend Controller & RTL Simulator..."

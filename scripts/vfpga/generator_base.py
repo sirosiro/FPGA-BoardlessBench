@@ -26,6 +26,17 @@ class ConfigGenerator(BaseGenerator):
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
         scenario_dir = getattr(model, "scenario_dir", "")
         
+        # PL SPI デバイスの検出
+        pl_spi_socket = ""
+        for dev in model.devices:
+            if dev.type == 'spi' and dev.base_reg != 0xe0006000 and dev.base_reg != 0xe0007000:
+                if hasattr(dev, 'spi_slaves') and dev.spi_slaves:
+                    slave = dev.spi_slaves[0]
+                    bus_id = dev.extra_props.get('bus_id', 1)
+                    cs = slave.cs
+                    pl_spi_socket = f"/tmp/fbb_spi_b{bus_id}_c{cs}"
+                    break
+        
         return """/* Auto-generated Config from DTS */
 #ifndef VFPGA_CONFIG_H
 #define VFPGA_CONFIG_H
@@ -35,5 +46,6 @@ class ConfigGenerator(BaseGenerator):
 #define SHM_FILE "/tmp/%s"
 #define SHM_SIZE %d
 #define GPIO_COUNT 118
+#define PL_SPI_SOCKET "%s"
 #endif
-""" % (project_root, scenario_dir, shm_name, shm_name, shm_size)
+""" % (project_root, scenario_dir, shm_name, shm_name, shm_size, pl_spi_socket)

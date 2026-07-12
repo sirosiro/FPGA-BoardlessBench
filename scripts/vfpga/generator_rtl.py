@@ -88,8 +88,149 @@ class SimulatorGenerator(BaseGenerator):
 #include <verilated_vcd_c.h>
 #include "vfpga_config.h"
 #include "sim_traits.h"
+#include <sys/socket.h>
+#include <sys/un.h>
+#include <errno.h>
 
 double sc_time_stamp() { return 0; }
+
+class PlSpiBridge {
+private:
+    int sock_fd = -1;
+    std::string socket_path;
+    bool connected = false;
+
+    uint8_t last_sclk = 0;
+    uint8_t last_cs = 1;
+    uint8_t bit_count = 0;
+    uint8_t tx_shift_reg = 0;
+    uint8_t rx_shift_reg = 0;
+    std::vector<uint8_t> accumulated_tx;
+    uint8_t last_rx_buf[3] = {0};
+
+public:
+    PlSpiBridge(const std::string& path) : socket_path(path) {}
+    ~PlSpiBridge() { close_socket(); }
+
+    void connect_socket() {
+        if (connected) return;
+        if (socket_path.empty()) return;
+        
+        sock_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+        if (sock_fd < 0) return;
+
+        struct sockaddr_un addr;
+        memset(&addr, 0, sizeof(addr));
+        addr.sun_family = AF_UNIX;
+        strncpy(addr.sun_path, socket_path.c_str(), sizeof(addr.sun_path)-1);
+
+        int ret = -1;
+        for (int i = 0; i < 20; i++) { // 最大2秒間リトライ
+            ret = connect(sock_fd, (struct sockaddr*)&addr, sizeof(addr));
+            if (ret == 0) break;
+            usleep(100000); // 100ms 待機
+        }
+
+        if (ret == 0) {
+            connected = true;
+        } else {
+            close(sock_fd);
+            sock_fd = -1;
+        }
+    }
+
+    void close_socket() {
+        if (sock_fd >= 0) {
+            close(sock_fd);
+            sock_fd = -1;
+        }
+        connected = false;
+    }
+
+    template <typename T>
+    void tick(T* top) {
+        if constexpr (has_pl_spi_sclk<T>::value && has_pl_spi_mosi<T>::value && 
+                      has_pl_spi_cs_n<T>::value && has_pl_spi_miso<T>::value) {
+            
+            uint8_t cs = top->pl_spi_cs_n;
+            uint8_t sclk = top->pl_spi_sclk;
+            uint8_t mosi = top->pl_spi_mosi;
+
+             if (cs && !last_cs) {
+                bit_count = 0;
+                tx_shift_reg = 0;
+            }
+
+            if (!cs) {
+                if (last_cs) {
+                    // CSのアサート（立ち下がり）時に、前回のトランザクション(4バイト以上)が残っていればクリア
+                    if (accumulated_tx.size() >= 4) {
+                        accumulated_tx.clear();
+                    }
+                    // 最初のビット(ビット7)をアサート直後にピンに出力しておく
+                    top->pl_spi_miso = (rx_shift_reg >> 7) & 0x1;
+                    rx_shift_reg <<= 1;
+                }
+                if (!connected) connect_socket();
+                
+                // 立ち上がりで MOSI サンプリング
+                if (sclk && !last_sclk) {
+                    tx_shift_reg = (tx_shift_reg << 1) | (mosi & 0x1);
+                    bit_count++;
+
+                    if (bit_count == 8) {
+                        accumulated_tx.push_back(tx_shift_reg);
+                        uint8_t resp = 0xFF;
+                        size_t total = accumulated_tx.size();
+                        
+                        if (total <= 3) {
+                            if (connected) {
+                                uint16_t len = 3;
+                                uint8_t tx_buf[3] = {0};
+                                for (size_t i = 0; i < 3; ++i) {
+                                    if (i < total) {
+                                        tx_buf[i] = accumulated_tx[i];
+                                    }
+                                }
+                                
+                                send(sock_fd, &len, sizeof(len), 0);
+                                send(sock_fd, tx_buf, 3, 0);
+                                
+                                int n = recv(sock_fd, last_rx_buf, 3, MSG_WAITALL);
+                                if (n > 0) {
+                                    resp = last_rx_buf[total - 1];
+                                } else {
+                                    close_socket();
+                                }
+                            }
+                        } else {
+                            // 4バイト目以降はソケット通信せず、前回の応答バッファから現在完了したバイトインデックスに相当する応答（通常は下位8ビット = last_rx_buf[2]）を再利用
+                            size_t target_idx = (total - 1);
+                            if (target_idx < 3) {
+                                resp = last_rx_buf[target_idx];
+                            } else {
+                                resp = last_rx_buf[2]; // 3バイト目の応答でフォールバック
+                            }
+                        }
+                        
+                        rx_shift_reg = resp;
+                        bit_count = 0;
+                        tx_shift_reg = 0;
+                    }
+                }
+                
+                // 立ち下がりで MISO 更新
+                if (!sclk && last_sclk) {
+                    top->pl_spi_miso = (rx_shift_reg >> 7) & 0x1;
+                    rx_shift_reg <<= 1;
+                }
+            }
+
+            last_sclk = sclk;
+            last_cs = cs;
+        }
+    }
+};
 
 VerilatedVcdC* volatile_trace = nullptr;
 
@@ -107,6 +248,7 @@ static RegMeta registers[] = { %s };
 
 template <typename T>
 void run_sim_loop(T* top, volatile uint32_t* shm, uint32_t* old_shm, VerilatedVcdC* m_trace, uint64_t& vtime) {
+    PlSpiBridge bridge(PL_SPI_SOCKET);
     // Initial Reset Sequence
     if constexpr (has_rst_n<T>::value) top->rst_n = 1;
     if constexpr (has_clk<T>::value) top->clk = 0;
@@ -191,6 +333,7 @@ void run_sim_loop(T* top, volatile uint32_t* shm, uint32_t* old_shm, VerilatedVc
             top->eval(); 
             if constexpr (has_clk<T>::value) { top->clk = 1; top->eval(); top->clk = 0; top->eval(); }
             m_trace->dump(vtime++);
+            bridge.tick(top);
             usleep(100);
         }
 }
