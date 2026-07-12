@@ -2,3 +2,4 @@
 /mcore_baremetal.elf
 /*.o
 /*.log
+*~

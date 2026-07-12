@@ -3,3 +3,4 @@
 /test_bin
 /mcore_rtic.elf
 /*.log
+*~

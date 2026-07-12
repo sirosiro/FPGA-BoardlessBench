@@ -57,3 +57,4 @@ scratch/
 # Antigravity Local Configuration
 .antigravity/mcp_config.json
 .agents/AGENTS.md
+*~
