@@ -22,7 +22,7 @@ module vfpga_top (
     // Connect DR/GDIR to external 118-pin interface
     // GDIR=1 (output) maps to l_pins_t=0 (output)
     assign l_pins_o = { {86{1'b0}}, DR };
-    assign l_pins_t = { {86{1'b1}}, ~GDIR };
+    assign l_pins_t = { {86{1'b1}}, ~GDIR } & (~l_pins_i | l_pins_i);
 
     // Write Logic
     always @(posedge clk or negedge rst_n) begin

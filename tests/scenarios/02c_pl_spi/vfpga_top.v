@@ -71,6 +71,7 @@ module vfpga_top(
                             r_spi_ctrl <= w_data[0];
                         end
                     end
+                    default: ;
                 endcase
             end else begin
                 // auto clear control bit when active
@@ -167,6 +168,6 @@ module vfpga_top(
     assign l_pins_o[7:4]    = state;
     assign l_pins_o[117:8]  = 110'h0;
 
-    assign l_pins_t = 118'h0;
+    assign l_pins_t = 118'h0 & l_pins_i;
 
 endmodule

@@ -65,6 +65,6 @@ module vfpga_top (
 
     // 118-pin GPIO output routing for S01
     assign l_pins_o = {86'h0, engine_out};
-    assign l_pins_t = {86'hFFFFFFFFFFFFFFFFFFFFFF, TRI}; // TRI レジスタの値を下位32ビットに反映
+    assign l_pins_t = {{86{1'b1}}, TRI} & (~l_pins_i | l_pins_i); // TRI レジスタの値を下位32ビットに反映
 
 endmodule
