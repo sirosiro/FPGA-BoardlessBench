@@ -22,6 +22,7 @@
 - **[Scripts Generator](./scripts/ARCHITECTURE_MANIFEST.md)**: DTS から環境を自動生成するコア・ロジックの設計。
 - **[Dashboard Interface](./dashboard/ARCHITECTURE_MANIFEST.md)**: 診断ダッシュボードと可視化レイヤーの設計。
 - **[Test Scenarios](./tests/scenarios/ARCHITECTURE_MANIFEST.md)**: 各テストシナリオの共通原則、禁止事項、および個別シナリオの役割定義。
+- **[i.MX HAL Scenario](./tests/scenarios/P01_frdmIMX/hal/ARCHITECTURE_MANIFEST.md)**: 実機とシミュレータ環境における UART/GPIO の差異を吸収し、コードの透過性を担保する i.MX HAL の設計。
 
 ---
 
