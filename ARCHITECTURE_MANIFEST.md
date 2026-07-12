@@ -179,13 +179,50 @@
         1. 基底クラスである `ImxGlesProcessorBase` に、EGLImage 属性カスタム用の `setupEglImageAttribs` および描画前後の同期用 `preDrawSync` / `postDrawSync` の保護仮想関数（仮想フック）を導入。
         2. `Imx95GlesProcessor` でこれらをオーバーライドし、Mali GPU 向けの AFBC (ARM Frame Buffer Compression) 圧縮用モディファイア設定および `ioctl(dma_buf_fd, DMA_BUF_IOCTL_SYNC)` による明示的キャッシュ同期をカプセル化して実装。
   - **Rationale:**
-        1. 疎結合とDRY原則の維持: 共通レンダリングループ（`processFrame`）の重複コードを徹底的に排除しつつ、SoC特有の最適化のみをそれぞれの具象サブクラスにクリーンに分離するため。
-        2. ファームウェア透過性と保守性: アプリケーション（`main.cpp`）からドライバ固有の同期処理や AFBC 設定を完全に隠蔽し、ホスト PC エミュレーションと複数実機ターゲット間でソースおよびバイナリ透過性を保証するため。
+        1. 疎### 4.1. [Layer 1] FW & Application Layer (Host/Target Code)
+- **責務:** 
+  実機と同じロジックおよびポインタ操作をホスト上で透過的に実行する。条件分岐 `#ifdef` などを排除した 100% 同一のファームウェア・バイナリの走行を保証する。
+- **主要モジュールと技術:**
+  - **Aコア (Linux)**: C/C++ アプリケーション (`test_bin`), `termios` シリアル通信、全二重 `ioctl` パケット制御など。
+  - **Mコア (RTOS/ベアメタル)**: FreeRTOS, Eclipse ThreadX などの POSIX シミュレータポート、あるいは Rust (`no_std`) ベアメタルアプリ。
+- **実機透過メカニズム:** `libfpgashim.so` の起動コンストラクタが、`MAP_FIXED_NOREPLACE` / `MAP_FIXED` フラグを用いて共有メモリを実機と同じ絶対物理アドレスへ強制配置することで、ポインタ直叩き（例：`*(volatile uint32_t*)(ADDR) = val`）をセグフォを起こさず実行可能にする。
 
-- **2026-06-13: DTSかっこ記法による論理レジスタバインディングの拡張と特定SoC依存名の排除 (Parenthesis-based Register Binding & SoC Decoupling)**
-  - **Decision:**
-        1. DTSの `registers` 定義において、物理名と論理名（基準名）を関連付けるかっこ記法（例: `PDDR(GDIR) @ 0x08`）を正式サポート。
-        2. コアパーサー（`gen_vfpga.py`）から特定SoC依存のレジスタ名（`GDIR`/`TRI`）のハードコードを完全に排除し、かっこがない場合は物理レジスタ名をそのまま論理名として扱うフォールバックに一本化。
+### 4.2. [Layer 2] Intercept & HAL (libfpgashim.so)
+- **責務:** 
+  libc の主要なシステムコールを動的ライブラリフック (`LD_PRELOAD`) を用いてインターセプトし、仮想物理アドレス空間や仮想周辺回路デバイスファイルへのアクセスを検知して、下位の中継路（Layer 3）へ透過的にリダイレクトする。
+- **生成方式:** 各シナリオの `config.dts` をソースとして `scripts/gen_vfpga.py` (ShimGenerator) が `libfpgashim.c.template` とマージして自動生成する。直接の編集は禁止。
+- **フック対象API:** `open`, `open64`, `openat`, `openat64`, `mmap`, `mmap64`, `ioctl` (SPI_IOC_MESSAGE, I2C_RDWR などの全二重パケット転送を含む), `read`, `write`
+
+### 4.3. [Layer 3] Redirection Paths
+- **責務:** 
+  フックしたシステムコールから、各周辺回路の特性に応じた仮想エミュレーション空間および中継・通信路へとルーティングする。
+- **構成される主な経路:**
+  - **Physical Address Map**: UIO/GPIO やレガシーメモリマップド I/O の物理アドレスアクセスを共有メモリへとルーティングする。
+  - **UNIX Domain Sockets**: I2C EEPROM や SPI NOR/ADC など、複数デバイスが混在するバス通信パケットを外部の仮想ペリフェラル（Layer 5）へ中継する。
+  - **PTY Pseudo Terminal**: UART コントローラの仮想シリアルポートを仮想 PTY デバイス経由で中継し、Tera Term 等との TCP ブリッジ接続を可能にする。
+  - **remoteproc Virtual Sysfs**: AコアアプリからのMコア起動・停止制御（Sysfsファイルへの `"start"`/`"stop"` 等の書き込み）をフックし、Python バックエンド監視スレッドへ伝搬する。
+
+### 4.4. [Layer 4] Orchestration & IPC (vlogic_controller.py)
+- **責務:** 
+  DTS に基づいて仮想共有メモリ空間（`/tmp/uio` 等）を初期化し、外部ペリフェラルプロセスの動的な起動・管理（プロセスライフサイクル管理）、RTLシミュレータ同期、および `remoteproc` 状態をポーリング監視して Mコアプロセスのホットスワップ起動・停止を自律制御するメインバックエンドエンジン。
+- **データ同期方式:** 各 UIO/GPIO レジスタ値を物理アドレスオフセットに対応した共有メモリ上に配置し、リアルタイムに他のシミュレータやサーバーへブロードキャストする。
+
+### 4.5. [Layer 5] Virtual Peripherals (C++ Plugins)
+- **責務:** 
+  実機デバイス（I2C EEPROM, SPI NOR Flash, SPI ADC, UART loopback）の機能、内部ステート、プロトコル、全二重シリアルシーケンスをソフトウェアで忠実に再現する。
+- **実装構造:** `src/peripherals/` 下で C++ のオブジェクト指向（`I2cSlave`, `SpiSlave`, `UartDevice` 等の抽象基底）を用いて実装され、UNIX ドメインソケット経由で Shim と非同期に通信する。
+- **データ共有**: `fbb_spi_adc` エミュレータは、ダッシュボードサーバー側と共有メモリ `/dev/shm/spi_adc` を介してリアルタイムに物理電圧値を同期する。
+
+### 4.6. [Layer 6] RTL Simulation (vfpga_sim)
+- **責務:** 
+  Verilator により C++ コードにコンパイルされた Verilog RTL（`vfpga_top.v`）を高速に走行させる。
+- **同期クロック機構:** `vlogic_controller` が制御する UIO レジスタ共有メモリの更新および `w_en` トリガーを契機に、1サイクルずつ RTL 内部のステートをクロック更新（`tick()`）させる。
+
+### 4.7. [Layer 7] Visual Diagnostic UI (Web Dashboard)
+- **責務:** 
+  Node.js (Express/Socket.io) サーバーをバックエンドに、React フロントエンドを介して、レジスタ状態（Register Monitor）、履歴追跡（Register State Tracer）、外部通信（UART Terminal）、HDMIプレビュー、GPIO操作、および SPI ADC 電圧スライダー入力をリアルタイムで視覚的にデバッグ・操作可能にする。
+- **表示連動**: 共有メモリから取得したレジスタマップに基づき、データ変動を正規化して折れ線グラフにプロットする。
+し、かっこがない場合は物理レジスタ名をそのまま論理名として扱うフォールバックに一本化。
         3. ダッシュボード（`GpioPanel`）がDTSからバインドされた論理名（`GDIR`/`TRI`/`DATA`）を動的に判定して方向極性（NXP/Xilinx）やLED/トグルの表示を切り替え、物理レジスタが別れている場合（PDOR/PDIR等）でも1つのピンアレイにマージして動作させるフロントエンドロジックの導入。
   - **Rationale:**
         1. プラットフォームの独立性の強化: コアインフラを特定のSoC仕様から解放し、DTS駆動による完全な機能バインディング（単一の情報源）を実現するため。
@@ -301,21 +338,107 @@
 
 ### 4. コンポーネント設計仕様 (Component Design Specifications)
 
-<!--
-### 4.1. Interceptor Shim (libfpgashim.so)
-- **責務:** libcの open, mmap, ioctl をラップし、/dev/uio* へのアクセスを検知して仮想共有メモリへ橋渡しする。
-- **生成方式:** `tests/*.dts` をソースとし、`scripts/gen_vfpga.py` によって自動生成される。直接編集は禁止。
-- **提供するAPI:** 
-    - int open(const char *pathname, int flags, ...)
-    - void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
-    - int ioctl(int fd, unsigned long request, ...)
-- **アルゴリズム:** パスマッチングによるフィルタリング。
+F-BB は、最下層の Verilog RTL 論理シミュレーションから、システムコール Shim 割り込み層、バックエンドオーケストレーター、そして最上層の React ダッシュボードに至るまで、以下の 7 レイヤーから構成されるフルスタックな疎結合アーキテクチャを採用している。
 
-### 4.2. Virtual Logic Controller (Python)
-- **責務:** 共有メモリの状態を監視し、回路ロジック（ステートマシン）をエミュレートする。
-- **状態とライフサイクル:**
-    - 共有メモリの初期化 -> 監視ループ -> アプリ終了検知によるクリーンアップ。
--->
+```mermaid
+graph TD
+    %% 1. FW Layer
+    subgraph FW_Layer["[Layer 1] FW & Application Layer (Host/Target Code)"]
+        ACore["A-Core (Linux User Application)<br/>e.g., test_bin (C/C++)"]
+        MCore["M-Core (Baremetal / RTOS)<br/>e.g., FreeRTOS / ThreadX / Rust (no_std)"]
+    end
+
+    %% 2. Shim Layer
+    subgraph Shim_Layer["[Layer 2] Intercept & HAL (C Shim)"]
+        Shim["libfpgashim.so<br/>(System Call Hook: open, mmap, ioctl, read, write)"]
+    end
+
+    %% 3. Communication/Redirection
+    subgraph Rel_Layer["[Layer 3] Redirection Paths"]
+        Path_MEM["Physical Address Map<br/>(MAP_FIXED /dev/mem)"]
+        Path_Sock["UNIX Domain Sockets<br/>(/tmp/fbb_spi_*, /tmp/fbb_i2c_*)"]
+        Path_PTY["PTY Pseudo Terminal<br/>(UART Echo Bridge)"]
+        Path_Remoteproc["remoteproc Virtual Sysfs<br/>(/sys/class/remoteproc/)"]
+    end
+
+    %% 4. Control & IPC Layer
+    subgraph Control_Layer["[Layer 4] Orchestration & IPC (Python Backend)"]
+        SHM_UIO["UIO/GPIO Reg Shared Memory<br/>(/tmp/uio, /tmp/gpio)"]
+        Controller["vlogic_controller.py<br/>(remoteproc Monitor, Process Lifecycle Manager)"]
+    end
+
+    %% 5. Peripherals (C++ processes)
+    subgraph Peripheral_Layer["[Layer 5] Virtual Peripherals (C++ Plugins)"]
+        V_I2C["fbb_i2c_eeprom"]
+        V_SPI_Flash["fbb_spi_flash"]
+        V_SPI_ADC["fbb_spi_adc"]
+        V_UART["fbb_uart_loopback"]
+    end
+
+    %% 6. RTL Sim Layer
+    subgraph RTL_Layer["[Layer 6] RTL Simulation (Verilator Engine)"]
+        Sim_Main["vfpga_sim (C++ wrapper)"]
+        RTL["vfpga_top (Verilog logic)"]
+    end
+
+    %% 7. Web Dashboard Layer
+    subgraph Web_Layer["[Layer 7] Visual Diagnostic UI (Web Dashboard)"]
+        WebServer["dashboard/server.js (Node.js/Express/Socket.io)"]
+        ReactUI["Vite + React 19 Frontend<br/>(Register Monitor, Tracer, SPI ADC Panel, HDMI Viewer)"]
+    end
+
+    %% Data/Control Flows
+    ACore -->|ioctl / open / read| Shim
+    MCore -->|Direct Pointer Access / mmap| Shim
+    
+    Shim -->|Intercept UIO/GPIO| Path_MEM
+    Shim -->|Intercept I2C/SPI| Path_Sock
+    Shim -->|Intercept UART| Path_PTY
+    Shim -->|Intercept remoteproc| Path_Remoteproc
+
+    Path_MEM --> SHM_UIO
+    Path_Sock --> V_I2C & V_SPI_Flash & V_SPI_ADC
+    Path_PTY --> V_UART
+    Path_Remoteproc --> Controller
+
+    V_SPI_ADC <-->|SHM /spi_adc| WebServer
+
+    SHM_UIO <-->|Sync Regs/Clocks| Sim_Main
+    Sim_Main <--> RTL
+    Controller -.->|Launch & Monitor| Sim_Main & V_I2C & V_SPI_Flash & V_SPI_ADC & V_UART
+
+    SHM_UIO -.->|Read Sync| WebServer
+    WebServer <-->|WebSocket| ReactUI
+    V_UART <-->|TCP Proxy Port 3000/3001| ReactUI
+```
+
+#### **Layer 1: FW & Application Layer**
+*   **概要**: 実機と同一のソースコードでビルドされた Aコア Linux ユーザーアプリおよび Mコア ベアメタル/RTOS アプリ。
+*   **詳細情報**: 各テストシナリオのファームウェア仕様については **[tests/scenarios/](./tests/scenarios/)** 配下の各シナリオ README を参照。
+
+#### **Layer 2: Intercept & HAL Layer (C Shim)**
+*   **概要**: システムコールをトラップし、仮想的な通信パスへ透過ルーティングする C Shim ランタイム。
+*   **詳細情報**: コード生成テンプレートおよび生成方式については **[libfpgashim.c.template](./scripts/vfpga/templates/libfpgashim.c.template)** を参照。
+
+#### **Layer 3: Redirection Paths (Communication Channels)**
+*   **概要**: Shim層からリダイレクトされたデータを受け渡す物理メモリマップ、UNIXドメインソケット、PTY擬似端末等の通信路。
+*   **詳細情報**: アドレスおよびポートマップの仕様については、各シナリオの **[config.dts](./tests/scenarios/02b_multi_spi/config.dts)** 等を参照。
+
+#### **Layer 4: Orchestration & IPC Layer**
+*   **概要**: シミュレーション環境全体のプロセスライフサイクル管理、remoteproc 状態監視、クロック同期エンジン。
+*   **詳細情報**: 統合制御ロジックについては **[vlogic_controller.py](./src/controller/vlogic_controller.py)** を参照。
+
+#### **Layer 5: Virtual Peripherals**
+*   **概要**: I2C, SPI, UART などのプロトコルを模擬するプラグイン形式の C++ デバイスエミュレーター群。
+*   **詳細情報**: 各周辺デバイスの実装については **[src/peripherals/](./src/peripherals/)** を参照。
+
+#### **Layer 6: RTL Simulation**
+*   **概要**: Verilator によってコンパイルされた RTL シミュレーション実行エンジン。
+*   **詳細情報**: RTL ラッパーおよび HDL ロジックについては **[src/sim/](./src/sim/)** および **[src/rtl/](./src/rtl/)** を参照。
+
+#### **Layer 7: Visual Diagnostic UI**
+*   **概要**: Express サーバーおよび React 19 で構成される状態可視化・操作ダッシュボード。
+*   **詳細情報**: ダッシュボードのセットアップおよびパネル仕様については **[dashboard/README.md](./dashboard/README.md)** を参照。
 
 ### 5. 既知の未解決課題と保留事項 (Known Open Issues)
 <!-- Issue: 割り込み(IRQ)の擬似通知, Status: 保留, Rationale: シグナルを用いるか、仮想fdへの書き込みを用いるか、性能評価後に決定する。 -->
