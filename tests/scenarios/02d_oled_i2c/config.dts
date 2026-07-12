@@ -1,0 +1,26 @@
+/dts-v1/;
+
+/ {
+    /* 
+     * 【解説: I2Cバス1の定義】
+     * ベースアドレス 0xe0004000 にある Cadence I2C コントローラを定義します。
+     */
+    i2c1: i2c@e0004000 {
+        compatible = "cdns,i2c-r1p10";
+        reg = <0xe0004000 0x1000>;
+        bus_id = <1>;
+        label = "/dev/i2c-1";
+
+        /*
+         * 【解説: Solomon Systech SSD1306 OLEDディスプレイ】
+         * - oled@3c: スレーブアドレス 0x3C
+         * - compatible: 互換性ドライバ名。Linuxの標準ドライバともマッピングされます。
+         * - fbb,shm-path: ディスプレイエミュレータが書き込む共有メモリファイル名
+         */
+        oled_dev: oled@3c {
+            compatible = "solomon,ssd1306";
+            reg = <0x3c>;
+            fbb,shm-path = "/dev/shm/fbb_display_0";
+        };
+    };
+};

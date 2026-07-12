@@ -8,6 +8,7 @@ import UartTerminal from './components/UartTerminal';
 import RegisterTracer from './components/RegisterTracer';
 import HdmiOutput from './components/HdmiOutput';
 import SpiAdcPanel from './components/SpiAdcPanel';
+import OledDisplay from './components/OledDisplay';
 import './App.css';
 
 
@@ -19,6 +20,7 @@ const components = {
   uartTerminal: (props) => <UartTerminal {...props} />,
   hdmiOutput: () => <HdmiOutput />,
   spiAdcPanel: () => <SpiAdcPanel />,
+  oledDisplay: () => <OledDisplay />,
 };
 
 
@@ -102,6 +104,17 @@ function DashboardInner() {
       id: 'spiAdcPanel',
       component: 'spiAdcPanel',
       title: 'SPI ADC (12-bit)',
+      position: {
+        referencePanel: 'gpioPanel',
+        direction: 'within',
+      },
+    });
+
+    // 3c. Add oledDisplay within gpioPanel group (as a tab)
+    api.addPanel({
+      id: 'oledDisplay',
+      component: 'oledDisplay',
+      title: 'Virtual OLED',
       position: {
         referencePanel: 'gpioPanel',
         direction: 'within',

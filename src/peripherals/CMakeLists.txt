@@ -38,3 +38,10 @@ add_executable(fbb_spi_adc
     common/spi_slave.cpp
 )
 target_link_libraries(fbb_spi_adc PRIVATE Threads::Threads rt) # 共有メモリ用にrtをリンク
+
+# 5. 仮想I2C OLEDディスプレイエミュレータ (SSD1306)
+add_executable(fbb_i2c_oled
+    i2c_spi/ssd1306.cpp
+    common/i2c_slave.cpp
+)
+target_link_libraries(fbb_i2c_oled PRIVATE Threads::Threads rt) # 共有メモリ用にrtをリンク

@@ -374,11 +374,31 @@ io.on('connection', (socket) => {
     });
 });
 
+let lastDisplayBuffer = null;
+function updateDisplayShm() {
+    const displayShmPath = '/dev/shm/fbb_display_0';
+    try {
+        if (fs.existsSync(displayShmPath)) {
+            const buffer = fs.readFileSync(displayShmPath);
+            if (!lastDisplayBuffer || !lastDisplayBuffer.equals(buffer)) {
+                lastDisplayBuffer = buffer;
+                io.emit('display-frame', buffer.toString('base64'));
+            }
+        }
+    } catch (e) {
+        // Ignore read sharing violations or temp unlinks
+    }
+}
+
 setInterval(() => {
     loadManifest();
     updateShm();
     syncUartConnections();
 }, 200);
+
+setInterval(() => {
+    updateDisplayShm();
+}, 33); // ~30 FPS
 
 app.get('/api/manifest', (req, res) => res.json(manifest));
 app.use(express.static(path.join(__dirname, 'client/dist')));
@@ -387,3 +407,4 @@ const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {
     console.log(`[Backend] Dashboard Server running on http://localhost:${PORT}`);
 });
+

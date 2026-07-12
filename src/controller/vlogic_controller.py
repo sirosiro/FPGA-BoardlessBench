@@ -561,6 +561,24 @@ def main():
                     peripheral_processes.append(proc)
                 except Exception as e:
                     print(f"[Python] Error starting EEPROM daemon: {e}")
+            elif p['compatible'] == 'solomon,ssd1306':
+                oled_bin = os.path.join(PROJECT_ROOT, "build/bin/fbb_i2c_oled")
+                if not os.path.exists(oled_bin):
+                    tmp_bin = "/tmp/fbb_build/bin/fbb_i2c_oled"
+                    if os.path.exists(tmp_bin):
+                        oled_bin = tmp_bin
+                sock_path = f"/tmp/fbb_i2c_b{p['bus_id']}_a{p['addr']:02x}"
+                args = [oled_bin, "--socket", sock_path]
+                print(f"[Python] Starting Virtual I2C OLED Display ({p['compatible']}): {' '.join(args)}")
+                try:
+                    daemon_log_path = os.path.join(os.path.dirname(dts_path), "i2c_oled_daemon.log")
+                    log_file = open(daemon_log_path, "w")
+                    proc = subprocess.Popen(args, stdout=log_file, stderr=subprocess.STDOUT)
+                    peripheral_processes.append(proc)
+                except Exception as e:
+                    print(f"[Python] Error starting OLED daemon: {e}")
+
+
                     
         elif p['type'] == 'uart':
             if p['peripheral_type'] == 'uart_loopback':

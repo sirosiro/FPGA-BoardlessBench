@@ -118,6 +118,7 @@ graph TD
         V_SPI_Flash["fbb_spi_flash"]
         V_SPI_ADC["fbb_spi_adc"]
         V_UART["fbb_uart_loopback"]
+        V_OLED["fbb_i2c_oled"]
     end
 
     %% 6. RTL Sim Layer
@@ -142,15 +143,16 @@ graph TD
     Shim -->|Intercept remoteproc| Path_Remoteproc
 
     Path_MEM --> SHM_UIO
-    Path_Sock --> V_I2C & V_SPI_Flash & V_SPI_ADC
+    Path_Sock --> V_I2C & V_SPI_Flash & V_SPI_ADC & V_OLED
     Path_PTY --> V_UART
     Path_Remoteproc --> Controller
 
     V_SPI_ADC <-->|SHM /spi_adc| WebServer
+    V_OLED -->|SHM /fbb_display_0| WebServer
 
     SHM_UIO <-->|Sync Regs/Clocks| Sim_Main
     Sim_Main <--> RTL
-    Controller -.->|Launch & Monitor| Sim_Main & V_I2C & V_SPI_Flash & V_SPI_ADC & V_UART
+    Controller -.->|Launch & Monitor| Sim_Main & V_I2C & V_SPI_Flash & V_SPI_ADC & V_UART & V_OLED
 
     SHM_UIO -.->|Read Sync| WebServer
     WebServer <-->|WebSocket| ReactUI

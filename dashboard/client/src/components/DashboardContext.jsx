@@ -13,6 +13,7 @@ export const DashboardProvider = ({ children }) => {
   const [uartLogs, setUartLogs] = useState({});
   const [traceHistory, setTraceHistory] = useState([]);
   const [hdmiFrame, setHdmiFrame] = useState(null);
+  const [displayFrame, setDisplayFrame] = useState(null);
   const [hiddenTraceKeys, setHiddenTraceKeys] = useState({});
 
 
@@ -35,6 +36,7 @@ export const DashboardProvider = ({ children }) => {
       setTraceHistory(prev => [...prev, snapshot].slice(-500));
     });
     socket.on('hdmi-frame', (data) => setHdmiFrame(data));
+    socket.on('display-frame', (data) => setDisplayFrame(data));
 
 
     fetch('/api/manifest').then(res => res.json()).then(setManifest);
@@ -48,6 +50,7 @@ export const DashboardProvider = ({ children }) => {
       socket.off('trace-history-init');
       socket.off('trace-history-update');
       socket.off('hdmi-frame');
+      socket.off('display-frame');
     };
   }, []);
 
@@ -93,6 +96,7 @@ export const DashboardProvider = ({ children }) => {
         handleSpiAdcInject,
         handleClearTrace,
         hdmiFrame,
+        displayFrame,
         hiddenTraceKeys,
         toggleTraceKey,
       }}
