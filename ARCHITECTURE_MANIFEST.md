@@ -343,32 +343,32 @@ F-BB は、最下層の Verilog RTL 論理シミュレーションから、シ�
 ```mermaid
 graph TD
     %% 1. FW Layer
-    subgraph FW_Layer["[Layer 1] FW & Application Layer (Host/Target Code)"]
-        ACore["A-Core (Linux User Application)<br/>e.g., test_bin (C/C++)"]
-        MCore["M-Core (Baremetal / RTOS)<br/>e.g., FreeRTOS / ThreadX / Rust (no_std)"]
+    subgraph FW_Layer["Layer 1 FW and Application Layer - Host/Target Code"]
+        ACore["A-Core Linux User Application<br/>e.g. test_bin C/C++"]
+        MCore["M-Core Baremetal / RTOS<br/>e.g. FreeRTOS / ThreadX / Rust no_std"]
     end
 
     %% 2. Shim Layer
-    subgraph Shim_Layer["[Layer 2] Intercept & HAL (C Shim)"]
-        Shim["libfpgashim.so<br/>(System Call Hook: open, mmap, ioctl, read, write)"]
+    subgraph Shim_Layer["Layer 2 Intercept and HAL - C Shim"]
+        Shim["libfpgashim.so<br/>System Call Hook: open, mmap, ioctl, read, write"]
     end
 
     %% 3. Communication/Redirection
-    subgraph Rel_Layer["[Layer 3] Redirection Paths"]
-        Path_MEM["Physical Address Map<br/>(MAP_FIXED /dev/mem)"]
-        Path_Sock["UNIX Domain Sockets<br/>(/tmp/fbb_spi_*, /tmp/fbb_i2c_*)"]
-        Path_PTY["PTY Pseudo Terminal<br/>(UART Echo Bridge)"]
-        Path_Remoteproc["remoteproc Virtual Sysfs<br/>(/sys/class/remoteproc/)"]
+    subgraph Rel_Layer["Layer 3 Redirection Paths"]
+        Path_MEM["Physical Address Map<br/>MAP_FIXED /dev/mem"]
+        Path_Sock["UNIX Domain Sockets<br/>/tmp/fbb_spi_*, /tmp/fbb_i2c_*"]
+        Path_PTY["PTY Pseudo Terminal<br/>UART Echo Bridge"]
+        Path_Remoteproc["remoteproc Virtual Sysfs<br/>/sys/class/remoteproc/"]
     end
 
     %% 4. Control & IPC Layer
-    subgraph Control_Layer["[Layer 4] Orchestration & IPC (Python Backend)"]
-        SHM_UIO["UIO/GPIO Reg Shared Memory<br/>(/tmp/uio, /tmp/gpio)"]
-        Controller["vlogic_controller.py<br/>(remoteproc Monitor, Process Lifecycle Manager)"]
+    subgraph Control_Layer["Layer 4 Orchestration and IPC - Python Backend"]
+        SHM_UIO["UIO/GPIO Reg Shared Memory<br/>/tmp/uio, /tmp/gpio"]
+        Controller["vlogic_controller.py<br/>remoteproc Monitor, Process Lifecycle Manager"]
     end
 
     %% 5. Peripherals (C++ processes)
-    subgraph Peripheral_Layer["[Layer 5] Virtual Peripherals (C++ Plugins)"]
+    subgraph Peripheral_Layer["Layer 5 Virtual Peripherals - C++ Plugins"]
         V_I2C["fbb_i2c_eeprom"]
         V_SPI_Flash["fbb_spi_flash"]
         V_SPI_ADC["fbb_spi_adc"]
@@ -376,15 +376,15 @@ graph TD
     end
 
     %% 6. RTL Sim Layer
-    subgraph RTL_Layer["[Layer 6] RTL Simulation (Verilator Engine)"]
-        Sim_Main["vfpga_sim (C++ wrapper)"]
-        RTL["vfpga_top (Verilog logic)"]
+    subgraph RTL_Layer["Layer 6 RTL Simulation - Verilator Engine"]
+        Sim_Main["vfpga_sim C++ wrapper"]
+        RTL["vfpga_top Verilog logic"]
     end
 
     %% 7. Web Dashboard Layer
-    subgraph Web_Layer["[Layer 7] Visual Diagnostic UI (Web Dashboard)"]
-        WebServer["dashboard/server.js (Node.js/Express/Socket.io)"]
-        ReactUI["Vite + React 19 Frontend<br/>(Register Monitor, Tracer, SPI ADC Panel, HDMI Viewer)"]
+    subgraph Web_Layer["Layer 7 Visual Diagnostic UI - Web Dashboard"]
+        WebServer["dashboard/server.js Node.js Express Socket.io"]
+        ReactUI["Vite + React 19 Frontend<br/>Register Monitor, Tracer, SPI ADC Panel, HDMI Viewer"]
     end
 
     %% Data/Control Flows
