@@ -1,4 +1,4 @@
-import { useRef } from 'react';
+import { useRef, useState } from 'react';
 import { Box } from 'lucide-react';
 import { DockviewReact } from 'dockview-react';
 import { DashboardProvider, useDashboard } from './components/DashboardContext';
@@ -27,13 +27,27 @@ const components = {
 function DashboardInner() {
   const { connected, manifest } = useDashboard();
   const apiRef = useRef(null);
+  const [saveStatus, setSaveStatus] = useState('Save Layout');
 
-  // Initialize the default layout:
-  // - Register Monitor, GPIO Panel, and Register Tracer on the left
-  // - Dynamic UART Terminals on the right
-  const onReady = (event) => {
-    apiRef.current = event.api;
-    initLayout(event.api);
+  // @intent:rationale マウント時にバックエンドから保存済みのレイアウト（fbb_layout.json）をフェッチし、存在する場合は Dockview API にロードして復元します。存在しない場合はデフォルトレイアウトを適用します。
+  const onReady = async (event) => {
+    const api = event.api;
+    apiRef.current = api;
+
+    try {
+      const response = await fetch('/api/layout');
+      if (response.ok) {
+        const layoutData = await response.json();
+        if (layoutData && Object.keys(layoutData).length > 0) {
+          api.fromJSON(layoutData);
+          return;
+        }
+      }
+    } catch (e) {
+      console.warn('[Dashboard] No saved layout found or failed to load, using default layout.', e);
+    }
+
+    initLayout(api);
   };
 
   const initLayout = (api) => {
@@ -175,6 +189,32 @@ function DashboardInner() {
     }
   };
 
+  // @intent:rationale 現在の Dockview のペイン配置情報をシリアライズし、バックエンド経由でアクティブなシナリオフォルダ配下の fbb_layout.json に保存します。保存結果はボタン表記を通じて非侵襲的に通知されます。
+  const handleSaveLayout = async () => {
+    if (!apiRef.current) return;
+    const layoutData = apiRef.current.toJSON();
+    try {
+      const response = await fetch('/api/layout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(layoutData),
+      });
+      if (response.ok) {
+        setSaveStatus('Saved!');
+        setTimeout(() => setSaveStatus('Save Layout'), 2000);
+      } else {
+        setSaveStatus('Failed');
+        setTimeout(() => setSaveStatus('Save Layout'), 2000);
+      }
+    } catch (e) {
+      console.error('[Dashboard] Failed to save layout:', e);
+      setSaveStatus('Error');
+      setTimeout(() => setSaveStatus('Save Layout'), 2000);
+    }
+  };
+
   // Wait for manifest to load before mounting the Dockview interface to avoid race conditions.
   if (!manifest) {
     return (
@@ -196,6 +236,25 @@ function DashboardInner() {
         </div>
         <div className="system-meta" style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
           <button
+            className="save-layout-btn"
+            onClick={handleSaveLayout}
+            style={{
+              backgroundColor: '#238636',
+              color: '#ffffff',
+              border: '1px solid #2ea44f',
+              padding: '6px 12px',
+              fontSize: '0.75rem',
+              borderRadius: '6px',
+              cursor: 'pointer',
+              fontWeight: '600',
+              transition: 'background 0.2s, color 0.2s'
+            }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#2ea44f'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#238636'}
+          >
+            {saveStatus}
+          </button>
+          <button
             className="reset-layout-btn"
             onClick={handleResetLayout}
             style={{
@@ -209,6 +268,8 @@ function DashboardInner() {
               fontWeight: '600',
               transition: 'background 0.2s'
             }}
+            onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#30363d'}
+            onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#21262d'}
           >
             Reset Layout
           </button>

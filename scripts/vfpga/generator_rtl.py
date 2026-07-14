@@ -367,6 +367,7 @@ int main(int argc, char** argv) {
 """ % (min_base, ", ".join(reg_defs), len(reg_defs), len(reg_defs))
 
 class ManifestGenerator(BaseGenerator):
+    # @intent:rationale Webダッシュボードのバックエンドが、現在ロードされているシナリオのディレクトリ（config.dtsの配置場所）を特定し、そこにレイアウトファイルを保存・復元できるようにするため、メタデータに scenario_dir を追加します。
     def generate(self, model: BoardModel):
         shm_name = model.name
         shm_size = ConfigGenerator.compute_shm_size(model)
@@ -377,6 +378,7 @@ class ManifestGenerator(BaseGenerator):
             "shm_path": f"/tmp/{shm_name}",
             "shm_size": shm_size,
             "project_root": project_root,
+            "scenario_dir": getattr(model, "scenario_dir", ""),
             "hdmi_output_path": "/tmp/hdmi_output.bmp",
             "devices": [],
             "uarts": [{"name": d.name, "port": int(d.extra_props.get("port", 2000))} for d in model.get_uart_devices()]
