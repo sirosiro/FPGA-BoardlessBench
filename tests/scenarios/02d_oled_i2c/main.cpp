@@ -202,10 +202,11 @@ int main() {
     std::vector<std::vector<uint8_t>> patterns;
 
     // パターン1: 市松模様 (Checkerboard)
+    // @intent:rationale 縦8x横8ドットの正方形で構成された綺麗な市松模様（チェッカーボード）を表現するため、ページ（縦8ドット）単位で 0xFF と 0x00 を交互に割り当てます。
     std::vector<uint8_t> p1(1024, 0);
     for (size_t page = 0; page < 8; ++page) {
         for (size_t col = 0; col < 128; ++col) {
-            p1[page * 128 + col] = ((page % 2) == (col / 8 % 2)) ? 0xAA : 0x55;
+            p1[page * 128 + col] = ((page % 2) == (col / 8 % 2)) ? 0xFF : 0x00;
         }
     }
     patterns.push_back(p1);
@@ -250,19 +251,20 @@ int main() {
     patterns.push_back(p4);
 
     // パターン5: お天気ダッシュボード (Weather Dashboard)
+    // @intent:rationale 128x64の解像度枠内に文字やアイコンが重なることなく完璧に収まり、読みやすくなるよう描画座標を調整しました。
     std::vector<uint8_t> p5(1024, 0);
     // 文字列の描画
-    draw_string(p5, "Temp.", 54, 4);
+    draw_string(p5, "Temp.", 46, 4);
     
-    draw_string(p5, "inside", 54, 20);
+    draw_string(p5, "inside", 46, 20);
     draw_string(p5, "24*C", 98, 20);
     
-    draw_string(p5, "outside", 54, 34);
+    draw_string(p5, "outside", 46, 34);
     draw_string(p5, "29*C", 98, 34);
     
-    draw_string(p5, "Humidity", 42, 48);
-    draw_humidity_icon(p5, 99, 48);
-    draw_string(p5, "64%", 108, 48);
+    draw_string(p5, "Humidity", 36, 48);
+    draw_humidity_icon(p5, 96, 48);
+    draw_string(p5, "64%", 105, 48);
 
     // お天気アイコン
     draw_weather_icon(p5, 12, 16);
