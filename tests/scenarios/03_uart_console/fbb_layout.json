@@ -1,0 +1,35 @@
+{
+    "grid": {
+        "root": {
+            "type": "branch",
+            "data": [
+                {
+                    "type": "leaf",
+                    "data": {
+                        "views": [
+                            "uartTerminal_vfpga_uart_1"
+                        ],
+                        "activeView": "uartTerminal_vfpga_uart_1",
+                        "id": "1"
+                    },
+                    "size": 1285
+                }
+            ],
+            "size": 802
+        },
+        "width": 1285,
+        "height": 802,
+        "orientation": "HORIZONTAL"
+    },
+    "panels": {
+        "uartTerminal_vfpga_uart_1": {
+            "id": "uartTerminal_vfpga_uart_1",
+            "contentComponent": "uartTerminal",
+            "params": {
+                "deviceName": "vfpga_uart_1"
+            },
+            "title": "UART: vfpga_uart_1"
+        }
+    },
+    "activeGroup": "1"
+}

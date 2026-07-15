@@ -1,0 +1,48 @@
+{
+    "grid": {
+        "root": {
+            "type": "branch",
+            "data": [
+                {
+                    "type": "leaf",
+                    "data": {
+                        "views": [
+                            "registerMonitor"
+                        ],
+                        "activeView": "registerMonitor",
+                        "id": "2"
+                    },
+                    "size": 313
+                },
+                {
+                    "type": "leaf",
+                    "data": {
+                        "views": [
+                            "registerTracer"
+                        ],
+                        "activeView": "registerTracer",
+                        "id": "4"
+                    },
+                    "size": 972
+                }
+            ],
+            "size": 802
+        },
+        "width": 1285,
+        "height": 802,
+        "orientation": "HORIZONTAL"
+    },
+    "panels": {
+        "registerMonitor": {
+            "id": "registerMonitor",
+            "contentComponent": "registerMonitor",
+            "title": "Registers"
+        },
+        "registerTracer": {
+            "id": "registerTracer",
+            "contentComponent": "registerTracer",
+            "title": "Tracer"
+        }
+    },
+    "activeGroup": "4"
+}
