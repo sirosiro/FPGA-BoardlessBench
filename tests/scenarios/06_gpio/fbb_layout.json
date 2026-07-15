@@ -1,0 +1,79 @@
+{
+    "grid": {
+        "root": {
+            "type": "branch",
+            "data": [
+                {
+                    "type": "branch",
+                    "data": [
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "registerMonitor"
+                                ],
+                                "activeView": "registerMonitor",
+                                "id": "2"
+                            },
+                            "size": 290
+                        },
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "gpioPanel"
+                                ],
+                                "activeView": "gpioPanel",
+                                "id": "3"
+                            },
+                            "size": 512
+                        }
+                    ],
+                    "size": 384
+                },
+                {
+                    "type": "leaf",
+                    "data": {
+                        "views": [
+                            "uartTerminal_default",
+                            "registerTracer"
+                        ],
+                        "activeView": "registerTracer",
+                        "id": "1"
+                    },
+                    "size": 901
+                }
+            ],
+            "size": 802
+        },
+        "width": 1285,
+        "height": 802,
+        "orientation": "HORIZONTAL"
+    },
+    "panels": {
+        "uartTerminal_default": {
+            "id": "uartTerminal_default",
+            "contentComponent": "uartTerminal",
+            "params": {
+                "deviceName": "default"
+            },
+            "title": "UART Console"
+        },
+        "registerTracer": {
+            "id": "registerTracer",
+            "contentComponent": "registerTracer",
+            "title": "Tracer"
+        },
+        "registerMonitor": {
+            "id": "registerMonitor",
+            "contentComponent": "registerMonitor",
+            "title": "Registers"
+        },
+        "gpioPanel": {
+            "id": "gpioPanel",
+            "contentComponent": "gpioPanel",
+            "title": "GPIO / Pin Array"
+        }
+    },
+    "activeGroup": "1"
+}

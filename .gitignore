@@ -58,6 +58,3 @@ scratch/
 .antigravity/mcp_config.json
 .agents/AGENTS.md
 *~
-
-# Scenario-specific UI layout configurations
-**/fbb_layout.json

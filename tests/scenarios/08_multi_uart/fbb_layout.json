@@ -1,0 +1,54 @@
+{
+    "grid": {
+        "root": {
+            "type": "branch",
+            "data": [
+                {
+                    "type": "leaf",
+                    "data": {
+                        "views": [
+                            "uartTerminal_vfpga_uart_1"
+                        ],
+                        "activeView": "uartTerminal_vfpga_uart_1",
+                        "id": "1"
+                    },
+                    "size": 643
+                },
+                {
+                    "type": "leaf",
+                    "data": {
+                        "views": [
+                            "uartTerminal_vfpga_uart_2"
+                        ],
+                        "activeView": "uartTerminal_vfpga_uart_2",
+                        "id": "6"
+                    },
+                    "size": 642
+                }
+            ],
+            "size": 802
+        },
+        "width": 1285,
+        "height": 802,
+        "orientation": "HORIZONTAL"
+    },
+    "panels": {
+        "uartTerminal_vfpga_uart_1": {
+            "id": "uartTerminal_vfpga_uart_1",
+            "contentComponent": "uartTerminal",
+            "params": {
+                "deviceName": "vfpga_uart_1"
+            },
+            "title": "UART: vfpga_uart_1"
+        },
+        "uartTerminal_vfpga_uart_2": {
+            "id": "uartTerminal_vfpga_uart_2",
+            "contentComponent": "uartTerminal",
+            "params": {
+                "deviceName": "vfpga_uart_2"
+            },
+            "title": "UART: vfpga_uart_2"
+        }
+    },
+    "activeGroup": "6"
+}

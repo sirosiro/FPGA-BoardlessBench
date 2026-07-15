@@ -1,0 +1,89 @@
+{
+    "grid": {
+        "root": {
+            "type": "branch",
+            "data": [
+                {
+                    "type": "branch",
+                    "data": [
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "registerMonitor"
+                                ],
+                                "activeView": "registerMonitor",
+                                "id": "2"
+                            },
+                            "size": 400
+                        },
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "uartTerminal_vfpga_uart_1"
+                                ],
+                                "activeView": "uartTerminal_vfpga_uart_1",
+                                "id": "1"
+                            },
+                            "size": 400
+                        }
+                    ],
+                    "size": 454.57421875
+                },
+                {
+                    "type": "leaf",
+                    "data": {
+                        "views": [
+                            "registerTracer"
+                        ],
+                        "activeView": "registerTracer",
+                        "id": "4"
+                    },
+                    "size": 651.21875
+                },
+                {
+                    "type": "leaf",
+                    "data": {
+                        "views": [
+                            "spiAdcPanel"
+                        ],
+                        "activeView": "spiAdcPanel",
+                        "id": "6"
+                    },
+                    "size": 364.20703125
+                }
+            ],
+            "size": 800
+        },
+        "width": 1470,
+        "height": 800,
+        "orientation": "HORIZONTAL"
+    },
+    "panels": {
+        "uartTerminal_vfpga_uart_1": {
+            "id": "uartTerminal_vfpga_uart_1",
+            "contentComponent": "uartTerminal",
+            "params": {
+                "deviceName": "vfpga_uart_1"
+            },
+            "title": "UART: vfpga_uart_1"
+        },
+        "registerMonitor": {
+            "id": "registerMonitor",
+            "contentComponent": "registerMonitor",
+            "title": "Registers"
+        },
+        "registerTracer": {
+            "id": "registerTracer",
+            "contentComponent": "registerTracer",
+            "title": "Tracer"
+        },
+        "spiAdcPanel": {
+            "id": "spiAdcPanel",
+            "contentComponent": "spiAdcPanel",
+            "title": "SPI ADC (12-bit)"
+        }
+    },
+    "activeGroup": "6"
+}

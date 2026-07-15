@@ -1,0 +1,95 @@
+{
+    "grid": {
+        "root": {
+            "type": "branch",
+            "data": [
+                {
+                    "type": "branch",
+                    "data": [
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "registerMonitor"
+                                ],
+                                "activeView": "registerMonitor",
+                                "id": "2"
+                            },
+                            "size": 445
+                        },
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "gpioPanel"
+                                ],
+                                "activeView": "gpioPanel",
+                                "id": "3"
+                            },
+                            "size": 445
+                        }
+                    ],
+                    "size": 400
+                },
+                {
+                    "type": "branch",
+                    "data": [
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "uartTerminal_vfpga_uart_1"
+                                ],
+                                "activeView": "uartTerminal_vfpga_uart_1",
+                                "id": "1"
+                            },
+                            "size": 334
+                        },
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "registerTracer"
+                                ],
+                                "activeView": "registerTracer",
+                                "id": "4"
+                            },
+                            "size": 556
+                        }
+                    ],
+                    "size": 885
+                }
+            ],
+            "size": 890
+        },
+        "width": 1285,
+        "height": 890,
+        "orientation": "HORIZONTAL"
+    },
+    "panels": {
+        "uartTerminal_vfpga_uart_1": {
+            "id": "uartTerminal_vfpga_uart_1",
+            "contentComponent": "uartTerminal",
+            "params": {
+                "deviceName": "vfpga_uart_1"
+            },
+            "title": "UART: vfpga_uart_1"
+        },
+        "registerMonitor": {
+            "id": "registerMonitor",
+            "contentComponent": "registerMonitor",
+            "title": "Registers"
+        },
+        "gpioPanel": {
+            "id": "gpioPanel",
+            "contentComponent": "gpioPanel",
+            "title": "GPIO / Pin Array"
+        },
+        "registerTracer": {
+            "id": "registerTracer",
+            "contentComponent": "registerTracer",
+            "title": "Tracer"
+        }
+    },
+    "activeGroup": "1"
+}

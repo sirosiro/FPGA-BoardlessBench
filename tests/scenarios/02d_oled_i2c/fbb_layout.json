@@ -1,0 +1,32 @@
+{
+    "grid": {
+        "root": {
+            "type": "branch",
+            "data": [
+                {
+                    "type": "leaf",
+                    "data": {
+                        "views": [
+                            "oledDisplay"
+                        ],
+                        "activeView": "oledDisplay",
+                        "id": "3"
+                    },
+                    "size": 872
+                }
+            ],
+            "size": 1088
+        },
+        "width": 1088,
+        "height": 872,
+        "orientation": "VERTICAL"
+    },
+    "panels": {
+        "oledDisplay": {
+            "id": "oledDisplay",
+            "contentComponent": "oledDisplay",
+            "title": "Virtual OLED"
+        }
+    },
+    "activeGroup": "3"
+}
