@@ -11,7 +11,7 @@
  * Linuxでは、I2Cデバイスへのアクセスは標準的なファイル操作(open/ioctl)として抽象化されています。
  */
 int read_from_bus(const char* path, unsigned char slave_addr) {
-    // 【解説】 指定されたI2Cバス（例: /dev/i2c-1）をオープンします。
+    // 【解説】 指定されたI2Cバス（例: /dev/i2c-0）をオープンします。
     int fd = open(path, O_RDWR);
     if (fd < 0) {
         perror("open");
@@ -51,13 +51,13 @@ int main() {
     printf("--- Multi-I2C Test Start ---\n");
 
     // 【解説】
-    // 同一の slave_addr (0x50 と 0x36) に対して、異なるバスパス（/dev/i2c-1 と /dev/i2c-2）
+    // 同一の slave_addr (0x50 と 0x36) に対して、異なるバスパス（/dev/i2c-0 と /dev/i2c-1）
     // を通じてアクセスすることで、物理的に異なる回路に接続されたデバイスを操作しています。
     
-    int val1 = read_from_bus("/dev/i2c-1", 0x50);
+    int val1 = read_from_bus("/dev/i2c-0", 0x50);
     printf("[App] Bus 1 (0x50) returned: 0x%02X\n", val1);
 
-    int val2 = read_from_bus("/dev/i2c-2", 0x36);
+    int val2 = read_from_bus("/dev/i2c-1", 0x36);
     printf("[App] Bus 2 (0x36) returned: 0x%02X\n", val2);
 
     if (val1 == 0x10 && val2 == 0x20) {

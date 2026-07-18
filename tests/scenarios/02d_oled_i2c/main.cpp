@@ -166,9 +166,9 @@ void draw_humidity_icon(std::vector<uint8_t>& buf, int start_x, int start_y) {
 
 int main() {
     std::cout << "[OLED Scenario] Opening I2C device...\n";
-    int fd = open("/dev/i2c-1", O_RDWR);
+    int fd = open("/dev/i2c-0", O_RDWR);
     if (fd < 0) {
-        std::cerr << "Failed to open /dev/i2c-1\n";
+        std::cerr << "Failed to open /dev/i2c-0\n";
         return 1;
     }
 
@@ -201,7 +201,7 @@ int main() {
     // アニメーションパターン定義
     std::vector<std::vector<uint8_t>> patterns;
 
-    // パターン1: 市松模様 (Checkerboard)
+    // パターン1: 市模樣 (Checkerboard)
     // @intent:rationale 縦8x横8ドットの正方形で構成された綺麗な市松模様（チェッカーボード）を表現するため、ページ（縦8ドット）単位で 0xFF と 0x00 を交互に割り当てます。
     std::vector<uint8_t> p1(1024, 0);
     for (size_t page = 0; page < 8; ++page) {

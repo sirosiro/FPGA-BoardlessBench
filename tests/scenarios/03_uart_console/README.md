@@ -23,7 +23,7 @@ graph TD
     end
     
     App -->|write/read| TTY
-    TTY -->|open /dev/ttyPS2| Shim
+    TTY -->|open /dev/ttyPS1| Shim
     Shim -->|Redirect| PTY
     PTY <--> TCP
 ```

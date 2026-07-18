@@ -13,7 +13,7 @@ class ShimGenerator(BaseGenerator):
                     mmap_routes.append('    { %s, %s, SHM_FILE, "%s" }' % (reg_parts[0], reg_parts[1], dev.path))
             elif dev.type == 'i2c':
                 bus_id = dev.extra_props.get('bus_id', '1')
-                i2c_matches.append('    if (pathname != NULL && strcmp(pathname, "%s") == 0) return %s;' % (dev.path, bus_id))
+                i2c_matches.append('    if (pathname != NULL && strcmp(pathname, "%s") == 0) return %d;' % (dev.path, int(bus_id) + 1))
             elif dev.type == 'uart':
                 uart_count += 1
                 uart_matches.append('    if (pathname != NULL && strcmp(pathname, "%s") == 0) return %d;' % (dev.path, uart_count))

@@ -83,11 +83,11 @@ my_device@42000000 {
 };
 
 /* 例2: 外部の仮想スレーブデバイスが接続される I2C バスの場合 */
-i2c1: i2c@e0004000 {
+i2c0: i2c@e0004000 {
     compatible = "cdns,i2c-r1p10";
     reg = <0xe0004000 0x1000>;
-    bus_id = <1>;
-    label = "/dev/i2c-1";
+    bus_id = <0>;
+    label = "/dev/i2c-0";
 
     /* I2Cバスの下にスレーブノードをネスト定義し、F-BBオリジナル属性で振る舞いを指定 */
     eeprom_dev: eeprom@50 {
@@ -102,7 +102,7 @@ i2c1: i2c@e0004000 {
 uart3: serial@e0002000 {
     compatible = "xlnx,xps-uartlite-1.00.a";
     reg = <0xe0002000 0x1000>;
-    label = "/dev/ttyPS2";
+    label = "/dev/ttyUL0";
     fbb,peripheral-type = "uart_loopback";      /* 接続相手となるエミュレータの種類を指定 */
 };
 ```

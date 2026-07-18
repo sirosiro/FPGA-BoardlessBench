@@ -9,7 +9,7 @@
 
     /* UART1: ttyPS0 */
     uart1: serial@e0000000 {
-        compatible = "xlnx,xps-uartlite-1.00.a";
+        compatible = "xlnx,xuartps";
         reg = <0xe0000000 0x1000>;
         label = "/dev/ttyPS0";
         port = <2000>;
@@ -17,7 +17,7 @@
 
     /* UART2: ttyPS1 */
     uart2: serial@e0001000 {
-        compatible = "xlnx,xps-uartlite-1.00.a";
+        compatible = "xlnx,xuartps";
         reg = <0xe0001000 0x1000>;
         label = "/dev/ttyPS1";
         port = <2001>;
@@ -26,15 +26,15 @@
     /* 
      * 【解説: 3つ目のUART (uart3) の定義】
      * - uart3: ラベル
-     * - serial@e0002000: ノード名（デバイス種類 @ ベース物理アドレス）
+     * - serial@40003000: ノード名（デバイス種類 @ ベース物理アドレス。PL-AXI領域）
      * - compatible: 互換デバイス名
-     * - label: アプリケーションがアクセスする仮想シリアルポート (/dev/ttyPS2)
+     * - label: アプリケーションがアクセスする仮想シリアルポート (/dev/ttyUL0)
      * - fbb,peripheral-type: F-BB独自の定義。外部のループバックデーモン (fbb_uart_loopback) に接続する
      */
-    uart3: serial@e0002000 {
+    uart3: serial@40003000 {
         compatible = "xlnx,xps-uartlite-1.00.a";
-        reg = <0xe0002000 0x1000>;
-        label = "/dev/ttyPS2";
+        reg = <0x40003000 0x1000>;
+        label = "/dev/ttyUL0";
         fbb,peripheral-type = "uart_loopback";
     };
 };

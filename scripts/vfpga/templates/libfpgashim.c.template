@@ -225,8 +225,9 @@ int open(const char *pathname, int flags, ...) {
         if (fd != -1 && fd < MAX_FDS) virtual_fd_route_idx[fd] = route_idx;
         return fd;
     }
-    int i2c_bus_id = is_i2c_device(pathname);
-    if (i2c_bus_id != 0) {
+    int i2c_code = is_i2c_device(pathname);
+    if (i2c_code != 0) {
+        int i2c_bus_id = i2c_code - 1;
         int fd = original_open("/dev/null", flags, mode);
         if (fd != -1 && fd < MAX_FDS) virtual_fd_route_idx[fd] = -100 - i2c_bus_id;
         return fd;
@@ -284,8 +285,9 @@ int open64(const char *pathname, int flags, ...) {
         if (fd != -1 && fd < MAX_FDS) virtual_fd_route_idx[fd] = route_idx;
         return fd;
     }
-    int i2c_bus_id = is_i2c_device(pathname);
-    if (i2c_bus_id != 0) {
+    int i2c_code = is_i2c_device(pathname);
+    if (i2c_code != 0) {
+        int i2c_bus_id = i2c_code - 1;
         int fd = original_open64("/dev/null", flags, mode);
         if (fd != -1 && fd < MAX_FDS) virtual_fd_route_idx[fd] = -100 - i2c_bus_id;
         return fd;
@@ -343,8 +345,9 @@ int openat(int dirfd, const char *pathname, int flags, ...) {
         if (fd != -1 && fd < MAX_FDS) virtual_fd_route_idx[fd] = route_idx;
         return fd;
     }
-    int i2c_bus_id = is_i2c_device(pathname);
-    if (i2c_bus_id != 0) {
+    int i2c_code = is_i2c_device(pathname);
+    if (i2c_code != 0) {
+        int i2c_bus_id = i2c_code - 1;
         int fd = original_openat(dirfd, "/dev/null", flags, mode);
         if (fd != -1 && fd < MAX_FDS) virtual_fd_route_idx[fd] = -100 - i2c_bus_id;
         return fd;
@@ -402,8 +405,9 @@ int openat64(int dirfd, const char *pathname, int flags, ...) {
         if (fd != -1 && fd < MAX_FDS) virtual_fd_route_idx[fd] = route_idx;
         return fd;
     }
-    int i2c_bus_id = is_i2c_device(pathname);
-    if (i2c_bus_id != 0) {
+    int i2c_code = is_i2c_device(pathname);
+    if (i2c_code != 0) {
+        int i2c_bus_id = i2c_code - 1;
         int fd = original_openat64(dirfd, "/dev/null", flags, mode);
         if (fd != -1 && fd < MAX_FDS) virtual_fd_route_idx[fd] = -100 - i2c_bus_id;
         return fd;
@@ -475,7 +479,7 @@ int ioctl(int fd, unsigned long request, ...) {
     if (fd >= 0 && fd < MAX_FDS && virtual_fd_route_idx[fd] == -300) {
         return 0; // RPMsg ioctl dummy success
     }
-    if (fd >= 0 && fd < MAX_FDS && virtual_fd_route_idx[fd] <= -101 && virtual_fd_route_idx[fd] >= -399) {
+    if (fd >= 0 && fd < MAX_FDS && virtual_fd_route_idx[fd] <= -100 && virtual_fd_route_idx[fd] >= -399) {
         int i2c_bus_id = -(virtual_fd_route_idx[fd] + 100);
         if (request == I2C_RDWR) {
             struct i2c_rdwr_ioctl_data *data = (struct i2c_rdwr_ioctl_data *)argp;
@@ -510,7 +514,7 @@ int ioctl(int fd, unsigned long request, ...) {
                 }
                 return ret;
             }
-            return 0; // その他の RD_MODE などの設定コマンドはダミー成功
+            return 0; // その他の RD_MODE などの設定コマンド is dummy success
         }
     }
     return original_ioctl(fd, request, argp);
@@ -939,4 +943,3 @@ int umount2(const char *target, int flags) {
 
     return original_umount2(target, flags);
 }
-

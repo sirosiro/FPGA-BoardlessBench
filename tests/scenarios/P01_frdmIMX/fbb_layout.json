@@ -15,7 +15,7 @@
                                 "activeView": "registerMonitor",
                                 "id": "2"
                             },
-                            "size": 262
+                            "size": 250
                         },
                         {
                             "type": "leaf",
@@ -26,7 +26,7 @@
                                 "activeView": "gpioPanel",
                                 "id": "3"
                             },
-                            "size": 178
+                            "size": 174
                         },
                         {
                             "type": "leaf",
@@ -37,10 +37,10 @@
                                 "activeView": "registerTracer",
                                 "id": "4"
                             },
-                            "size": 450
+                            "size": 422
                         }
                     ],
-                    "size": 404.46484375
+                    "size": 421
                 },
                 {
                     "type": "branch",
@@ -54,7 +54,7 @@
                                 "activeView": "uartTerminal_vfpga_uart_1",
                                 "id": "1"
                             },
-                            "size": 445
+                            "size": 423
                         },
                         {
                             "type": "leaf",
@@ -65,27 +65,19 @@
                                 "activeView": "hdmiOutput",
                                 "id": "5"
                             },
-                            "size": 445
+                            "size": 423
                         }
                     ],
-                    "size": 880.53515625
+                    "size": 918
                 }
             ],
-            "size": 890
+            "size": 846
         },
-        "width": 1285,
-        "height": 890,
+        "width": 1339,
+        "height": 846,
         "orientation": "HORIZONTAL"
     },
     "panels": {
-        "uartTerminal_vfpga_uart_1": {
-            "id": "uartTerminal_vfpga_uart_1",
-            "contentComponent": "uartTerminal",
-            "params": {
-                "deviceName": "vfpga_uart_1"
-            },
-            "title": "UART: vfpga_uart_1"
-        },
         "registerMonitor": {
             "id": "registerMonitor",
             "contentComponent": "registerMonitor",
@@ -100,6 +92,14 @@
             "id": "registerTracer",
             "contentComponent": "registerTracer",
             "title": "Tracer"
+        },
+        "uartTerminal_vfpga_uart_1": {
+            "id": "uartTerminal_vfpga_uart_1",
+            "contentComponent": "uartTerminal",
+            "params": {
+                "deviceName": "vfpga_uart_1"
+            },
+            "title": "UART: vfpga_uart_1"
         },
         "hdmiOutput": {
             "id": "hdmiOutput",

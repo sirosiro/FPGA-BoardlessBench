@@ -18,21 +18,21 @@ graph TD
     end
     
     App -->|ioctl| Driver
-    Driver -->|/dev/i2c-1| I2C1
-    Driver -->|/dev/i2c-2| I2C2
+    Driver -->|/dev/i2c-0| I2C1
+    Driver -->|/dev/i2c-1| I2C2
     
     I2C1 --- Slave1["I2C Slave (Addr: 0x50)"]
     I2C2 --- Slave2["I2C Slave (Addr: 0x36)"]
 ```
 
-## 学習のポイント
+## Learning Points
 
-1. **デバイスノードによるバスの識別:**
-   Linuxでは各I2Cバスは `/dev/i2c-1`, `/dev/i2c-2` のように個別のデバイスファイルとして抽象化されます。アプリケーションはこれらを使い分けることで、物理的に異なるバスに繋がれたデバイスを制御します。
+1. **Identification of Buses by Device Nodes:**
+   In Linux, each I2C bus is abstracted as an individual device file, such as `/dev/i2c-0` or `/dev/i2c-1`. The application controls devices connected to physically different buses by using these nodes appropriately.
 2. **I2C_RDWR ioctl:**
-   `read()` や `write()` を直接使う代わりに、`I2C_RDWR` ioctl を使用することで、開始・停止条件を含む複雑なI2Cシーケンスを1回のシステムコールでアトミックに実行できます。
-3. **DTSでのバス定義:**
-   `config.dts` 内で `bus_id` を定義することにより、エミュレータ上のどのコントローラがどの `/dev/i2c-X` に対応するかを決定しています。
+   Instead of using `read()` or `write()` directly, using `I2C_RDWR` ioctl allows complex I2C sequences including start/stop conditions to be executed atomically in a single system call.
+3. **Bus Definition in DTS:**
+   By defining `bus_id` inside `config.dts`, you determine which controller on the emulator corresponds to which `/dev/i2c-X`.
 
 ## なぜ Verilog (.v) ファイルがないのか？
 

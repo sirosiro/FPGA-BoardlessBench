@@ -2,14 +2,14 @@
 
 / {
     /* 
-     * 【解説: I2Cバス1の定義】
+     * 【解説: I2Cバス0の定義】
      * ベースアドレス 0xe0004000 にある Cadence I2C コントローラを定義します。
      */
     i2c1: i2c@e0004000 {
         compatible = "cdns,i2c-r1p10";
         reg = <0xe0004000 0x1000>;
-        bus_id = <1>;
-        label = "/dev/i2c-1";
+        bus_id = <0>;
+        label = "/dev/i2c-0";
 
         /*
          * 【解説: Solomon Systech SSD1306 OLEDディスプレイ】

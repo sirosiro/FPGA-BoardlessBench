@@ -34,10 +34,10 @@ int main() {
     }
     configure_raw_mode(fd1);
 
-    printf("[App] Opening /dev/ttyPS2 (Loopback Target)...\n");
-    int fd2 = open("/dev/ttyPS2", O_RDWR | O_NOCTTY);
+    printf("[App] Opening /dev/ttyUL0 (Loopback Target)...\n");
+    int fd2 = open("/dev/ttyUL0", O_RDWR | O_NOCTTY);
     if (fd2 < 0) {
-        perror("open /dev/ttyPS2 failed");
+        perror("open /dev/ttyUL0 failed");
         close(fd0);
         close(fd1);
         return 1;

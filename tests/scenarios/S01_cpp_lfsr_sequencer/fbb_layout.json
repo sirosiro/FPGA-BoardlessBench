@@ -15,7 +15,7 @@
                                 "activeView": "registerMonitor",
                                 "id": "2"
                             },
-                            "size": 445
+                            "size": 423
                         },
                         {
                             "type": "leaf",
@@ -26,10 +26,10 @@
                                 "activeView": "gpioPanel",
                                 "id": "3"
                             },
-                            "size": 445
+                            "size": 423
                         }
                     ],
-                    "size": 400
+                    "size": 417
                 },
                 {
                     "type": "branch",
@@ -43,7 +43,7 @@
                                 "activeView": "uartTerminal_vfpga_uart_1",
                                 "id": "1"
                             },
-                            "size": 334
+                            "size": 359
                         },
                         {
                             "type": "leaf",
@@ -54,27 +54,19 @@
                                 "activeView": "registerTracer",
                                 "id": "4"
                             },
-                            "size": 556
+                            "size": 487
                         }
                     ],
-                    "size": 885
+                    "size": 922
                 }
             ],
-            "size": 890
+            "size": 846
         },
-        "width": 1285,
-        "height": 890,
+        "width": 1339,
+        "height": 846,
         "orientation": "HORIZONTAL"
     },
     "panels": {
-        "uartTerminal_vfpga_uart_1": {
-            "id": "uartTerminal_vfpga_uart_1",
-            "contentComponent": "uartTerminal",
-            "params": {
-                "deviceName": "vfpga_uart_1"
-            },
-            "title": "UART: vfpga_uart_1"
-        },
         "registerMonitor": {
             "id": "registerMonitor",
             "contentComponent": "registerMonitor",
@@ -85,11 +77,19 @@
             "contentComponent": "gpioPanel",
             "title": "GPIO / Pin Array"
         },
+        "uartTerminal_vfpga_uart_1": {
+            "id": "uartTerminal_vfpga_uart_1",
+            "contentComponent": "uartTerminal",
+            "params": {
+                "deviceName": "vfpga_uart_1"
+            },
+            "title": "UART: vfpga_uart_1"
+        },
         "registerTracer": {
             "id": "registerTracer",
             "contentComponent": "registerTracer",
             "title": "Tracer"
         }
     },
-    "activeGroup": "1"
+    "activeGroup": "4"
 }

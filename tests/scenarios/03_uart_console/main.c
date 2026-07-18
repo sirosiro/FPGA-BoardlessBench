@@ -14,18 +14,18 @@ int main() {
     printf("--- UART Access Test Start ---\n");
 
     // 【解説: デバイスのオープン】
-    // /dev/ttyPS2 をオープンします。
+    // /dev/ttyPS1 をオープンします。
     // O_NOCTTY は、「このデバイスをプロセスの制御端末（Control Terminal）にしない」という
     // シリアルポートを開く際の標準的なお作法です。
-    printf("[App] Opening /dev/ttyPS2...\n");
-    int fd = open("/dev/ttyPS2", O_RDWR | O_NOCTTY);
+    printf("[App] Opening /dev/ttyPS1...\n");
+    int fd = open("/dev/ttyPS1", O_RDWR | O_NOCTTY);
     if (fd < 0) {
         perror("open");
-        printf("[App] FAILURE: Could not open /dev/ttyPS2\n");
+        printf("[App] FAILURE: Could not open /dev/ttyPS1\n");
         return 1;
     }
 
-    printf("[App] Successfully opened /dev/ttyPS2\n");
+    printf("[App] Successfully opened /dev/ttyPS1\n");
 
     // 【解説: Rawモードの設定】
     // シリアルポートのエコーバックや特殊文字処理を無効化し、

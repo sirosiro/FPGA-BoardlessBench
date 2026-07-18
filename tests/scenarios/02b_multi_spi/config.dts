@@ -35,9 +35,9 @@
     };
 
     uart2: serial@e0001000 {
-        compatible = "xlnx,xps-uartlite-1.00.a";
+        compatible = "xlnx,xuartps";
         reg = <0xe0001000 0x1000>;
-        label = "/dev/ttyPS2";
+        label = "/dev/ttyPS1";
     };
 
     adc_regs: uio@40000000 {

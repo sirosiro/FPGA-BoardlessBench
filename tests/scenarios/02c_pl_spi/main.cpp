@@ -80,7 +80,7 @@ int main() {
 
     // VFPGA_INTERACTIVE 環境変数が有効な場合、無限監視ループに入る
     if (getenv("VFPGA_INTERACTIVE") != nullptr) {
-        int uart_fd = open("/dev/ttyPS2", O_RDWR);
+        int uart_fd = open("/dev/ttyUL0", O_RDWR);
         if (uart_fd >= 0) {
             const char* msg_init = "\r\n[PL SPI Test] ==============================================\r\n"
                                    "[PL SPI Test] Interactive Mode: Monitoring CH0 via PL SPI.\r\n"
@@ -117,6 +117,7 @@ int main() {
         if (uart_fd >= 0) close(uart_fd);
     }
     
+    // clean up
     munmap((void*)regs, UIO_SIZE);
     close(fd);
     return 0;

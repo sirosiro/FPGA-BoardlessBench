@@ -172,9 +172,9 @@ int main() {
             dup2(uart_fd, STDERR_FILENO);
         }
 
-        // 各デバイスを個別のUIOファイルとしてオープン
-        UioDevice uio_custom("/dev/uio0", 0x1000);
-        UioDevice uio_gpio("/dev/uio1", 0x1000);
+        // 各デバイスを個別のUIOファイルとしてオープン (アドレス順に /dev/uio0, /dev/uio1 にマッピング)
+        UioDevice uio_gpio("/dev/uio0", 0x1000);
+        UioDevice uio_custom("/dev/uio1", 0x1000);
 
         GpioPeripheral gpio(uio_gpio, 0x0000);
         LfsrEngine engine(uio_custom, 0x0000);

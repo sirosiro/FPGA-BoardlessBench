@@ -16,10 +16,10 @@
     };
 
     /* UART console config for interactive mode */
-    uart2: serial@e0001000 {
+    uart2: serial@40003000 {
         compatible = "xlnx,xps-uartlite-1.00.a";
-        reg = <0xe0001000 0x1000>;
-        label = "/dev/ttyPS2";
+        reg = <0x40003000 0x1000>;
+        label = "/dev/ttyUL0";
     };
 
     /* AXI-Lite registers UIO mapping (Ordered first by base_addr to keep routes[0] at the lowest address) */

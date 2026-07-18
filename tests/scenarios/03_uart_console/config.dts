@@ -3,14 +3,14 @@
 / {
     /* 
      * 【解説: UARTコントローラの定義】
-     * ベースアドレス 0xe0001000 にある UART Lite コントローラを定義します。
+     * ベースアドレス 0xe0001000 にある Zynq PS UART1 コントローラを定義します。
      * F-BB はこの定義を元に、入出力をホストの PTY へリダイレクトします。
      */
     uart2: serial@e0001000 {
-        /* 【解説】 Xilinx UART Lite 互換であることを示します */
-        compatible = "xlnx,xps-uartlite-1.00.a";
+        /* 【解説】 Zynq PS UART 互換であることを示します */
+        compatible = "xlnx,xuartps";
         reg = <0xe0001000 0x1000>;
-        /* 【解説】 Linuxから見えるデバイスファイル名 (/dev/ttyPS2) */
-        label = "/dev/ttyPS2";
+        /* 【解説】 Linuxから見えるデバイスファイル名 (/dev/ttyPS1) */
+        label = "/dev/ttyPS1";
     };
 };

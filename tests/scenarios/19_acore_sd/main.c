@@ -13,7 +13,7 @@
 #define MOUNT_SOURCE "/dev/mmcblk0p1"
 #define MOUNT_TARGET "/mnt/sd"
 #define WRITE_FILE "/mnt/sd/test_write.txt"
-#define UART_DEV "/dev/ttyPS2"
+#define UART_DEV "/dev/ttyPS1"
 
 void print_to_both(int uart_fd, const char *fmt, ...) {
     va_list args;

@@ -136,9 +136,9 @@ int main() {
     // DTSで初期設定した値 2048 と一致するか検証
     TEST_ASSERT(adc_val == 2048, "ADC read value mismatch with DTS fbb,mock-data");
 
-    // VFPGA_INTERACTIVE 環境変数が有効な場合、8チャンネルのADC値を繰り返し監視し、UART(/dev/ttyPS2)に出力する
+    // VFPGA_INTERACTIVE 環境変数が有効な場合、8チャンネルのADC値を繰り返し監視し、UART(/dev/ttyPS1)に出力する
     if (getenv("VFPGA_INTERACTIVE") != nullptr) {
-        int uart_fd = open("/dev/ttyPS2", O_RDWR);
+        int uart_fd = open("/dev/ttyPS1", O_RDWR);
         
         // 仮想 FPGA レジスタへのマッピング (/dev/uio0)
         int uio_fd = open("/dev/uio0", O_RDWR);
@@ -206,7 +206,7 @@ int main() {
             }
             close(uart_fd);
         } else {
-            std::cerr << "[Warning] Failed to open /dev/ttyPS2 for interactive output.\n";
+            std::cerr << "[Warning] Failed to open /dev/ttyPS1 for interactive output.\n";
             if (uio_regs != nullptr) {
                 munmap((void*)uio_regs, 1024);
             }
