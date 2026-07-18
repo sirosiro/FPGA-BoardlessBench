@@ -95,23 +95,25 @@ graph TD
 
     %% 2. Shim Layer
     subgraph Shim_Layer["Layer 2 Intercept and HAL - C Shim"]
-        Shim["libfpgashim.so<br/>System Call Hook: open, mmap, ioctl, read, write"]
+        Shim["libfpgashim.so<br/>System Call Hook: open, mmap, ioctl, read, write, mount, umount"]
     end
-
+ 
     %% 3. Communication/Redirection
     subgraph Rel_Layer["Layer 3 Redirection Paths"]
         Path_MEM["Physical Address Map<br/>MAP_FIXED /dev/mem"]
         Path_Sock["UNIX Domain Sockets<br/>/tmp/fbb_spi_*, /tmp/fbb_i2c_*"]
         Path_PTY["PTY Pseudo Terminal<br/>UART Echo Bridge"]
         Path_Remoteproc["remoteproc Virtual Sysfs<br/>/sys/class/remoteproc/"]
+        Path_Symlink["Symbolic Links<br/>Virtual SD Mount Redirect"]
     end
-
+ 
     %% 4. Control & IPC Layer
     subgraph Control_Layer["Layer 4 Orchestration and IPC - Python Backend"]
         SHM_UIO["UIO/GPIO Reg Shared Memory<br/>/tmp/uio, /tmp/gpio"]
         Controller["vlogic_controller.py<br/>remoteproc Monitor, Process Lifecycle Manager"]
+        SD_Dir["Host SD Directory<br/>tests/scenarios/*/sd_card"]
     end
-
+ 
     %% 5. Peripherals (C++ processes)
     subgraph Peripheral_Layer["Layer 5 Virtual Peripherals - C++ Plugins"]
         V_I2C["fbb_i2c_eeprom"]
@@ -120,40 +122,43 @@ graph TD
         V_UART["fbb_uart_loopback"]
         V_OLED["fbb_i2c_oled"]
     end
-
+ 
     %% 6. RTL Sim Layer
     subgraph RTL_Layer["Layer 6 RTL Simulation - Verilator Engine"]
         Sim_Main["vfpga_sim C++ wrapper"]
         RTL["vfpga_top Verilog logic"]
     end
-
+ 
     %% 7. Web Dashboard Layer
     subgraph Web_Layer["Layer 7 Visual Diagnostic UI - Web Dashboard"]
         WebServer["dashboard/server.js Node.js Express Socket.io"]
-        ReactUI["Vite + React 19 Frontend<br/>Register Monitor, Tracer, SPI ADC Panel, HDMI Viewer"]
+        ReactUI["Vite + React 19 Frontend<br/>Register Monitor, Tracer, SPI ADC Panel, HDMI Viewer, SD Explorer"]
     end
-
+ 
     %% Data/Control Flows
-    ACore -->|ioctl / open / read| Shim
+    ACore -->|ioctl / open / read / mount| Shim
     MCore -->|Direct Pointer Access / mmap| Shim
     
     Shim -->|Intercept UIO/GPIO| Path_MEM
     Shim -->|Intercept I2C/SPI| Path_Sock
     Shim -->|Intercept UART| Path_PTY
     Shim -->|Intercept remoteproc| Path_Remoteproc
-
+    Shim -->|Intercept Mount/Umount| Path_Symlink
+ 
     Path_MEM --> SHM_UIO
     Path_Sock --> V_I2C & V_SPI_Flash & V_SPI_ADC & V_OLED
     Path_PTY --> V_UART
     Path_Remoteproc --> Controller
-
+    Path_Symlink -->|Symlink Redirect| SD_Dir
+ 
     V_SPI_ADC <-->|SHM /spi_adc| WebServer
     V_OLED -->|SHM /fbb_display_0| WebServer
-
+    SD_Dir -->|Read/Dump Files| WebServer
+ 
     SHM_UIO <-->|Sync Regs/Clocks| Sim_Main
     Sim_Main <--> RTL
     Controller -.->|Launch & Monitor| Sim_Main & V_I2C & V_SPI_Flash & V_SPI_ADC & V_UART & V_OLED
-
+ 
     SHM_UIO -.->|Read Sync| WebServer
     WebServer <-->|WebSocket| ReactUI
     V_UART <-->|TCP Proxy Port 3000/3001| ReactUI

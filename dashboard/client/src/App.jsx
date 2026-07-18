@@ -9,6 +9,7 @@ import RegisterTracer from './components/RegisterTracer';
 import HdmiOutput from './components/HdmiOutput';
 import SpiAdcPanel from './components/SpiAdcPanel';
 import OledDisplay from './components/OledDisplay';
+import SdCardPanel from './components/SdCardPanel';
 import './App.css';
 
 
@@ -21,6 +22,7 @@ const components = {
   hdmiOutput: () => <HdmiOutput />,
   spiAdcPanel: () => <SpiAdcPanel />,
   oledDisplay: () => <OledDisplay />,
+  sdCard: () => <SdCardPanel />,
 };
 
 
@@ -129,6 +131,17 @@ function DashboardInner() {
       id: 'oledDisplay',
       component: 'oledDisplay',
       title: 'Virtual OLED',
+      position: {
+        referencePanel: 'gpioPanel',
+        direction: 'within',
+      },
+    });
+
+    // 3d. Add sdCard within gpioPanel group (as a tab)
+    api.addPanel({
+      id: 'sdCard',
+      component: 'sdCard',
+      title: 'Virtual SD Card',
       position: {
         referencePanel: 'gpioPanel',
         direction: 'within',

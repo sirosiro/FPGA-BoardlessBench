@@ -26,6 +26,8 @@
 #include <sys/un.h>
 #include <time.h>
 #include "vfpga_config.h"
+#include <sys/mount.h>
+
 
 #ifndef MAP_FIXED_NOREPLACE
 #define MAP_FIXED_NOREPLACE 0x100000
@@ -846,3 +848,95 @@ static void __attribute__((destructor)) cleanup_shim(void) {
 #endif
     }
 }
+
+static int (*original_mount)(const char *source, const char *target,
+                             const char *filesystemtype, unsigned long mountflags,
+                             const void *data) = NULL;
+static int (*original_umount)(const char *target) = NULL;
+static int (*original_umount2)(const char *target, int flags) = NULL;
+
+int mount(const char *source, const char *target,
+          const char *filesystemtype, unsigned long mountflags,
+          const void *data) {
+    if (!original_open) original_open = dlsym(RTLD_NEXT, "open");
+    if (!original_mount) original_mount = dlsym(RTLD_NEXT, "mount");
+
+    if (source != NULL && (strcmp(source, "/dev/mmcblk0") == 0 ||
+                           strncmp(source, "/dev/mmcblk0p", 13) == 0)) {
+        fprintf(stderr, "[Shim Debug] mount: redirecting virtual SD %%s to target %%s\n", source, target);
+        fflush(stderr);
+
+        const char *sd_dir = getenv("FBB_SD_DIR");
+        char host_sd_path[1024];
+        if (sd_dir != NULL) {
+            snprintf(host_sd_path, sizeof(host_sd_path), "%%s", sd_dir);
+        } else {
+            snprintf(host_sd_path, sizeof(host_sd_path), "%%s/sandbox/sd_card", PROJECT_ROOT);
+        }
+
+        // Ensure host-side SD directory exists
+        mkdir(host_sd_path, 0777);
+
+        // Ensure target directory exists and is cleared
+        struct stat st;
+        if (lstat(target, &st) == 0) {
+            if (S_ISLNK(st.st_mode)) {
+                unlink(target);
+            } else if (S_ISDIR(st.st_mode)) {
+                rmdir(target);
+            }
+        } else {
+            // Parent directory creation
+            char parent_dir[1024];
+            snprintf(parent_dir, sizeof(parent_dir), "%%s", target);
+            char *last_slash = strrchr(parent_dir, '/');
+            if (last_slash != NULL && last_slash != parent_dir) {
+                *last_slash = '\0';
+                mkdir(parent_dir, 0777);
+            }
+        }
+
+        // Create symlink: target -> host_sd_path
+        if (symlink(host_sd_path, target) != 0) {
+            perror("[Shim Error] symlink failed");
+            return -1;
+        }
+
+        fprintf(stderr, "[Shim Debug] mount: successfully symlinked %%s -> %%s\n", target, host_sd_path);
+        fflush(stderr);
+        return 0;
+    }
+
+    return original_mount(source, target, filesystemtype, mountflags, data);
+}
+
+int umount(const char *target) {
+    if (!original_umount) original_umount = dlsym(RTLD_NEXT, "umount");
+
+    struct stat st;
+    if (lstat(target, &st) == 0 && S_ISLNK(st.st_mode)) {
+        fprintf(stderr, "[Shim Debug] umount: removing symlink redirection for %%s\n", target);
+        fflush(stderr);
+        if (unlink(target) == 0) {
+            return 0;
+        }
+    }
+
+    return original_umount(target);
+}
+
+int umount2(const char *target, int flags) {
+    if (!original_umount2) original_umount2 = dlsym(RTLD_NEXT, "umount2");
+
+    struct stat st;
+    if (lstat(target, &st) == 0 && S_ISLNK(st.st_mode)) {
+        fprintf(stderr, "[Shim Debug] umount2: removing symlink redirection for %%s\n", target);
+        fflush(stderr);
+        if (unlink(target) == 0) {
+            return 0;
+        }
+    }
+
+    return original_umount2(target, flags);
+}
+

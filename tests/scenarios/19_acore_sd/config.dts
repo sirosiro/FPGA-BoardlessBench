@@ -1,0 +1,19 @@
+/dts-v1/;
+
+/ {
+    /*
+     * SD/SDIO Controller Configuration for A-core Mount Testing
+     */
+    sd_controller@e0100000 {
+        compatible = "arasan,sdhci-8.9a";
+        reg = <0xe0100000 0x1000>;
+        label = "/dev/mmcblk0";
+    };
+
+    /* UART console configuration for step-by-step interactive testing */
+    uart2: serial@e0001000 {
+        compatible = "xlnx,xps-uartlite-1.00.a";
+        reg = <0xe0001000 0x1000>;
+        label = "/dev/ttyPS2";
+    };
+};

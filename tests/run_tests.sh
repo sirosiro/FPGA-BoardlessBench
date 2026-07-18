@@ -95,6 +95,9 @@ if [ "$CLEAN" = true ]; then
     rm -f *.log
     rm -f tests/scenarios/*/*.vcd
     rm -f *.vcd
+    rm -rf tests/scenarios/*/sd_card 2>/dev/null
+    rm -f tests/scenarios/*/spi_flash.bin 2>/dev/null
+    rm -f spi_flash.bin 2>/dev/null
     rm -f board_manifest.json
     rm -f dashboard/data/*.json
     rm -f /tmp/hdmi_output.bmp

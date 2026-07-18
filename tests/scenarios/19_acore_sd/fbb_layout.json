@@ -1,0 +1,51 @@
+{
+    "grid": {
+        "root": {
+            "type": "branch",
+            "data": [
+                {
+                    "type": "leaf",
+                    "data": {
+                        "views": [
+                            "sdCard"
+                        ],
+                        "activeView": "sdCard",
+                        "id": "3"
+                    },
+                    "size": 648.39453125
+                },
+                {
+                    "type": "leaf",
+                    "data": {
+                        "views": [
+                            "uartTerminal_vfpga_uart_1"
+                        ],
+                        "activeView": "uartTerminal_vfpga_uart_1",
+                        "id": "1"
+                    },
+                    "size": 457.60546875
+                }
+            ],
+            "size": 613
+        },
+        "width": 1106,
+        "height": 613,
+        "orientation": "HORIZONTAL"
+    },
+    "panels": {
+        "sdCard": {
+            "id": "sdCard",
+            "contentComponent": "sdCard",
+            "title": "Virtual SD Card"
+        },
+        "uartTerminal_vfpga_uart_1": {
+            "id": "uartTerminal_vfpga_uart_1",
+            "contentComponent": "uartTerminal",
+            "params": {
+                "deviceName": "vfpga_uart_1"
+            },
+            "title": "UART: vfpga_uart_1"
+        }
+    },
+    "activeGroup": "1"
+}

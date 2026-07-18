@@ -438,6 +438,139 @@ app.post('/api/layout', (req, res) => {
     }
 });
 
+// Virtual SD Card API Endpoints
+const getSdCardDir = () => {
+    if (process.env.FBB_SD_DIR) {
+        return process.env.FBB_SD_DIR;
+    }
+    if (manifest.project_root && manifest.scenario_dir) {
+        const scenarioSdDir = path.join(manifest.project_root, manifest.scenario_dir, 'sd_card');
+        if (fs.existsSync(scenarioSdDir)) {
+            return scenarioSdDir;
+        }
+    }
+    return manifest.project_root ? path.join(manifest.project_root, 'sandbox/sd_card') : path.join(__dirname, '../sandbox/sd_card');
+};
+
+const isMounted = () => {
+    const mountPoint = '/mnt/sd';
+    try {
+        const stats = fs.lstatSync(mountPoint);
+        return stats.isSymbolicLink();
+    } catch (e) {
+        return false;
+    }
+};
+
+const getDirectorySize = (dirPath) => {
+    let totalSize = 0;
+    try {
+        if (!fs.existsSync(dirPath)) return 0;
+        const files = fs.readdirSync(dirPath);
+        for (const file of files) {
+            const filePath = path.join(dirPath, file);
+            const stats = fs.statSync(filePath);
+            if (stats.isFile()) {
+                totalSize += stats.size;
+            } else if (stats.isDirectory()) {
+                totalSize += getDirectorySize(filePath);
+            }
+        }
+    } catch (e) {
+        console.error(`[Backend] Error calculating dir size: ${e.message}`);
+    }
+    return totalSize;
+};
+
+app.get('/api/sdcard/status', (req, res) => {
+    const sdDir = getSdCardDir();
+    const mounted = isMounted();
+    const usedSize = getDirectorySize(sdDir);
+    const totalSize = 512 * 1024 * 1024; // 512MB virtual capacity
+    return res.json({
+        mounted,
+        mountPoint: '/mnt/sd',
+        usedSize,
+        totalSize,
+        sdDir
+    });
+});
+
+app.get('/api/sdcard/list', (req, res) => {
+    const sdDir = getSdCardDir();
+    if (!fs.existsSync(sdDir)) {
+        return res.json([]);
+    }
+    try {
+        const files = fs.readdirSync(sdDir);
+        const list = [];
+        for (const file of files) {
+            const filePath = path.join(sdDir, file);
+            const stats = fs.statSync(filePath);
+            if (stats.isFile()) {
+                list.push({
+                    name: file,
+                    size: stats.size,
+                    mtime: stats.mtime
+                });
+            }
+        }
+        return res.json(list);
+    } catch (e) {
+        return res.status(500).json({ error: e.message });
+    }
+});
+
+app.get('/api/sdcard/dump', (req, res) => {
+    const sdDir = getSdCardDir();
+    const fileName = req.query.file;
+    const format = req.query.format || 'text';
+
+    if (!fileName) {
+        return res.status(400).json({ error: 'file parameter is required' });
+    }
+
+    const filePath = path.resolve(sdDir, fileName);
+    // Path traversal prevention
+    if (!filePath.startsWith(path.resolve(sdDir))) {
+        return res.status(403).json({ error: 'Access denied' });
+    }
+
+    if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: 'File not found' });
+    }
+
+    try {
+        if (format === 'hex') {
+            const buffer = fs.readFileSync(filePath);
+            let hexDump = '';
+            for (let i = 0; i < buffer.length; i += 16) {
+                const offset = i.toString(16).padStart(8, '0');
+                const slice = buffer.slice(i, i + 16);
+                const hexParts = [];
+                const asciiParts = [];
+                for (let j = 0; j < 16; j++) {
+                    if (j < slice.length) {
+                        const byte = slice[j];
+                        hexParts.push(byte.toString(16).padStart(2, '0'));
+                        asciiParts.push((byte >= 32 && byte <= 126) ? String.fromCharCode(byte) : '.');
+                    } else {
+                        hexParts.push('  ');
+                        asciiParts.push(' ');
+                    }
+                }
+                hexDump += `${offset}:  ${hexParts.join(' ')}  |${asciiParts.join('')}|\n`;
+            }
+            return res.type('text/plain').send(hexDump);
+        } else {
+            const content = fs.readFileSync(filePath, 'utf8');
+            return res.type('text/plain').send(content);
+        }
+    } catch (e) {
+        return res.status(500).json({ error: e.message });
+    }
+});
+
 app.get('/api/manifest', (req, res) => res.json(manifest));
 app.use(express.static(path.join(__dirname, 'client/dist')));
 
