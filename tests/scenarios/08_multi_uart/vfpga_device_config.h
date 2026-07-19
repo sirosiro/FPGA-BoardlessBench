@@ -3,13 +3,13 @@
 #define VFPGA_DEVICE_CONFIG_H
 
 /* Device Paths */
-#ifndef FBB_DEV_PATH_SERIAL
-#define FBB_DEV_PATH_SERIAL "/dev/ttyPS0"
+#ifndef FBB_DEV_PATH_SERIAL_0
+#define FBB_DEV_PATH_SERIAL_0 "/dev/ttyPS0"
 #endif
-#ifndef FBB_DEV_PATH_SERIAL
-#define FBB_DEV_PATH_SERIAL "/dev/ttyPS1"
+#ifndef FBB_DEV_PATH_SERIAL_1
+#define FBB_DEV_PATH_SERIAL_1 "/dev/ttyPS1"
 #endif
-#ifndef FBB_DEV_PATH_SERIAL
-#define FBB_DEV_PATH_SERIAL "/dev/ttyUL0"
+#ifndef FBB_DEV_PATH_SERIAL_2
+#define FBB_DEV_PATH_SERIAL_2 "/dev/ttyUL0"
 #endif
 #endif

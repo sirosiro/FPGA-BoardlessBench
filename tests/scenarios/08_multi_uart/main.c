@@ -7,6 +7,8 @@
 #include <sys/select.h>
 #include <sys/time.h>
 
+#include "vfpga_device_config.h"
+
 void configure_raw_mode(int fd) {
     struct termios options;
     tcgetattr(fd, &options);
@@ -17,27 +19,27 @@ void configure_raw_mode(int fd) {
 int main() {
     printf("--- Multi-UART Simultaneous Open Test Start ---\n");
 
-    printf("[App] Opening /dev/ttyPS0...\n");
-    int fd0 = open("/dev/ttyPS0", O_RDWR | O_NOCTTY);
+    printf("[App] Opening " FBB_DEV_PATH_SERIAL_0 "...\n");
+    int fd0 = open(FBB_DEV_PATH_SERIAL_0, O_RDWR | O_NOCTTY);
     if (fd0 < 0) {
-        perror("open /dev/ttyPS0 failed");
+        perror("open " FBB_DEV_PATH_SERIAL_0 " failed");
         return 1;
     }
     configure_raw_mode(fd0);
 
-    printf("[App] Opening /dev/ttyPS1...\n");
-    int fd1 = open("/dev/ttyPS1", O_RDWR | O_NOCTTY);
+    printf("[App] Opening " FBB_DEV_PATH_SERIAL_1 "...\n");
+    int fd1 = open(FBB_DEV_PATH_SERIAL_1, O_RDWR | O_NOCTTY);
     if (fd1 < 0) {
-        perror("open /dev/ttyPS1 failed");
+        perror("open " FBB_DEV_PATH_SERIAL_1 " failed");
         close(fd0);
         return 1;
     }
     configure_raw_mode(fd1);
 
-    printf("[App] Opening /dev/ttyUL0 (Loopback Target)...\n");
-    int fd2 = open("/dev/ttyUL0", O_RDWR | O_NOCTTY);
+    printf("[App] Opening " FBB_DEV_PATH_SERIAL_2 " (Loopback Target)...\n");
+    int fd2 = open(FBB_DEV_PATH_SERIAL_2, O_RDWR | O_NOCTTY);
     if (fd2 < 0) {
-        perror("open /dev/ttyUL0 failed");
+        perror("open " FBB_DEV_PATH_SERIAL_2 " failed");
         close(fd0);
         close(fd1);
         return 1;

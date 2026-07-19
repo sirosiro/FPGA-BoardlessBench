@@ -45,9 +45,9 @@ int main() {
     // =========================================================================
     // 1. SPI Flash (W25Q128) の検証
     // =========================================================================
-    std::cout << "[SPI Test] 1. Opening SPI Flash (/dev/spidev0.0)...\n";
-    int flash_fd = open("/dev/spidev0.0", O_RDWR);
-    TEST_ASSERT(flash_fd >= 0, "Failed to open /dev/spidev0.0");
+    std::cout << "[SPI Test] 1. Opening SPI Flash (" FBB_DEV_PATH_SPI ".0)...\n";
+    int flash_fd = open(FBB_DEV_PATH_SPI ".0", O_RDWR);
+    TEST_ASSERT(flash_fd >= 0, "Failed to open " FBB_DEV_PATH_SPI ".0");
 
     // 1.1 JEDEC IDの読み出し
     std::cout << "[SPI Test] Read JEDEC ID...\n";
@@ -118,9 +118,9 @@ int main() {
     // =========================================================================
     // 2. SPI ADC (MCP3208) の検証
     // =========================================================================
-    std::cout << "[SPI Test] 2. Opening SPI ADC (/dev/spidev0.1)...\n";
-    int adc_fd = open("/dev/spidev0.1", O_RDWR);
-    TEST_ASSERT(adc_fd >= 0, "Failed to open /dev/spidev0.1");
+    std::cout << "[SPI Test] 2. Opening SPI ADC (" FBB_DEV_PATH_SPI ".1)...\n";
+    int adc_fd = open(FBB_DEV_PATH_SPI ".1", O_RDWR);
+    TEST_ASSERT(adc_fd >= 0, "Failed to open " FBB_DEV_PATH_SPI ".1");
 
     // 2.1 CH0のADC値読み出し
     // MCP3208プロトコル:

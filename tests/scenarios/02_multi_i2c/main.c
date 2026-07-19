@@ -6,6 +6,8 @@
 #include <linux/i2c.h>
 #include <string.h>
 
+#include "vfpga_device_config.h"
+
 /**
  * 【解説: I2C通信関数】
  * Linuxでは、I2Cデバイスへのアクセスは標準的なファイル操作(open/ioctl)として抽象化されています。
@@ -54,10 +56,10 @@ int main() {
     // 同一の slave_addr (0x50 と 0x36) に対して、異なるバスパス（/dev/i2c-0 と /dev/i2c-1）
     // を通じてアクセスすることで、物理的に異なる回路に接続されたデバイスを操作しています。
     
-    int val1 = read_from_bus("/dev/i2c-0", 0x50);
+    int val1 = read_from_bus(FBB_DEV_PATH_I2C_0, 0x50);
     printf("[App] Bus 1 (0x50) returned: 0x%02X\n", val1);
 
-    int val2 = read_from_bus("/dev/i2c-1", 0x36);
+    int val2 = read_from_bus(FBB_DEV_PATH_I2C_1, 0x36);
     printf("[App] Bus 2 (0x36) returned: 0x%02X\n", val2);
 
     if (val1 == 0x10 && val2 == 0x20) {

@@ -169,7 +169,7 @@ int main() {
     std::cout << "[OLED Scenario] Opening I2C device...\n";
     int fd = open(FBB_DEV_PATH_I2C, O_RDWR);
     if (fd < 0) {
-        std::cerr << "Failed to open /dev/i2c-0\n";
+        std::cerr << "Failed to open " FBB_DEV_PATH_I2C "\n";
         return 1;
     }
 

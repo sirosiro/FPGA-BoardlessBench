@@ -49,10 +49,20 @@ class DeviceConfigGenerator(BaseGenerator):
     def generate(self, model: BoardModel):
         # 各デバイスのパス用マクロ生成
         dev_path_macros = []
+        name_counts = {}
         for dev in model.devices:
-            # マクロ名として安全な大文字表記にクリーンアップ
             clean_name = "".join(c if c.isalnum() else "_" for c in dev.name).upper()
-            macro_name = f"FBB_DEV_PATH_{clean_name}"
+            name_counts[clean_name] = name_counts.get(clean_name, 0) + 1
+
+        current_indices = {}
+        for dev in model.devices:
+            clean_name = "".join(c if c.isalnum() else "_" for c in dev.name).upper()
+            if name_counts[clean_name] > 1:
+                idx = current_indices.get(clean_name, 0)
+                current_indices[clean_name] = idx + 1
+                macro_name = f"FBB_DEV_PATH_{clean_name}_{idx}"
+            else:
+                macro_name = f"FBB_DEV_PATH_{clean_name}"
             dev_path_macros.append(f'#ifndef {macro_name}\n#define {macro_name} "{dev.path}"\n#endif')
         dev_path_macros_str = "\n".join(dev_path_macros)
         
