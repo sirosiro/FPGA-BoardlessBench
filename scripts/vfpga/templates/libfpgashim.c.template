@@ -969,7 +969,22 @@ int mount(const char *source, const char *target,
         if (sd_dir != NULL) {
             snprintf(host_sd_path, sizeof(host_sd_path), "%%s", sd_dir);
         } else {
-            snprintf(host_sd_path, sizeof(host_sd_path), "%%s/sandbox/sd_card", PROJECT_ROOT);
+            FILE *f_scenario = fopen("/tmp/fbb_active_scenario", "r");
+            int read_success = 0;
+            if (f_scenario != NULL) {
+                char active_dir[512];
+                if (fgets(active_dir, sizeof(active_dir), f_scenario) != NULL) {
+                    active_dir[strcspn(active_dir, "\r\n")] = 0;
+                    if (strlen(active_dir) > 0) {
+                        snprintf(host_sd_path, sizeof(host_sd_path), "%%s/sd_card", active_dir);
+                        read_success = 1;
+                    }
+                }
+                fclose(f_scenario);
+            }
+            if (!read_success) {
+                snprintf(host_sd_path, sizeof(host_sd_path), "%%s/sandbox/sd_card", PROJECT_ROOT);
+            }
         }
 
         // Ensure host-side SD directory exists

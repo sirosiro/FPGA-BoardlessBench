@@ -108,7 +108,7 @@ class DTSParser:
                 
                 device = Device(name, label, dev_type, props.get('reg', '0x0 0x0'))
                 for k, v in props.items():
-                    if k not in ['label', 'compatible', 'reg', 'registers']: device.extra_props[k] = v
+                    if k not in ['label', 'reg', 'registers']: device.extra_props[k] = v
                 
                 # Parse nested I2C slave devices
                 if dev_type == 'i2c':

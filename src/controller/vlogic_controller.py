@@ -7,183 +7,83 @@ import glob
 import socket
 import threading
 import select
-
-# プロジェクトルートの動的取得 (src/controller/vlogic_controller.py から見て 2つ上の階層)
 PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
 SHM_NAME = "vfpga_reg"
 excluded_uarts = set()
+
+sys.path.append(os.path.join(PROJECT_ROOT, "scripts"))
+from vfpga.parser import DTSParser
+
+LAUNCHER_REGISTRY = {
+    'i2c': {
+        'atmel,24c02': {
+            'binary': 'fbb_i2c_eeprom',
+            'args': lambda p: ["--socket", f"/tmp/fbb_i2c_b{p['bus_id']}_a{p['addr']:02x}", "--init-val", str(p['init_val'])] + (["--file", p['mock_file'] if os.path.isabs(p['mock_file']) else os.path.join(PROJECT_ROOT, p['mock_file'])] if p.get('mock_file') else [])
+        },
+        'solomon,ssd1306': {
+            'binary': 'fbb_i2c_oled',
+            'args': lambda p: ["--socket", f"/tmp/fbb_i2c_b{p['bus_id']}_a{p['addr']:02x}"],
+            'log': 'i2c_oled_daemon.log'
+        }
+    },
+    'uart': {
+        'uart_loopback': {
+            'binary': 'fbb_uart_loopback',
+            'args': lambda p: ["--pts-file", os.path.join(PROJECT_ROOT, f"dashboard/data/vfpga_uart_{p['uart_id']}")],
+            'log': 'loopback_daemon.log'
+        }
+    },
+    'spi': {
+        'winbond,w25q128': {
+            'binary': 'fbb_spi_flash',
+            'args': lambda p: ["--socket", f"/tmp/fbb_spi_b{p['bus_id']}_c{p['cs']}"] + (["--file", p['mock_file'] if os.path.isabs(p['mock_file']) else os.path.join(PROJECT_ROOT, p['mock_file'])] if p.get('mock_file') else [])
+        },
+        'microchip,mcp3208': {
+            'binary': 'fbb_spi_adc',
+            'args': lambda p: ["--socket", f"/tmp/fbb_spi_b{p['bus_id']}_c{p['cs']}", "--init-val", str(p['init_val'])]
+        }
+    }
+}
+
 
 def get_peripherals_from_dts(dts_path):
     peripherals = []
     try:
         if not os.path.exists(dts_path):
             return peripherals
-        with open(dts_path, 'r') as f:
-            content = f.read()
-        
-        # Helper to matching braces
-        def find_braces(text, start):
-            b_start = text.find('{', start)
-            if b_start == -1: return -1, -1
-            count = 1
-            i = b_start + 1
-            while i < len(text) and count > 0:
-                if text[i] == '{': count += 1
-                elif text[i] == '}': count -= 1
-                i += 1
-            return b_start, i
-            
-        # 1. Look for root node '/'
-        root_match = re.search(r'/\s*\{', content)
-        if root_match:
-            brace_start, brace_end = find_braces(content, root_match.start())
-            if brace_start != -1:
-                content = content[brace_start + 1 : brace_end - 1]
-
-        pos = 0
+        board_model = DTSParser.parse(dts_path)
         uart_count = 0
-        while True:
-            match = re.search(r'([a-zA-Z0-9_@:-]+)\s*\{', content[pos:])
-            if not match: break
-            match_start = pos + match.start()
-            raw_name = match.group(1).strip()
-            b_start, b_end = find_braces(content, match_start)
-            if b_start == -1:
-                pos = match_start + len(raw_name) + 1
-                continue
-            
-            body = content[b_start + 1 : b_end - 1]
-            pos = b_end
-            
-            node_name = raw_name
-            if ':' in raw_name:
-                node_name = raw_name.split(':')[-1].strip()
-
-            # Clean body by removing nested sub-node blocks to prevent property overriding
-            clean_body = body
-            while True:
-                sub_match = re.search(r'([a-zA-Z0-9_@:-]+)\s*\{', clean_body)
-                if not sub_match:
-                    break
-                sub_start = sub_match.start()
-                sub_brace_start, sub_brace_end = find_braces(clean_body, sub_start)
-                if sub_brace_start == -1:
-                    break
-                clean_body = clean_body[:sub_start] + clean_body[sub_brace_end:]
-
-            comp_match = re.search(r'compatible\s*=\s*"([^"]+)"', clean_body)
-            compat = comp_match.group(1) if comp_match else ""
-            
-            if 'i2c' in compat or 'cdns,i2c' in compat:
-                bus_match = re.search(r'bus_id\s*=\s*<([^>]+)>', clean_body)
-                bus_id = int(bus_match.group(1).strip(), 0) if bus_match else 1
-                
-                sub_pos = 0
-                while True:
-                    sub_match = re.search(r'([a-zA-Z0-9_@:-]+)\s*\{', body[sub_pos:])
-                    if not sub_match: break
-                    sub_match_start = sub_pos + sub_match.start()
-                    sub_raw_name = sub_match.group(1).strip()
-                    sb_start, sb_end = find_braces(body, sub_match_start)
-                    if sb_start == -1:
-                        sub_pos = sub_match_start + len(sub_raw_name) + 1
-                        continue
-                    
-                    sub_body = body[sb_start + 1 : sb_end - 1]
-                    sub_pos = sb_end
-                    
-                    s_node_name = sub_raw_name
-                    if ':' in sub_raw_name:
-                        s_node_name = sub_raw_name.split(':')[-1].strip()
-
-                    s_name = s_node_name.split('@')[0]
-                    s_addr_str = s_node_name.split('@')[1] if '@' in s_node_name else "0"
-                    try:
-                        s_addr = int(s_addr_str, 16)
-                    except:
-                        s_addr = 0
-                    
-                    s_comp_match = re.search(r'compatible\s*=\s*"([^"]+)"', sub_body)
-                    s_compat = s_comp_match.group(1) if s_comp_match else ""
-                    
-                    mock_file_match = re.search(r'fbb,mock-file\s*=\s*"([^"]+)"', sub_body)
-                    mock_file = mock_file_match.group(1) if mock_file_match else None
-                    
-                    init_data_match = re.search(r'fbb,mock-data\s*=\s*<([^>]+)>', sub_body)
-                    try:
-                        init_val = int(init_data_match.group(1).strip(), 0) if init_data_match else 0x10
-                    except:
-                        init_val = 0x10
-                    
-                    if s_compat:
-                        peripherals.append({
-                            'type': 'i2c',
-                            'bus_id': bus_id,
-                            'addr': s_addr,
-                            'compatible': s_compat,
-                            'mock_file': mock_file,
-                            'init_val': init_val
-                        })
-            
-            elif 'spi' in compat or 'cdns,spi' in compat or 'xlnx,zynq-spi' in compat:
-                bus_match = re.search(r'bus_id\s*=\s*<([^>]+)>', clean_body)
-                bus_id = int(bus_match.group(1).strip(), 0) if bus_match else 0
-                
-                sub_pos = 0
-                while True:
-                    sub_match = re.search(r'([a-zA-Z0-9_@:-]+)\s*\{', body[sub_pos:])
-                    if not sub_match: break
-                    sub_match_start = sub_pos + sub_match.start()
-                    sub_raw_name = sub_match.group(1).strip()
-                    sb_start, sb_end = find_braces(body, sub_match_start)
-                    if sb_start == -1:
-                        sub_pos = sub_match_start + len(sub_raw_name) + 1
-                        continue
-                    
-                    sub_body = body[sb_start + 1 : sb_end - 1]
-                    sub_pos = sb_end
-                    
-                    s_node_name = sub_raw_name
-                    if ':' in sub_raw_name:
-                        s_node_name = sub_raw_name.split(':')[-1].strip()
-
-                    s_name = s_node_name.split('@')[0]
-                    s_cs_str = s_node_name.split('@')[1] if '@' in s_node_name else "0"
-                    try:
-                        s_cs = int(s_cs_str, 0)
-                    except:
-                        s_cs = 0
-                    
-                    s_comp_match = re.search(r'compatible\s*=\s*"([^"]+)"', sub_body)
-                    s_compat = s_comp_match.group(1) if s_comp_match else ""
-                    
-                    mock_file_match = re.search(r'fbb,mock-file\s*=\s*"([^"]+)"', sub_body)
-                    mock_file = mock_file_match.group(1) if mock_file_match else None
-                    
-                    init_data_match = re.search(r'fbb,mock-data\s*=\s*<([^>]+)>', sub_body)
-                    try:
-                        init_val = int(init_data_match.group(1).strip(), 0) if init_data_match else 2048
-                    except:
-                        init_val = 2048
-                    
-                    if s_compat:
-                        peripherals.append({
-                            'type': 'spi',
-                            'bus_id': bus_id,
-                            'cs': s_cs,
-                            'compatible': s_compat,
-                            'mock_file': mock_file,
-                            'init_val': init_val
-                        })
-            
-            elif 'uart' in compat or 'xlnx,xps-uart' in compat:
+        for dev in board_model.devices:
+            if dev.type == 'i2c':
+                bus_id = int(dev.extra_props.get('bus_id', '1'), 0)
+                for slave in dev.i2c_slaves:
+                    peripherals.append({
+                        'type': 'i2c',
+                        'bus_id': bus_id,
+                        'addr': slave.addr,
+                        'compatible': slave.compatible,
+                        'mock_file': slave.mock_file,
+                        'init_val': slave.init_val
+                    })
+            elif dev.type == 'spi':
+                bus_id = int(dev.extra_props.get('bus_id', '0'), 0)
+                for slave in dev.spi_slaves:
+                    peripherals.append({
+                        'type': 'spi',
+                        'bus_id': bus_id,
+                        'cs': slave.cs,
+                        'compatible': slave.compatible,
+                        'mock_file': slave.mock_file,
+                        'init_val': slave.init_val
+                    })
+            elif dev.type == 'uart':
                 uart_count += 1
-                p_type_match = re.search(r'fbb,peripheral-type\s*=\s*"([^"]+)"', body)
-                if p_type_match:
+                peripheral_type = dev.extra_props.get('fbb,peripheral-type')
+                if peripheral_type:
                     peripherals.append({
                         'type': 'uart',
-                        'compatible': compat,
-                        'peripheral_type': p_type_match.group(1),
+                        'compatible': dev.extra_props.get('compatible', 'xlnx,xps-uart'),
+                        'peripheral_type': peripheral_type,
                         'uart_id': uart_count
                     })
     except Exception as e:
@@ -195,38 +95,17 @@ def get_shm_info_from_dts(dts_path):
     try:
         if not os.path.exists(dts_path):
             return regions
-        with open(dts_path, 'r') as f:
-            content = f.read()
-        
-        matches = re.finditer(r'([a-zA-Z0-9_@]+)\s*\{([^}]+)\}', content)
-        for match in matches:
-            raw_name = match.group(1).strip()
-            name = raw_name.split('@')[0]
-            body = match.group(2)
-            
-            comp_match = re.search(r'compatible\s*=\s*"([^"]+)"', body)
-            label_match = re.search(r'label\s*=\s*"([^"]+)"', body)
-            is_uio = False
-            is_gpio = False
-            if comp_match:
-                compat = comp_match.group(1)
-                if 'generic-uio' in compat:
-                    is_uio = True
-                elif 'gpio' in compat or 'xlnx,xps-gpio' in compat:
-                    is_gpio = True
-            # label が /dev/uio で始まるデバイスも UIO として扱う (カスタムIP対応)
-            if not is_uio and not is_gpio and label_match and label_match.group(1).startswith('/dev/uio'):
-                is_uio = True
-            
-            reg_match = re.search(r'reg\s*=\s*<([^>]+)>', body)
-            if reg_match:
-                try:
-                    parts = reg_match.group(1).strip().split()
-                    base_addr = int(parts[0], 0)
-                    size = int(parts[1], 0) if len(parts) >= 2 else 0
-                    regions.append({'name': name, 'base_addr': base_addr, 'size': size, 'is_uio': is_uio, 'is_gpio': is_gpio})
-                except:
-                    continue
+        board_model = DTSParser.parse(dts_path)
+        for dev in board_model.devices:
+            is_uio = (dev.type == 'uio')
+            is_gpio = (dev.type == 'gpio')
+            regions.append({
+                'name': dev.name,
+                'base_addr': dev.base_addr,
+                'size': dev.size,
+                'is_uio': is_uio,
+                'is_gpio': is_gpio
+            })
     except Exception as e:
         print(f"[Python] Error parsing DTS: {e}")
     return regions
@@ -283,7 +162,14 @@ def update_uart_map(active_bridges):
 def uart_discovery_thread():
     # key: uart_file_path -> (pts_path, thread, port)
     active_bridges = {}
-    base_port = 2000
+    base_port_env = os.getenv("FBB_UART_BASE_PORT")
+    if base_port_env:
+        try:
+            base_port = int(base_port_env)
+        except ValueError:
+            base_port = 2000
+    else:
+        base_port = 2000
     next_port = base_port
     print("[Python] UART Discovery thread started.")
     while True:
@@ -324,7 +210,7 @@ def uart_discovery_thread():
 import subprocess
 import signal
 
-def remoteproc_monitor_thread():
+def remoteproc_monitor_thread(dts_path):
     print("[Python] remoteproc Monitor thread started.")
     state_file = "/tmp/fbb/sys/class/remoteproc/remoteproc0/state"
     fw_file = "/tmp/fbb/sys/class/remoteproc/remoteproc0/firmware"
@@ -393,6 +279,9 @@ def remoteproc_monitor_thread():
                         env = os.environ.copy()
                         env["FBB_MCORE"] = "1"
                         env["LD_PRELOAD"] = os.path.join(PROJECT_ROOT, "libfpgashim.so")
+                        if "FBB_SD_DIR" not in env:
+                            scenario_dir = os.path.dirname(os.path.abspath(dts_path))
+                            env["FBB_SD_DIR"] = os.path.join(scenario_dir, "sd_card")
                         
                         try:
                             current_proc = subprocess.Popen(
@@ -488,6 +377,13 @@ def main():
         sys.exit(1)
         
     dts_path = sys.argv[1]
+    scenario_dir = os.path.dirname(os.path.abspath(dts_path))
+    try:
+        os.makedirs("/tmp/fbb", exist_ok=True)
+        with open("/tmp/fbb_active_scenario", "w") as f_act:
+            f_act.write(scenario_dir + "\n")
+    except Exception as e:
+        print(f"[Python] Warning: Could not write active scenario file: {e}")
     
     # Clean up old virtual UART mapping files to prevent loopback daemons from reading stale PTY names
     glob_pattern = os.path.join(PROJECT_ROOT, "dashboard/data/vfpga_uart_*")
@@ -508,7 +404,7 @@ def main():
     t.start()
 
     # Start remoteproc monitor
-    t_rproc = threading.Thread(target=remoteproc_monitor_thread, daemon=True)
+    t_rproc = threading.Thread(target=remoteproc_monitor_thread, args=(dts_path,), daemon=True)
     t_rproc.start()
 
     dts_path = sys.argv[1]
@@ -535,105 +431,37 @@ def main():
         max_end = max(d['base_addr'] + d['size'] for d in uio_gpio_devs)
         board_size = max_end - min_addr
 
-    print(f"[Python] Starting Generic Virtual Logic Controller...")
-    print(f"[Python] Using DTS: {dts_path}")
-    
     # Start virtual peripherals from DTS (already populated in main start)
     peripheral_processes = []
     for p in peripherals:
-        if p['type'] == 'i2c':
-            if p['compatible'] == 'atmel,24c02':
-                eeprom_bin = os.path.join(PROJECT_ROOT, "build/bin/fbb_i2c_eeprom")
-                if not os.path.exists(eeprom_bin):
-                    tmp_bin = "/tmp/fbb_build/bin/fbb_i2c_eeprom"
-                    if os.path.exists(tmp_bin):
-                        eeprom_bin = tmp_bin
-                sock_path = f"/tmp/fbb_i2c_b{p['bus_id']}_a{p['addr']:02x}"
-                args = [eeprom_bin, "--socket", sock_path, "--init-val", str(p['init_val'])]
-                if p['mock_file']:
-                    m_file = p['mock_file']
-                    if not os.path.isabs(m_file):
-                        m_file = os.path.join(PROJECT_ROOT, m_file)
-                    args.extend(["--file", m_file])
-                print(f"[Python] Starting Virtual I2C EEPROM: {' '.join(args)}")
-                try:
-                    proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    peripheral_processes.append(proc)
-                except Exception as e:
-                    print(f"[Python] Error starting EEPROM daemon: {e}")
-            elif p['compatible'] == 'solomon,ssd1306':
-                oled_bin = os.path.join(PROJECT_ROOT, "build/bin/fbb_i2c_oled")
-                if not os.path.exists(oled_bin):
-                    tmp_bin = "/tmp/fbb_build/bin/fbb_i2c_oled"
-                    if os.path.exists(tmp_bin):
-                        oled_bin = tmp_bin
-                sock_path = f"/tmp/fbb_i2c_b{p['bus_id']}_a{p['addr']:02x}"
-                args = [oled_bin, "--socket", sock_path]
-                print(f"[Python] Starting Virtual I2C OLED Display ({p['compatible']}): {' '.join(args)}")
-                try:
-                    daemon_log_path = os.path.join(os.path.dirname(dts_path), "i2c_oled_daemon.log")
-                    log_file = open(daemon_log_path, "w")
-                    proc = subprocess.Popen(args, stdout=log_file, stderr=subprocess.STDOUT)
-                    peripheral_processes.append(proc)
-                except Exception as e:
-                    print(f"[Python] Error starting OLED daemon: {e}")
-
-
-                    
-        elif p['type'] == 'uart':
-            if p['peripheral_type'] == 'uart_loopback':
-                loopback_bin = os.path.join(PROJECT_ROOT, "build/bin/fbb_uart_loopback")
-                if not os.path.exists(loopback_bin):
-                    tmp_bin = "/tmp/fbb_build/bin/fbb_uart_loopback"
-                    if os.path.exists(tmp_bin):
-                        loopback_bin = tmp_bin
-                pts_file = os.path.join(PROJECT_ROOT, f"dashboard/data/vfpga_uart_{p['uart_id']}")
-                args = [loopback_bin, "--pts-file", pts_file]
-                print(f"[Python] Starting Virtual UART Loopback: {' '.join(args)}")
-                try:
-                    daemon_log_path = os.path.join(os.path.dirname(dts_path), "loopback_daemon.log")
-                    log_file = open(daemon_log_path, "w")
-                    proc = subprocess.Popen(args, stdout=log_file, stderr=subprocess.STDOUT)
-                    peripheral_processes.append(proc)
-                except Exception as e:
-                    print(f"[Python] Error starting UART Loopback daemon: {e}")
-
-
-        elif p['type'] == 'spi':
-            if p['compatible'] == 'winbond,w25q128':
-                flash_bin = os.path.join(PROJECT_ROOT, "build/bin/fbb_spi_flash")
-                if not os.path.exists(flash_bin):
-                    tmp_bin = "/tmp/fbb_build/bin/fbb_spi_flash"
-                    if os.path.exists(tmp_bin):
-                        flash_bin = tmp_bin
-                sock_path = f"/tmp/fbb_spi_b{p['bus_id']}_c{p['cs']}"
-                args = [flash_bin, "--socket", sock_path]
-                if p['mock_file']:
-                    m_file = p['mock_file']
-                    if not os.path.isabs(m_file):
-                        m_file = os.path.join(PROJECT_ROOT, m_file)
-                    args.extend(["--file", m_file])
-                print(f"[Python] Starting Virtual SPI Flash: {' '.join(args)}")
-                try:
-                    proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    peripheral_processes.append(proc)
-                except Exception as e:
-                    print(f"[Python] Error starting SPI Flash daemon: {e}")
-                    
-            elif p['compatible'] == 'microchip,mcp3208':
-                adc_bin = os.path.join(PROJECT_ROOT, "build/bin/fbb_spi_adc")
-                if not os.path.exists(adc_bin):
-                    tmp_bin = "/tmp/fbb_build/bin/fbb_spi_adc"
-                    if os.path.exists(tmp_bin):
-                        adc_bin = tmp_bin
-                sock_path = f"/tmp/fbb_spi_b{p['bus_id']}_c{p['cs']}"
-                args = [adc_bin, "--socket", sock_path, "--init-val", str(p['init_val'])]
-                print(f"[Python] Starting Virtual SPI ADC: {' '.join(args)}")
-                try:
-                    proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
-                    peripheral_processes.append(proc)
-                except Exception as e:
-                    print(f"[Python] Error starting SPI ADC daemon: {e}")
+        p_type = p.get('type')
+        compat = p.get('compatible') if p_type != 'uart' else p.get('peripheral_type')
+        
+        registry = LAUNCHER_REGISTRY.get(p_type, {}).get(compat)
+        if not registry:
+            print(f"[Python] Warning: No launcher registered for peripheral {p_type}/{compat}")
+            continue
+            
+        bin_name = registry['binary']
+        bin_path = os.path.join(PROJECT_ROOT, f"build/bin/{bin_name}")
+        if not os.path.exists(bin_path):
+            tmp_bin = f"/tmp/fbb_build/bin/{bin_name}"
+            if os.path.exists(tmp_bin):
+                bin_path = tmp_bin
+                
+        args = [bin_path] + registry['args'](p)
+        print(f"[Python] Starting Virtual {p_type.upper()} ({compat}): {' '.join(args)}")
+        
+        try:
+            if 'log' in registry:
+                log_path = os.path.join(os.path.dirname(dts_path), registry['log'])
+                log_file = open(log_path, "w")
+                proc = subprocess.Popen(args, stdout=log_file, stderr=subprocess.STDOUT)
+            else:
+                proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+            peripheral_processes.append(proc)
+        except Exception as e:
+            print(f"[Python] Error starting daemon for {p_type}/{compat}: {e}")
 
     path = f"/tmp/{board_name}"
     print(f"[Python] Creating SHM file: {path}, Size: {board_size}")
