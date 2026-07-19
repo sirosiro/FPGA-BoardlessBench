@@ -54,12 +54,13 @@ graph TD
 ## 4. 各コンポーネントの機能詳細 (Component Specifications)
 
 ### 4.1. Syscall Interceptor Layer (Shim)
-- **責務:** アプリケーションが発行するデバイスアクセス（`open`, `ioctl`, `mmap`）を [LD_PRELOAD](AddInfo_LD_PRELOAD.md) でインターセプトし、仮想デバイスへリダイレクトする。
+- **責務:** アプリケーションが発行するデバイスアクセス（`open`, `ioctl`, `mmap`）を [LD_PRELOAD](./docs/architecture/AddInfo_LD_PRELOAD.md) でインターセプトし、仮想デバイスへリダイレクトする。
 - **現状:** `/dev/fpga*`, `/dev/uio*`, `/dev/i2c-*`, `/dev/mem`, `/dev/ttyUL*`, `/dev/ttyPS*` をトラップ。
 - **/dev/mem 対応:** 全デバイス共通の統合物理アドレス空間を管理し、`mmap` 時に適切な共有メモリ上のオフセットへ自動でリダイレクトする。UIO等のデバイスファイル名（`label`）がDTSに明示的に定義されていないノードへの直接アクセスであっても、物理アドレスベースで透過的にルーティングを保証する。
 - **生成:** `tests/vfpga_config.dts` をソースとし、`scripts/gen_vfpga.py` により自動生成される。
 - **原則:** Device Tree Source (FPGAのレジスタアドレスや定義) を唯一の真実 (Source Truth) とし、Shim (Cコード) と RTL (Verilog) の一貫性を自動的に担保する。
 - **意義:** FWアプリケーションのソースコードを一切変更することなく作成したelfを実機(評価ボード)で実行できる。
+- **背景と歴史:** プラットフォームとしての設計原則やこれまでの意思決定履歴（ADR）については、[ドキュメント履歴](./docs/architecture/AddInfo_history.md) も参照してください。
 
 
 ### 4.2. Shared Memory Register Emulator (Virtual Logic Space)
@@ -73,7 +74,7 @@ graph TD
 - **意義:** 実機のデバッガを繋ぐことなく、ブラウザから内部状態を把握できる。
 
 ### 4.4. RTL-C++ Integrated Bridge (Verilator Interface)
-- **責務:** HDL論理を [Verilator](AddInfo_verilator.md) で高速な C++ モデルとして実行し、共有メモリの物理アドレス空間と信号を同期させる。
+- **責務:** HDL論理を [Verilator](./docs/architecture/AddInfo_verilator.md) で高速な C++ モデルとして実行し、共有メモリの物理アドレス空間と信号を同期させる。
 - **生成:** DTS の `registers` 定義に基づき、バス・インターフェースを備えた Verilog スケルトン (`vfpga_top.v`) が自動生成される。
 - **物理アドレスバス:** `vfpga_top.v` の `addr` バスには、DTS で定義された **32bit 物理アドレス** が直接供給される。RTL 内の読み書きロジックは、この絶対アドレスを用いてレジスタを識別する。
 - **生成制約 (ハードコードの禁止):** 自動生成されるC++ラッパー（`sim_main.cpp`）内で、特定の内部レジスタ（`top->RST` 等）を直接操作してはならない。共有メモリからの変更は、必ず汎用的なバスアクセス（`addr`, `w_data`, `w_en` 等）に変換してVerilogモジュールに伝達する。

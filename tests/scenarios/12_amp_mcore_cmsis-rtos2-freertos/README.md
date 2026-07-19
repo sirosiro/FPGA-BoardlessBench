@@ -83,10 +83,10 @@ graph TD
      キューにデータが届くまで `osMessageQueueGet` でブロック状態で待機します。データ受信後、擬似ディレイを挟んでデータを2倍にし、`REG_DATA_OUT` に結果、`REG_STATUS` に `0x01` (READY) を書き込んでAコアに完了を通知します。
 
 3. **アセンブラ依存コードのバイパス**:
-   - Linux POSIX ポート上で Cortex-M 用のアセンブラ命令（`__get_IPSR` や `__get_CONTROL` など）がビルドエラーになるのを防ぐため、ダミーの [cmsis_compiler.h](file:///workspaces/FPGA-BoardlessBench-main/tests/scenarios/12_amp_mcore_cmsis-rtos2-freertos/cmsis_compiler.h) 内でこれらを安全なダミーマクロとして定義しバイパスしています。
+   - Linux POSIX ポート上で Cortex-M 用のアセンブラ命令（`__get_IPSR` や `__get_CONTROL` など）がビルドエラーになるのを防ぐため、ダミーの [cmsis_compiler.h](./cmsis_compiler.h) 内でこれらを安全なダミーマクロとして定義しバイパスしています。
 
 4. **OS_Tick リンカ要件の解決（スタブ実装）**:
-   - FreeRTOSのPOSIXポートを使用するにあたり、CMSIS-RTOS2ラッパーのリンクに必要なOS Tick APIスタブ関数群 (`OS_Tick_Setup`, `OS_Tick_Enable`, `OS_Tick_Disable`, `OS_Tick_AcknowledgeIRQ`, `OS_Tick_GetIRQn`, `OS_Tick_GetClock`, `OS_Tick_GetInterval`, `OS_Tick_GetCount`, `OS_Tick_GetOverflow`) を [mcore_rtos.c](file:///workspaces/FPGA-BoardlessBench/tests/scenarios/12_amp_mcore_cmsis-rtos2-freertos/mcore_rtos.c) の末尾にダミー実装として定義し、ビルドエラーを回避しています。
+   - FreeRTOSのPOSIXポートを使用するにあたり、CMSIS-RTOS2ラッパーのリンクに必要なOS Tick APIスタブ関数群 (`OS_Tick_Setup`, `OS_Tick_Enable`, `OS_Tick_Disable`, `OS_Tick_AcknowledgeIRQ`, `OS_Tick_GetIRQn`, `OS_Tick_GetClock`, `OS_Tick_GetInterval`, `OS_Tick_GetCount`, `OS_Tick_GetOverflow`) を [mcore_rtos.c](./mcore_rtos.c) の末尾にダミー実装として定義し、ビルドエラーを回避しています。
 
 5. **SystemCoreClock グローバル変数の定義**:
    - CMSIS ラッパーが参照するグローバルクロック変数である `uint32_t SystemCoreClock = 1000000U;` (1MHz想定) を定義し、リンク時の未定義シンボルエラー（`undefined reference to 'SystemCoreClock'`）を解消しています。

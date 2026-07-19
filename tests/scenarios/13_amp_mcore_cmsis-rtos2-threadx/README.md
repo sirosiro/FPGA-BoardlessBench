@@ -87,7 +87,7 @@ graph TD
    - POSIXスレッドの動作を許容するため、CMakeLists.txtで管理メモリサイズをデフォルトの64KBから `TX_LINUX_MEMORY_SIZE=1048576` (1MB) に、CMSISのスタック・ヒープ用バイトプールサイズを `RTOS2_BYTE_POOL_STACK_SIZE=262144` (256KB) / `RTOS2_BYTE_POOL_HEAP_SIZE=262144` (256KB) に拡張するマクロ設定を追加し、リソース割り当て失敗によるハングアップを回避しています。
 
 4. **アセンブラ依存コードのバイパス**:
-   - Linux POSIX ポート上で Cortex-M 用のアセンブラ命令（`__get_IPSR` や `__get_CONTROL` など）がビルドエラーになるのを防ぐため、ダミーの [cmsis_compiler.h](file:///workspaces/FPGA-BoardlessBench-main/tests/scenarios/13_amp_mcore_cmsis-rtos2-threadx/cmsis_compiler.h) 内でこれらを安全なダミーマクロとして定義しバイパスしています。
+   - Linux POSIX ポート上で Cortex-M 用のアセンブラ命令（`__get_IPSR` や `__get_CONTROL` など）がビルドエラーになるのを防ぐため、ダミーの [cmsis_compiler.h](./cmsis_compiler.h) 内でこれらを安全なダミーマクロとして定義しバイパスしています。
 
 5. **SystemCoreClock グローバル変数の定義**:
    - CMSIS ラッパーが参照するグローバルクロック変数である `uint32_t SystemCoreClock = 1000000U;` (1MHz想定) を定義し、リンク時の未定義シンボルエラー（`undefined reference to 'SystemCoreClock'`）を解消しています。
