@@ -62,8 +62,16 @@
 > 2. **「DTS 駆動」による一元化**: 周辺ペリフェラルの構成、レジスタ配置、論理名はすべて `config.dts` を「唯一の情報源」とし、共通の `DTSParser` を介した自動生成と動的バインドにより、ハード/ソフト間の仕様不一致を構造的に排除する。
 > 3. **「疎結合ペリフェラル」とプラグイン化**: 各種バス（I2C/SPI/UART）のエミュレーターをコントローラから切り離し、独立したプロセス（プラグイン）として構築。コントローラ側は宣言的な `LAUNCHER_REGISTRY` マップを通じてこれらを動的にオーケストレーションし、オープン・クローズドの原則（OCP）を順守する。
 > 4. **「環境依存の完全排除とシナリオの自己完結化」**: シミュレーション内部の定義（system）とシナリオ固有の定義（device）を分離し、絶対パスなどの環境依存をコンパイル定義へ追い出すことで、シナリオコードをそのまま実機開発へ移植できる高度な可搬性を保証する。
->
 > 過去のすべての意思決定履歴については、**[AddInfo_history.md](./AddInfo_history.md)** を参照してください。
+
+#### **ADR #004: マジックナンバーによる暫定ルーティングから、型安全な構造体コンテキスト管理（`FbbDeviceContext`）への昇華**
+* **背景と課題**: 
+  当初、C-Shim (`libfpgashim.c`) では仮想ファイル記述子 (FD) の判定として `-100` や `-200` といったマジックナンバーとインクリメントオフセットをフラットな配列として扱っていました。その後、Zynqのデバイス命名規則 (例: `/dev/i2c-0`) に合わせた動的アドレス抽出処理を追加した際、C言語の偽値判定 (0番ポート) の仕様によりバグが混入し、一時的に `bus_id + 1` という「その場しのぎのパッチ」で解決せざるを得ない技術負債が発生しました。
+* **決定事項**:
+  この状態はF-BBの基本理念である「堅牢性と実機透過性」に反するため、即座にマジックナンバー判定を全面廃止。`FbbDeviceType` 列挙型および `FbbDeviceContext` 構造体によるメモリ空間上の厳格な状態追跡エンジンへと大手術（リファクタリング）を行いました。また、OSがFDを再利用（リサイクル）した際の状態不整合を防ぐため、`close` システムコールもインターセプトしてSlot状態を自律クリーンアップする機構を組み込みました。
+* **設計根拠**:
+  「動けばよい」という場当たり的なパッチをそのまま放置することは、商用SoC開発に耐えうる信頼性を損なう重大なリスクとなります。型安全かつリソース競合に強い高信頼なインターセプト基盤を再構築し、開発者に対してプロ向けの技術的風格と説得力を示すための重大な意思決定です。
+
 
 ### 3. AIとの協調に関する指針 (AI Collaboration Policy)
 - **未知の問題への対処:** 憲章にないデバイス（SPI, UART等）の追加が必要になった際、AIは既存のI2Cエミュレーションのパターンを継承し、複数のインターセプト案を提示すること。
@@ -134,22 +142,30 @@ graph TD
     Shim -->|Intercept Mount/Umount| Path_Symlink
  
     Path_MEM --> SHM_UIO
-    Path_Sock --> V_I2C & V_SPI_Flash & V_SPI_ADC & V_OLED
+    Path_Sock --> V_I2C
+    Path_Sock --> V_SPI_Flash
+    Path_Sock --> V_SPI_ADC
+    Path_Sock --> V_OLED
     Path_PTY --> V_UART
     Path_Remoteproc --> Controller
     Path_Symlink -->|Symlink Redirect| SD_Dir
  
-    V_SPI_ADC <-->|SHM /spi_adc| WebServer
+    V_SPI_ADC ---|SHM /spi_adc| WebServer
     V_OLED -->|SHM /fbb_display_0| WebServer
     SD_Dir -->|Read/Dump Files| WebServer
  
-    SHM_UIO <-->|Sync Regs/Clocks| Sim_Main
-    Sim_Main <--> RTL
-    Controller -.->|Launch & Monitor| Sim_Main & V_I2C & V_SPI_Flash & V_SPI_ADC & V_UART & V_OLED
+    SHM_UIO ---|Sync Regs/Clocks| Sim_Main
+    Sim_Main --- RTL
+    Controller -.->|Launch & Monitor| Sim_Main
+    Controller -.->|Launch & Monitor| V_I2C
+    Controller -.->|Launch & Monitor| V_SPI_Flash
+    Controller -.->|Launch & Monitor| V_SPI_ADC
+    Controller -.->|Launch & Monitor| V_UART
+    Controller -.->|Launch & Monitor| V_OLED
  
     SHM_UIO -.->|Read Sync| WebServer
-    WebServer <-->|WebSocket| ReactUI
-    V_UART <-->|TCP Proxy Port 3000/3001| ReactUI
+    WebServer ---|WebSocket| ReactUI
+    V_UART ---|TCP Proxy Port 3000/3001| ReactUI
 ```
 
 #### **Layer 1: FW & Application Layer**
@@ -176,9 +192,46 @@ graph TD
 *   **概要**: Verilator によってコンパイルされた RTL シミュレーション実行エンジン。
 *   **詳細情報**: RTL ラッパーおよび HDL ロジックについては **[src/sim/](./src/sim/)** および **[src/rtl/](./src/rtl/)** を参照。
 
-#### **Layer 7: Visual Diagnostic UI**
 *   **概要**: Express サーバーおよび React 19 で構成される状態可視化・操作ダッシュボード。
 *   **詳細情報**: ダッシュボードのセットアップおよびパネル仕様については **[dashboard/README.md](./dashboard/README.md)** を参照。
+
+### 4.2. C-Shim システムコールフック＆型安全ルーティングのライフサイクル (C-Shim Interception & Routing Lifecycle)
+
+F-BB の透過性を支えるシステムコール横取りと、ファイル記述子 (FD) の型安全状態管理およびリサイクル競合防止の全体像です。
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant FW as "Firmware (main.c)"
+    participant Shim as "C-Shim (libfpgashim.so)"
+    participant FD as "FD State Manager (FbbDeviceContext)"
+    participant SHM as "Shared Memory (/tmp/vfpga_reg)"
+    participant Daemon as "Loopback Daemon (PTY / Socket)"
+
+    Note over FW, Shim: open() Interception
+    FW->>Shim: open("/dev/ttyUL0", O_RDWR)
+    Shim->>Shim: Detect match in DTS configuration
+    Shim->>Shim: Allocate empty slot in fd_contexts[] (Type-Safe Enum)
+    Shim->>FD: Set Context (Type: UART, Path: /dev/ttyUL0, Socket/PTY state)
+    Shim-->>FW: Return virtual FD (e.g. 3)
+
+    Note over FW, SHM: read() / write() Interception
+    FW->>Shim: write(3, "data", 4)
+    Shim->>FD: Lookup fd_contexts[3]
+    alt Is UIO/GPIO (MMIO Address Space)
+        Shim->>SHM: Direct memory access (MAP_FIXED)
+    else Is SPI / I2C / UART
+        Shim->>Daemon: Redirect via UNIX Socket or PTY Bridge
+    end
+    Shim-->>FW: Return success (bytes written)
+
+    Note over FW, FD: close() and FD Recycle Protection
+    FW->>Shim: close(3)
+    Shim->>Shim: Intercept close()
+    Shim->>FD: Clear fd_contexts[3] (Prevent FD reuse collision)
+    Shim->>Shim: Call real close() syscall
+    Shim-->>FW: Return success
+```
 
 ### 5. 既知の未解決課題と保留事項 (Known Open Issues)
 <!-- Issue: 割り込み(IRQ)の擬似通知, Status: 保留, Rationale: シグナルを用いるか、仮想fdへの書き込みを用いるか、性能評価後に決定する。 -->
