@@ -1,6 +1,6 @@
 # Architecture Decision History (アーキテクチャ決定の歴史的記録)
 
-本ドキュメントは、FPGA-BoardlessBench (F-BB) プロジェクトにおける過去の主要なアーキテクチャ設計・意思決定（Decision & Rationale）の変遷を記録した歴史的アーカイブです。最新の決定事項については [ARCHITECTURE_MANIFEST.md](./ARCHITECTURE_MANIFEST.md) を参照してください。
+本ドキュメントは、FPGA-BoardlessBench (F-BB) プロジェクトにおける過去の主要なアーキテクチャ設計・意思決定（Decision & Rationale）の変遷を記録した歴史的アーカイブです。最新の決定事項については [ARCHITECTURE_MANIFEST.md](../../ARCHITECTURE_MANIFEST.md) を参照してください。
 
 ---
 
