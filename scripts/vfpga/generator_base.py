@@ -52,7 +52,8 @@ class DeviceConfigGenerator(BaseGenerator):
         for dev in model.devices:
             # マクロ名として安全な大文字表記にクリーンアップ
             clean_name = "".join(c if c.isalnum() else "_" for c in dev.name).upper()
-            dev_path_macros.append(f'#define FBB_DEV_PATH_{clean_name} "{dev.path}"')
+            macro_name = f"FBB_DEV_PATH_{clean_name}"
+            dev_path_macros.append(f'#ifndef {macro_name}\n#define {macro_name} "{dev.path}"\n#endif')
         dev_path_macros_str = "\n".join(dev_path_macros)
         
         return """/* Auto-generated Device Config from DTS */

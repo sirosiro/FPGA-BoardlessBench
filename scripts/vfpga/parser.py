@@ -83,7 +83,7 @@ class DTSParser:
                 clean_body = clean_body[:sub_start] + clean_body[sub_brace_end:]
 
             props = {}
-            prop_matches = re.finditer(r'([a-zA-Z0-9_-]+)\s*=\s*([^;]+);', clean_body)
+            prop_matches = re.finditer(r'([a-zA-Z0-9_,-]+)\s*=\s*([^;]+);', clean_body)
             for p_match in prop_matches:
                 k = p_match.group(1).strip()
                 v = p_match.group(2).strip()
@@ -140,7 +140,7 @@ class DTSParser:
                             s_addr = 0
                             
                         s_props = {}
-                        s_prop_matches = re.finditer(r'([a-zA-Z0-9_-]+)\s*=\s*([^;]+);', sub_body)
+                        s_prop_matches = re.finditer(r'([a-zA-Z0-9_,-]+)\s*=\s*([^;]+);', sub_body)
                         for sp_match in s_prop_matches:
                             sk = sp_match.group(1).strip()
                             sv = sp_match.group(2).strip()
@@ -189,7 +189,7 @@ class DTSParser:
                             s_cs = 0
                             
                         s_props = {}
-                        s_prop_matches = re.finditer(r'([a-zA-Z0-9_-]+)\s*=\s*([^;]+);', sub_body)
+                        s_prop_matches = re.finditer(r'([a-zA-Z0-9_,-]+)\s*=\s*([^;]+);', sub_body)
                         for sp_match in s_prop_matches:
                             sk = sp_match.group(1).strip()
                             sv = sp_match.group(2).strip()
