@@ -13,17 +13,17 @@ class ShimGenerator(BaseGenerator):
                     mmap_routes.append('    { %s, %s, SHM_FILE, "%s" }' % (reg_parts[0], reg_parts[1], dev.path))
             elif dev.type == 'i2c':
                 bus_id = dev.extra_props.get('bus_id', '1')
-                i2c_matches.append('    if (pathname != NULL && strcmp(pathname, "%s") == 0) return %d;' % (dev.path, int(bus_id) + 1))
+                i2c_matches.append('    if (pathname != NULL && strcmp(pathname, "%s") == 0) { if (out_bus_id) *out_bus_id = %s; return 1; }' % (dev.path, bus_id))
             elif dev.type == 'uart':
                 uart_count += 1
-                uart_matches.append('    if (pathname != NULL && strcmp(pathname, "%s") == 0) return %d;' % (dev.path, uart_count))
+                uart_matches.append('    if (pathname != NULL && strcmp(pathname, "%s") == 0) { if (out_uart_id) *out_uart_id = %d; return 1; }' % (dev.path, uart_count))
             elif dev.type == 'spi':
                 bus_id = dev.extra_props.get('bus_id', '0')
                 if hasattr(dev, 'spi_slaves'):
                     for slave in dev.spi_slaves:
                         dev_path = f"/dev/spidev{bus_id}.{slave.cs}"
                         spi_code = (int(bus_id) << 8) | int(slave.cs)
-                        spi_matches.append('    if (pathname != NULL && strcmp(pathname, "%s") == 0) return 0x1%04X;' % (dev_path, spi_code))
+                        spi_matches.append('    if (pathname != NULL && strcmp(pathname, "%s") == 0) { if (out_spi_code) *out_spi_code = %d; return 1; }' % (dev_path, spi_code))
             elif dev.type == 'rpmsg':
                 rpmsg_matches.append(
                     '    if (pathname != NULL && strcmp(pathname, "%s") == 0) {\n'

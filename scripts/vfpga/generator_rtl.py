@@ -1,7 +1,7 @@
 import os
 import json
 from vfpga.models import BoardModel
-from vfpga.generator_base import BaseGenerator, ConfigGenerator
+from vfpga.generator_base import BaseGenerator, SystemConfigGenerator
 
 class RTLGenerator(BaseGenerator):
     def generate(self, model: BoardModel):
@@ -86,7 +86,7 @@ class SimulatorGenerator(BaseGenerator):
 #include <string.h>
 #include <signal.h>
 #include <verilated_vcd_c.h>
-#include "vfpga_config.h"
+#include "vfpga_system_config.h"
 #include "sim_traits.h"
 #include <sys/socket.h>
 #include <sys/un.h>
@@ -370,7 +370,7 @@ class ManifestGenerator(BaseGenerator):
     # @intent:rationale Webダッシュボードのバックエンドが、現在ロードされているシナリオのディレクトリ（config.dtsの配置場所）を特定し、そこにレイアウトファイルを保存・復元できるようにするため、メタデータに scenario_dir を追加します。
     def generate(self, model: BoardModel):
         shm_name = model.name
-        shm_size = ConfigGenerator.compute_shm_size(model)
+        shm_size = SystemConfigGenerator.compute_shm_size(model)
         project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
         manifest = {
             "board": shm_name,

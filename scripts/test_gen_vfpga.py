@@ -1,7 +1,7 @@
 import unittest
 import os
 import sys
-from gen_vfpga import DTSParser, BoardModel, ConfigGenerator, ShimGenerator, RTLGenerator, SimulatorGenerator, ManifestGenerator
+from gen_vfpga import DTSParser, BoardModel, SystemConfigGenerator, DeviceConfigGenerator, ShimGenerator, RTLGenerator, SimulatorGenerator, ManifestGenerator
 
 class TestVFPGAEngine(unittest.TestCase):
     def setUp(self):
@@ -55,7 +55,7 @@ class TestVFPGAEngine(unittest.TestCase):
 
     def test_config_generator(self):
         model = DTSParser.parse("test_sample.dts")
-        gen = ConfigGenerator()
+        gen = SystemConfigGenerator()
         content = gen.generate(model)
         self.assertIn("#define SHM_FILE \"/tmp/vfpga_reg\"", content)
         self.assertIn("#define SHM_SIZE 4096", content)

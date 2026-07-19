@@ -124,7 +124,7 @@ DASHBOARD_PID=$!
 
 # バックエンドの準備を待機（最大5秒）
 # 生成されたヘッダファイルからSHMファイル名を取得する
-SHM_FILE_EXPECTED=$(grep -oP '#define SHM_FILE "\\K[^"]+' src/include/vfpga_config.h 2>/dev/null || echo "/tmp/vfpga_reg")
+SHM_FILE_EXPECTED=$(grep -oP '#define SHM_FILE "\\K[^"]+' src/include/vfpga_system_config.h 2>/dev/null || echo "/tmp/vfpga_reg")
 
 MAX_RETRIES=5
 RETRY_COUNT=0

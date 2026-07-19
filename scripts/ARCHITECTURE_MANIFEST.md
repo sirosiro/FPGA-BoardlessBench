@@ -33,7 +33,8 @@ DTS の論理構造を抽象化したデータモデル。
 
 ### 3.3 Generation Layer (`GeneratorOrchestrator`, `BaseGenerator`)
 `GeneratorOrchestrator` が `BoardModel` を各 `BaseGenerator` 実装へと配布し、一貫性のあるファイルセットを出力する。
-- **ConfigGenerator**: Cヘッダー (`vfpga_config.h`) を生成
+- **SystemConfigGenerator**: F-BBシステム構成ヘッダー (`vfpga_system_config.h`) を生成
+- **DeviceConfigGenerator**: シナリオ固有のデバイス定義ヘッダー (`vfpga_device_config.h`) を生成
 - **ShimGenerator**: Shimライブラリ (`libfpgashim.c`) を生成。通常の UIO/GPIO/UART のラップに加え、非対称マルチコア（AMP）開発用の **VirtIO/RPMsg 仮想デバイススタック**（Unixドメインソケットを用いたAコア/Mコア間の通信、および proxy_pid を用いたIPIシグナル送信）を自動生成する。
 - **RTLGenerator**: Verilog トップモジュール (`vfpga_top.v`) を生成
 - **SimulatorGenerator**: Verilator 用 C++ ラッパー (`sim_main.cpp`) を生成。共有メモリとRTLレジスタ間の同期を行うとともに、仮想IPI（`TRIG`）レジスタへの書き込み検知時に、Aコアの対応プロセスへシグナル（`SIGUSR2`）を自動中継して自身をクリアする調停ロジックを生成する。

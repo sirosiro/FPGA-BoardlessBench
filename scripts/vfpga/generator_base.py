@@ -5,7 +5,7 @@ class BaseGenerator:
     def generate(self, model: BoardModel):
         raise NotImplementedError
 
-class ConfigGenerator(BaseGenerator):
+class SystemConfigGenerator(BaseGenerator):
     @staticmethod
     def compute_shm_size(model: BoardModel):
         """全UIO/GPIOデバイスの物理アドレス範囲をカバーするSHMサイズを計算"""
@@ -22,9 +22,6 @@ class ConfigGenerator(BaseGenerator):
     def generate(self, model: BoardModel):
         shm_name = model.name
         shm_size = self.compute_shm_size(model)
-        # プロジェクトルートを動的に取得 (vfpga/generator_base.py から見て 2つ上の階層)
-        project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
-        scenario_dir = getattr(model, "scenario_dir", "")
         
         # PL SPI デバイスの検出
         pl_spi_socket = ""
@@ -37,15 +34,32 @@ class ConfigGenerator(BaseGenerator):
                     pl_spi_socket = f"/tmp/fbb_spi_b{bus_id}_c{cs}"
                     break
         
-        return """/* Auto-generated Config from DTS */
-#ifndef VFPGA_CONFIG_H
-#define VFPGA_CONFIG_H
-#define PROJECT_ROOT "%s"
-#define SCENARIO_DIR "%s"
+        return """/* Auto-generated System Config from DTS */
+#ifndef VFPGA_SYSTEM_CONFIG_H
+#define VFPGA_SYSTEM_CONFIG_H
 #define SHM_NAME "%s"
 #define SHM_FILE "/tmp/%s"
 #define SHM_SIZE %d
 #define GPIO_COUNT 118
 #define PL_SPI_SOCKET "%s"
 #endif
-""" % (project_root, scenario_dir, shm_name, shm_name, shm_size, pl_spi_socket)
+""" % (shm_name, shm_name, shm_size, pl_spi_socket)
+
+class DeviceConfigGenerator(BaseGenerator):
+    def generate(self, model: BoardModel):
+        # 各デバイスのパス用マクロ生成
+        dev_path_macros = []
+        for dev in model.devices:
+            # マクロ名として安全な大文字表記にクリーンアップ
+            clean_name = "".join(c if c.isalnum() else "_" for c in dev.name).upper()
+            dev_path_macros.append(f'#define FBB_DEV_PATH_{clean_name} "{dev.path}"')
+        dev_path_macros_str = "\n".join(dev_path_macros)
+        
+        return """/* Auto-generated Device Config from DTS */
+#ifndef VFPGA_DEVICE_CONFIG_H
+#define VFPGA_DEVICE_CONFIG_H
+
+/* Device Paths */
+%s
+#endif
+""" % dev_path_macros_str

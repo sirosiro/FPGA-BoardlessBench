@@ -1,7 +1,7 @@
 import os
 import sys
 from vfpga.models import BoardModel
-from vfpga.generator_base import ConfigGenerator
+from vfpga.generator_base import SystemConfigGenerator, DeviceConfigGenerator
 from vfpga.generator_shim import ShimGenerator
 from vfpga.generator_rtl import RTLGenerator, SimulatorGenerator, ManifestGenerator, RustPACGenerator
 
@@ -12,7 +12,8 @@ class GeneratorOrchestrator:
         # プロジェクトルートを取得 (vfpga/orchestrator.py から見て 2つ上の階層)
         self.project_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
         self.generators = {
-            "src/include/vfpga_config.h": ConfigGenerator(),
+            "src/include/vfpga_system_config.h": SystemConfigGenerator(),
+            "vfpga_device_config.h": DeviceConfigGenerator(),
             "src/shim/libfpgashim.c": ShimGenerator(),
             "src/rtl/vfpga_top.v": RTLGenerator(),
             "src/sim/sim_main.cpp": SimulatorGenerator(),
@@ -20,10 +21,15 @@ class GeneratorOrchestrator:
         }
 
     def generate_all(self):
+        dts_dir = os.path.dirname(os.path.abspath(self.dts_path)) if self.dts_path else None
+        
         for rel_path, gen in self.generators.items():
             content = gen.generate(self.model)
-            # 絶対パスを構築
-            abs_path = os.path.join(self.project_root, rel_path)
+            if rel_path == "vfpga_device_config.h":
+                abs_path = os.path.join(dts_dir, "vfpga_device_config.h") if dts_dir else os.path.join(self.project_root, "src/include/vfpga_device_config.h")
+            else:
+                abs_path = os.path.join(self.project_root, rel_path)
+            
             dir_name = os.path.dirname(abs_path)
             if dir_name:
                 os.makedirs(dir_name, exist_ok=True)

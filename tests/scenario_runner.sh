@@ -58,7 +58,7 @@ if [ "$CLEAN" = true ]; then
     cd "${PROJECT_ROOT}"
     if [ -d "build" ]; then rm -rf build/* build/.[!.]* 2>/dev/null; fi
     rm -f libfpgashim.so vfpga_sim 2>/dev/null
-    rm -f /tmp/vring0 /tmp/vfpga_reg /tmp/fbb_compatible /tmp/fbb_model 2>/dev/null
+    rm -f /tmp/vring0 /tmp/vfpga_reg /tmp/fbb_compatible /tmp/fbb_model /tmp/uio* /tmp/fbb_uart_* /tmp/vfpga_uart_* /tmp/fbb_spi_* /tmp/fbb_i2c_* 2>/dev/null
     if [ -n "$SCENARIO_DIR" ]; then
         if [[ " $CLEAN_TARGETS " =~ " distclean " || " $CLEAN_TARGETS " =~ " cleanall " ]]; then
             rm -rf "${SCENARIO_DIR}/FreeRTOS-Kernel" "${SCENARIO_DIR}/threadx" "${SCENARIO_DIR}/CMSIS-FreeRTOS" "${SCENARIO_DIR}/stm32-mw-cmsis-rtos-tx" "${SCENARIO_DIR}/CMSIS_5" 2>/dev/null
@@ -94,7 +94,7 @@ cleanup() {
         fi
     fi
     rm -rf /tmp/fbb 2>/dev/null
-    rm -f /tmp/vring0 /tmp/vfpga_reg /tmp/fbb_compatible /tmp/fbb_model 2>/dev/null
+    rm -f /tmp/vring0 /tmp/vfpga_reg /tmp/fbb_compatible /tmp/fbb_model /tmp/uio* /tmp/fbb_uart_* /tmp/vfpga_uart_* /tmp/fbb_spi_* /tmp/fbb_i2c_* 2>/dev/null
 }
 
 # 異常終了時や中断時（Ctrl+C）にプロセスを掃除するように設定

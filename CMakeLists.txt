@@ -14,13 +14,18 @@ set(SCENARIO_DIR "" CACHE PATH "Path to the active test scenario")
 
 # 1. Build the Interception Shim (libfpgashim.so)
 add_library(fpgashim SHARED src/shim/libfpgashim.c)
-target_include_directories(fpgashim PRIVATE src/include)
+if(NOT SCENARIO_DIR STREQUAL "")
+    target_include_directories(fpgashim PRIVATE "${SCENARIO_DIR}" src/include)
+else()
+    target_include_directories(fpgashim PRIVATE src/include)
+endif()
 set_target_properties(fpgashim PROPERTIES 
     PREFIX "" 
     OUTPUT_NAME "libfpgashim"
     LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}"
 )
 target_link_libraries(fpgashim ${CMAKE_DL_LIBS})
+target_compile_definitions(fpgashim PRIVATE PROJECT_ROOT="${PROJECT_SOURCE_DIR}")
 
 # Post-build: copy libfpgashim.so to PROJECT_SOURCE_DIR for compatibility
 add_custom_command(TARGET fpgashim POST_BUILD
@@ -84,6 +89,7 @@ if(NOT SCENARIO_DIR STREQUAL "")
     add_dependencies(vfpga_sim generate_verilator)
     
     target_include_directories(vfpga_sim PRIVATE
+        "${SCENARIO_DIR}"
         src/include
         ${VERILATOR_ROOT}/include
         ${VERILATOR_ROOT}/include/vltstd

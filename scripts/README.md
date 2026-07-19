@@ -14,7 +14,8 @@ FPGA-BoardlessBench (F-BB) の中心的なエンジンです。**DTSファイル
 - **環境適応性**: `/tmp` ベースの共有メモリ通信を採用しており、Docker/DevContainer などの隔離された名前空間内でも安定して動作します。
 
 ### 生成されるファイルと役割
-- **`src/include/vfpga_config.h`**: レジスタマップ、ビット幅、共有メモリパスを含むCヘッダー。
+- **`src/include/vfpga_system_config.h`**: 共有メモリサイズ、レジスタ数、ソケットパスなどを含む、F-BBシステムシミュレーション用のCヘッダー。
+- **`vfpga_device_config.h`**: シナリオ固有の論理デバイスパス定義（`main.c` 等のファームウェアがインクルード）を含むCヘッダー。
 - **`src/shim/libfpgashim.c`**: UIO, I2C, UART, `/dev/mem` 等のアクセスをフックし、シミュレータへリダイレクトする Shim ライブラリ。仮想 `remoteproc` の API 制御パス (`/sys/class/remoteproc/...`) や、ファームウェア配置パス (`/lib/firmware/...`) の `/tmp/fbb` へのリダイレクトも自動生成されます。
 - **`src/rtl/vfpga_top.v`**: DTSの定義に基づいた **118ピン標準インターフェース** を備えた Verilog のトップモジュール・スケルトン。
 - **`src/sim/sim_main.cpp`**: Verilator 用の C++ ラッパー。共有メモリと RTL 信号の同期を司るブリッジエンジン。
@@ -32,7 +33,7 @@ scripts/
         ├── __init__.py               # パッケージ初期化ファイル
         ├── models.py                 # データモデルの定義 (Device, Register, BoardModel 等)
         ├── parser.py                 # DTS Parser (DTSファイルから BoardModel を構築)
-        ├── generator_base.py         # ジェネレータの基底クラス (BaseGenerator, ConfigGenerator)
+        ├── generator_base.py         # ジェネレータの基底クラス (BaseGenerator, SystemConfigGenerator, DeviceConfigGenerator)
         ├── generator_rtl.py          # RTL関連コードのジェネレータ群 (Rtl, Sim, Manifest, PAC)
         ├── generator_shim.py         # C Shimコードのジェネレータ (ShimGenerator)
         └── templates/                # コード生成用の各種テンプレート
@@ -47,7 +48,7 @@ scripts/
   * **`I2CSlave`**: I2Cバス上にネスト定義されたスレーブデバイス（EEPROM等）のエミュレーション属性を保持。
   * **`BoardModel`**: ボード全体のデバイスリストとメタデータを包括する最上位モデル。
 * **`vfpga/parser.py`**: DTS ファイルを読み込んで構文解析を行い、`BoardModel` を動的に構築する解析器です。ルートノードのパース、ネストされた子ノード（I2Cスレーブ）の再帰的パース、プロパティのマスク処理（親プロパティの上書き防止）などのパーサー論理がここに集中しています。
-* **`vfpga/generator_base.py`**: すべてのコード生成クラスの基底となる `BaseGenerator` と、共有メモリの最適サイズ計算および構成ヘッダー（`vfpga_config.h`）の生成を担当する `ConfigGenerator` が定義されています。
+* **`vfpga/generator_base.py`**: すべてのコード生成クラスの基底となる `BaseGenerator` と、共有メモリの最適サイズ計算および構成ヘッダー（`vfpga_system_config.h`）の生成を担当する `SystemConfigGenerator`、およびデバイスパス定義ヘッダー（`vfpga_device_config.h`）の生成を担当する `DeviceConfigGenerator` が定義されています。
 * **`vfpga/generator_rtl.py`**: ハードウェア設計・検証に密接に関連するコード生成器群です。
   * **`RTLGenerator`**: DTSからレジスタ読み書きロジック（`case`文など）を備えた Verilog の最上位スケルトン（`vfpga_top.v`）を生成します。
   * **`SimulatorGenerator`**: Verilator モデルを実行し、共有メモリとRTLレジスタ間で双方向同期を行うC++シミュレータメインコード（`sim_main.cpp`）を生成します。
@@ -59,7 +60,8 @@ scripts/
 ```mermaid
 graph TD
     DTS[config.dts] -->|Parse| GEN[gen_vfpga.py]
-    GEN -->|Generate| Header[vfpga_config.h]
+    GEN -->|Generate| SysHeader[vfpga_system_config.h]
+    GEN -->|Generate| DevHeader[vfpga_device_config.h]
     GEN -->|Generate| Shim[libfpgashim.c]
     GEN -->|Generate| RTL[vfpga_top.v]
     GEN -->|Generate| CPP[sim_main.cpp]

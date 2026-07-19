@@ -8,7 +8,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 # Expose package classes for backward compatibility (Facade)
 from vfpga.models import Device, Register, I2CSlave, BoardModel
 from vfpga.parser import DTSParser
-from vfpga.generator_base import BaseGenerator, ConfigGenerator
+from vfpga.generator_base import BaseGenerator, SystemConfigGenerator, DeviceConfigGenerator
 from vfpga.generator_shim import ShimGenerator
 from vfpga.generator_rtl import RTLGenerator, SimulatorGenerator, ManifestGenerator, RustPACGenerator
 from vfpga.orchestrator import GeneratorOrchestrator
