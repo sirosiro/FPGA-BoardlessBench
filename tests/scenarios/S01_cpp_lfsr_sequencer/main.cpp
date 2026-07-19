@@ -153,11 +153,12 @@ public:
 
 #include <termios.h>
 
+#include "vfpga_device_config.h"
 int main() {
     try {
         // UARTデバイスをオープンして標準入出力にリダイレクト
         // これによりダッシュボードのUARTコンソールにシェルが表示される
-        int uart_fd = open("/dev/ttyUL0", O_RDWR | O_NOCTTY);
+        int uart_fd = open(FBB_DEV_PATH_VFPGA_UART, O_RDWR | O_NOCTTY);
         if (uart_fd >= 0) {
             struct termios options;
             tcgetattr(uart_fd, &options);
@@ -173,8 +174,8 @@ int main() {
         }
 
         // 各デバイスを個別のUIOファイルとしてオープン (アドレス順に /dev/uio0, /dev/uio1 にマッピング)
-        UioDevice uio_gpio("/dev/uio0", 0x1000);
-        UioDevice uio_custom("/dev/uio1", 0x1000);
+        UioDevice uio_gpio(FBB_DEV_PATH_VFPGA_GPIO, 0x1000);
+        UioDevice uio_custom(FBB_DEV_PATH_VFPGA_CUSTOM, 0x1000);
 
         GpioPeripheral gpio(uio_gpio, 0x0000);
         LfsrEngine engine(uio_custom, 0x0000);

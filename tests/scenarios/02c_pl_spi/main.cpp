@@ -7,7 +7,8 @@
 #include <string.h>
 #include <assert.h>
 
-#define UIO_DEV "/dev/uio0"
+#include "vfpga_device_config.h"
+#define UIO_DEV FBB_DEV_PATH_UIO
 #define UIO_SIZE 4096
 
 // Registers Offset
@@ -80,7 +81,7 @@ int main() {
 
     // VFPGA_INTERACTIVE 環境変数が有効な場合、無限監視ループに入る
     if (getenv("VFPGA_INTERACTIVE") != nullptr) {
-        int uart_fd = open("/dev/ttyUL0", O_RDWR);
+        int uart_fd = open(FBB_DEV_PATH_SERIAL, O_RDWR);
         if (uart_fd >= 0) {
             const char* msg_init = "\r\n[PL SPI Test] ==============================================\r\n"
                                    "[PL SPI Test] Interactive Mode: Monitoring CH0 via PL SPI.\r\n"

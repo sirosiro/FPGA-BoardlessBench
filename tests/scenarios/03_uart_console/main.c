@@ -5,6 +5,7 @@
 #include <string.h>
 #include <termios.h>
 
+#include "vfpga_device_config.h"
 /**
  * 【解説: UART(シリアルポート)の制御】
  * FPGA上のUARTは、Linuxからは「TTYデバイス」というキャラクターデバイスの一種として見えます。
@@ -18,7 +19,7 @@ int main() {
     // O_NOCTTY は、「このデバイスをプロセスの制御端末（Control Terminal）にしない」という
     // シリアルポートを開く際の標準的なお作法です。
     printf("[App] Opening /dev/ttyPS1...\n");
-    int fd = open("/dev/ttyPS1", O_RDWR | O_NOCTTY);
+    int fd = open(FBB_DEV_PATH_SERIAL, O_RDWR | O_NOCTTY);
     if (fd < 0) {
         perror("open");
         printf("[App] FAILURE: Could not open /dev/ttyPS1\n");

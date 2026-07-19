@@ -5,7 +5,8 @@
 #include <unistd.h>
 #include <stdint.h>
 
-#define UIO_DEVICE "/dev/uio0"
+#include "vfpga_device_config.h"
+#define UIO_DEVICE FBB_DEV_PATH_VFPGA_REG
 #define REG_SIZE 1024
 
 int main() {

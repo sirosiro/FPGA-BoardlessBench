@@ -9,6 +9,7 @@
 #include <algorithm>
 #include <string>
 
+#include "vfpga_device_config.h"
 // I2C_RDWR を使用してデータを送信する関数
 void write_i2c_data(int fd, uint8_t slave_addr, const std::vector<uint8_t>& data) {
     std::vector<uint8_t> writable_data = data; // ノンconstなバッファを用意
@@ -166,7 +167,7 @@ void draw_humidity_icon(std::vector<uint8_t>& buf, int start_x, int start_y) {
 
 int main() {
     std::cout << "[OLED Scenario] Opening I2C device...\n";
-    int fd = open("/dev/i2c-0", O_RDWR);
+    int fd = open(FBB_DEV_PATH_I2C, O_RDWR);
     if (fd < 0) {
         std::cerr << "Failed to open /dev/i2c-0\n";
         return 1;

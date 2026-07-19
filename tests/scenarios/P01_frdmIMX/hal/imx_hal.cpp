@@ -36,6 +36,7 @@
 // GBM & DRM headers and fallbacks
 #if __has_include(<gbm.h>)
 #include <gbm.h>
+#include "vfpga_device_config.h"
 #else
 // Mock declarations for host environment compilation
 struct gbm_device;
@@ -548,7 +549,7 @@ std::string HalFactory::getDefaultUartPath(SocType soc_type) {
   if (soc_type == SocType::IMX8MP) {
     return "/dev/ttymxc0";
   }
-  return "/dev/ttyLP0";
+  return FBB_DEV_PATH_SERIAL;
 }
 
 std::unique_ptr<ISerialPort>

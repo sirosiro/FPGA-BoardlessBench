@@ -25,7 +25,6 @@ src/rtl/vfpga_top.v
 src/rtl/vfpga_top_skeleton.v
 src/include/vfpga_system_config.h
 tests/scenarios/*/vfpga_config.h
-tests/scenarios/*/vfpga_device_config.h
 src/sim/sim_main.cpp
 tests/scenarios/*/test_bin
 tests/scenarios/*/fbb_pac.rs

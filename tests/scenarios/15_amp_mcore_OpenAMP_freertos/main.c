@@ -5,9 +5,10 @@
 #include <fcntl.h>
 #include <errno.h>
 
+#include "vfpga_device_config.h"
 int main(void) {
     printf("[A-Core App] Opening /dev/rpmsg0...\n");
-    int fd = open("/dev/rpmsg0", O_RDWR);
+    int fd = open(FBB_DEV_PATH_RPMSG0, O_RDWR);
     if (fd < 0) {
         perror("Failed to open /dev/rpmsg0");
         return 1;

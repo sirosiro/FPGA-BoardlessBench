@@ -8,6 +8,7 @@
 #include <cassert>
 #include <vector>
 
+#include "vfpga_device_config.h"
 // テスト用マクロ
 #define TEST_ASSERT(cond, msg) \
     do { \
@@ -138,10 +139,10 @@ int main() {
 
     // VFPGA_INTERACTIVE 環境変数が有効な場合、8チャンネルのADC値を繰り返し監視し、UART(/dev/ttyPS1)に出力する
     if (getenv("VFPGA_INTERACTIVE") != nullptr) {
-        int uart_fd = open("/dev/ttyPS1", O_RDWR);
+        int uart_fd = open(FBB_DEV_PATH_SERIAL, O_RDWR);
         
         // 仮想 FPGA レジスタへのマッピング (/dev/uio0)
-        int uio_fd = open("/dev/uio0", O_RDWR);
+        int uio_fd = open(FBB_DEV_PATH_UIO, O_RDWR);
         volatile uint32_t* uio_regs = nullptr;
         if (uio_fd >= 0) {
             uio_regs = (volatile uint32_t*)mmap(NULL, 1024, PROT_READ | PROT_WRITE, MAP_SHARED, uio_fd, 0);

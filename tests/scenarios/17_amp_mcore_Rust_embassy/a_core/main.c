@@ -6,7 +6,8 @@
 #include <stdint.h>
 #include <string.h>
 
-#define UIO_DEVICE "/dev/uio0"
+#include "../vfpga_device_config.h"
+#define UIO_DEVICE FBB_DEV_PATH_VFPGA_REG
 #define REG_SIZE 1024
 
 // Register indexes for regs array (uint32_t indices)
