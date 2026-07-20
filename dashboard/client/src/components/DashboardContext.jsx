@@ -11,6 +11,7 @@ export const DashboardProvider = ({ children }) => {
   const [connected, setConnected] = useState(false);
   const [manifest, setManifest] = useState(null);
   const [uartLogs, setUartLogs] = useState({});
+  const [uartSettings, setUartSettings] = useState({});
   const [traceHistory, setTraceHistory] = useState([]);
   const [hdmiFrame, setHdmiFrame] = useState(null);
   const [displayFrame, setDisplayFrame] = useState(null);
@@ -30,6 +31,9 @@ export const DashboardProvider = ({ children }) => {
     socket.on('uart-data', ({ name, text }) => {
       setUartLogs(prev => ({ ...prev, [name]: (prev[name] || "") + text }));
     });
+    socket.on('uart-settings', (data) => {
+      setUartSettings(data);
+    });
 
     socket.on('trace-history-init', (data) => setTraceHistory(data));
     socket.on('trace-history-update', (snapshot) => {
@@ -47,6 +51,7 @@ export const DashboardProvider = ({ children }) => {
       socket.off('registers');
       socket.off('uart-data');
       socket.off('uart-init');
+      socket.off('uart-settings');
       socket.off('trace-history-init');
       socket.off('trace-history-update');
       socket.off('hdmi-frame');
@@ -89,6 +94,7 @@ export const DashboardProvider = ({ children }) => {
         connected,
         manifest,
         uartLogs,
+        uartSettings,
         traceHistory,
         gpioDevices,
         sendUart,

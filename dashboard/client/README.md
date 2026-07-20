@@ -20,7 +20,7 @@
 - **`App.jsx`**: ダッシュボードのメインエントリーポイント。Dockview のインスタンス初期化と初期レイアウト定義、レイアウトリセットハンドラを管理。
 - **`App.css`**: Dockview の CSS 変数のオーバーライド（F-BBダークテーマ用）および共通コンポーネントのスタイリング。
 - **`components/DashboardContext.jsx`**: 
-  - フロントエンド全体のグローバル状態（レジスタ値、GPIO値、UARTログ、WebSocket接続状態など）を一元管理する React Context。
+  - フロントエンド全体のグローバル状態（レジスタ値、GPIO値、UARTログ、WebSocket接続状態、およびUART設定情報など）を一元管理する React Context。
   - 各パネルからは `useDashboard()` フックを呼び出して、クリーンに状態を取得・操作可能。
 - **`components/RegisterMonitor.jsx`**: ボード上の内部レジスタ名、オフセット、現在の値をリアルタイムに監視するテーブル。
 - **`components/GpioPanel.jsx`**: 
@@ -28,8 +28,17 @@
   - 方向レジスタ（TRI や GDIR など）の論理名に基づき、LED表示（出力）とトグルスイッチ表示（入力・インジェクション対応）を切り替え。
 - **`components/UartTerminal.jsx`**: 
   - UARTデバイス（シリアルコンソール）ごとのタブ切り替えとログ出力、およびコマンド送信を行うターミナル。
+  - ヘッダー右端に現在のボーレートなどの設定状況を表示（明示的に設定されていない場合は赤色で `Baud: Unconfigured` と警告表示）。
 - **`components/RegisterTracer.jsx`**: 
   - 観測対象レジスタの変化履歴を Recharts で可視化した時系列ラインチャート。凡例クリックによる表示トグルをサポート。
+- **`components/HdmiOutput.jsx`**: 
+  - 仮想ビデオディスプレイ/HDMIコントローラから出力されるピクセルデータを画面にリアルタイム描画するパネル。
+- **`components/OledDisplay.jsx`**: 
+  - I2C OLEDディスプレイ（SSD1306など）のエミュレーション画面を表示するパネル。
+- **`components/SdCardPanel.jsx`**: 
+  - 仮想SDカードの挿入ステータス監視、ファイル一覧の表示、ファイルのダウンロード・アップロードなどのファイル管理操作を提供するパネル。
+- **`components/SpiAdcPanel.jsx`**: 
+  - SPI接続のADC（アナログ-デジタル変換器）への入力電圧をスライダーで変更し、シミュレーション内にアナログ信号としてインジェクションするパネル。
 
 ---
 

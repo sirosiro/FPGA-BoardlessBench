@@ -67,12 +67,16 @@ graph TD
 
 ## 使用方法
 
-通常、`start_lab.sh` によって自動的に起動されますが、手動で起動する場合は以下の手順に従います。
+通常、`start_lab.sh` によって自動的に起動されますが、フロントエンドのビルドおよびパッケージインストールを含めてダッシュボードをリビルド・手動起動する場合は、以下の手順に従います。
 
+### リビルド方法 (Rebuild)
+```bash
+./dashboard/rebuild_dashboard.sh
+```
+
+### 手動での起動方法 (Manual Start)
 ```bash
 cd dashboard
-npm install
-cd client && npm install && npm run build && cd ..
 node server.js
 ```
 
@@ -80,8 +84,12 @@ node server.js
 
 ## API エンドポイント
 
-- `GET /api/manifest`: 現在ロードされているボード構成情報を返します。
-- `GET /api/uart/logs`: 全ての UART の直近のログを取得します。
+- `GET /api/manifest`: 現在ロードされているボード構成情報（`board_manifest.json`）を返します。
+- `GET /api/layout`: 現在アクティブなシナリオのフォルダから UI レイアウト情報（`fbb_layout.json`）を読み込みます。
+- `POST /api/layout`: 現在アクティブなシナリオのフォルダへ UI レイアウト情報を保存します。
+- `GET /api/sdcard/status`: 仮想 SD カードの現在のマウント・エミュレーションステータスを取得します。
+- `GET /api/sdcard/list`: 仮想 SD カードイメージ内のファイル一覧を取得します。
+- `GET /api/sdcard/dump`: 仮想 SD カードイメージから指定したファイルをダウンロードします。
 
 ## 設計上の配慮 (Design Philosophy)
 

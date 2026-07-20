@@ -300,6 +300,7 @@ function connectToUart(name, port) {
 // Socket.io
 io.on('connection', (socket) => {
     socket.emit('uart-init', uartLogs);
+    socket.emit('uart-settings', uartSettings);
     socket.emit('trace-history-init', traceHistory);
 
     // Send initial HDMI frame if exists
@@ -574,8 +575,48 @@ app.get('/api/sdcard/dump', (req, res) => {
 app.get('/api/manifest', (req, res) => res.json(manifest));
 app.use(express.static(path.join(__dirname, 'client/dist')));
 
+// UART configuration settings cache
+const uartSettings = {};
+
+function setupUartBaudWatcher() {
+    const watcher = chokidar.watch('/tmp', {
+        ignored: (p) => {
+            if (p === '/tmp') return false;
+            return !path.basename(p).startsWith('fbb_uart_baud_');
+        },
+        persistent: true,
+        depth: 0,
+        usePolling: true,
+        interval: 200
+    });
+
+    const updateSetting = (filePath) => {
+        try {
+            const fileName = path.basename(filePath);
+            const uartName = fileName.replace('fbb_uart_baud_', '');
+            if (fs.existsSync(filePath)) {
+                const content = fs.readFileSync(filePath, 'utf8').trim();
+                uartSettings[uartName] = content;
+                io.emit('uart-settings', uartSettings);
+            }
+        } catch (e) {
+            console.error("[Backend] UART baud watcher error:", e.message);
+        }
+    };
+
+    watcher.on('add', updateSetting);
+    watcher.on('change', updateSetting);
+    watcher.on('unlink', (filePath) => {
+        const fileName = path.basename(filePath);
+        const uartName = fileName.replace('fbb_uart_baud_', '');
+        delete uartSettings[uartName];
+        io.emit('uart-settings', uartSettings);
+    });
+}
+
 // サーバー起動時に最初のマニフェストロードを同期実行
 loadManifest();
+setupUartBaudWatcher();
 
 const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {

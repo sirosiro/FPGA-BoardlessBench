@@ -62,6 +62,7 @@ static void* (*original_mmap)(void *addr, size_t length, int prot, int flags, in
 static ssize_t (*original_write)(int fd, const void *buf, size_t count) = NULL;
 static ssize_t (*original_read)(int fd, void *buf, size_t count) = NULL;
 static int (*original_close)(int fd) = NULL;
+static int (*original_tcsetattr)(int fd, int optional_actions, const struct termios *termios_p) = NULL;
 
 struct mmap_route { unsigned long base_addr; unsigned long size; const char *shm_path; const char *path; };
 static struct mmap_route routes[] = { %s };
@@ -221,6 +222,141 @@ static void ensure_dir(void) {
     mkdir("/tmp/fbb/sys/class/remoteproc/remoteproc0", 0777);
 }
 
+#include <pthread.h>
+
+#define MAX_TRACKED_TERMIOS 64
+static const struct termios *tracked_termios[MAX_TRACKED_TERMIOS];
+static int tracked_count = 0;
+static pthread_mutex_t termios_mutex = PTHREAD_MUTEX_INITIALIZER;
+
+static void mark_termios_configured(const struct termios *termios_p) {
+    if (!termios_p) return;
+    pthread_mutex_lock(&termios_mutex);
+    for (int i = 0; i < tracked_count; i++) {
+        if (tracked_termios[i] == termios_p) {
+            pthread_mutex_unlock(&termios_mutex);
+            return;
+        }
+    }
+    if (tracked_count < MAX_TRACKED_TERMIOS) {
+        tracked_termios[tracked_count++] = termios_p;
+    }
+    pthread_mutex_unlock(&termios_mutex);
+}
+
+static int is_termios_configured(const struct termios *termios_p) {
+    if (!termios_p) return 0;
+    pthread_mutex_lock(&termios_mutex);
+    for (int i = 0; i < tracked_count; i++) {
+        if (tracked_termios[i] == termios_p) {
+            pthread_mutex_unlock(&termios_mutex);
+            return 1;
+        }
+    }
+    pthread_mutex_unlock(&termios_mutex);
+    return 0;
+}
+
+int cfsetospeed(struct termios *termios_p, speed_t speed) {
+    int (*orig)(struct termios *, speed_t) = dlsym(RTLD_NEXT, "cfsetospeed");
+    int res = orig(termios_p, speed);
+    if (res == 0) {
+        mark_termios_configured(termios_p);
+    }
+    return res;
+}
+
+int cfsetispeed(struct termios *termios_p, speed_t speed) {
+    int (*orig)(struct termios *, speed_t) = dlsym(RTLD_NEXT, "cfsetispeed");
+    int res = orig(termios_p, speed);
+    if (res == 0) {
+        mark_termios_configured(termios_p);
+    }
+    return res;
+}
+
+static void init_uart_state_file(int uart_id) {
+    char state_path[128];
+    snprintf(state_path, sizeof(state_path), "/tmp/fbb_uart_baud_vfpga_uart_%%d", uart_id);
+    if (!original_open) original_open = dlsym(RTLD_NEXT, "open");
+    int fd = original_open(state_path, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+    if (fd != -1) {
+        const char *def = "9600 8N1 default\n";
+        write(fd, def, strlen(def));
+        close(fd);
+    }
+}
+
+int tcsetattr(int fd, int optional_actions, const struct termios *termios_p) {
+    if (!original_tcsetattr) original_tcsetattr = dlsym(RTLD_NEXT, "tcsetattr");
+    if (!original_open) original_open = dlsym(RTLD_NEXT, "open");
+
+    if (fd >= 0 && fd < MAX_FDS && fd_contexts[fd].type == FBB_DEV_UART) {
+        int uart_id = fd_contexts[fd].sub_id;
+        speed_t speed = cfgetospeed(termios_p);
+        unsigned int baud = 9600;
+        switch (speed) {
+            case B0: baud = 0; break;
+            case B50: baud = 50; break;
+            case B75: baud = 75; break;
+            case B110: baud = 110; break;
+            case B134: baud = 134; break;
+            case B150: baud = 150; break;
+            case B200: baud = 200; break;
+            case B300: baud = 300; break;
+            case B600: baud = 600; break;
+            case B1200: baud = 1200; break;
+            case B1800: baud = 1800; break;
+            case B2400: baud = 2400; break;
+            case B4800: baud = 4800; break;
+            case B9600: baud = 9600; break;
+            case B19200: baud = 19200; break;
+            case B38400: baud = 38400; break;
+            case B57600: baud = 57600; break;
+            case B115200: baud = 115200; break;
+            case B230400: baud = 230400; break;
+            default: baud = 9600; break;
+        }
+
+        int dbits = 8;
+        switch (termios_p->c_cflag & CSIZE) {
+            case CS5: dbits = 5; break;
+            case CS6: dbits = 6; break;
+            case CS7: dbits = 7; break;
+            case CS8: dbits = 8; break;
+        }
+
+        char parity = 'N';
+        if (termios_p->c_cflag & PARENB) {
+            if (termios_p->c_cflag & PARODD) {
+                parity = 'O';
+            } else {
+                parity = 'E';
+            }
+        }
+
+        int sbits = (termios_p->c_cflag & CSTOPB) ? 2 : 1;
+
+        char state_path[128];
+        snprintf(state_path, sizeof(state_path), "/tmp/fbb_uart_baud_vfpga_uart_%%d", uart_id);
+
+        int fd_state = original_open(state_path, O_WRONLY | O_CREAT | O_TRUNC, 0666);
+        if (fd_state != -1) {
+            char buf[128];
+            int is_configured = is_termios_configured(termios_p);
+            if (is_configured) {
+                snprintf(buf, sizeof(buf), "%%u %%d%%c%%d\n", baud, dbits, parity, sbits);
+            } else {
+                snprintf(buf, sizeof(buf), "%%u %%d%%c%%d default\n", baud, dbits, parity, sbits);
+            }
+            write(fd_state, buf, strlen(buf));
+            close(fd_state);
+        }
+    }
+
+    return original_tcsetattr(fd, optional_actions, termios_p);
+}
+
 int open(const char *pathname, int flags, ...) {
     mode_t mode = 0; if (flags & O_CREAT) { va_list arg; va_start(arg, flags); mode = (mode_t)va_arg(arg, int); va_end(arg); }
     if (!original_open) original_open = dlsym(RTLD_NEXT, "open");
@@ -290,6 +426,7 @@ int open(const char *pathname, int flags, ...) {
             if (master_fd < MAX_FDS) {
                 fd_contexts[master_fd].type = FBB_DEV_UART;
                 fd_contexts[master_fd].sub_id = uart_id;
+                init_uart_state_file(uart_id);
             }
         }
         return master_fd;
@@ -365,6 +502,7 @@ int open64(const char *pathname, int flags, ...) {
             if (master_fd < MAX_FDS) {
                 fd_contexts[master_fd].type = FBB_DEV_UART;
                 fd_contexts[master_fd].sub_id = uart_id;
+                init_uart_state_file(uart_id);
             }
         }
         return master_fd;
@@ -440,6 +578,7 @@ int openat(int dirfd, const char *pathname, int flags, ...) {
             if (master_fd < MAX_FDS) {
                 fd_contexts[master_fd].type = FBB_DEV_UART;
                 fd_contexts[master_fd].sub_id = uart_id;
+                init_uart_state_file(uart_id);
             }
         }
         return master_fd;
@@ -515,6 +654,7 @@ int openat64(int dirfd, const char *pathname, int flags, ...) {
             if (master_fd < MAX_FDS) {
                 fd_contexts[master_fd].type = FBB_DEV_UART;
                 fd_contexts[master_fd].sub_id = uart_id;
+                init_uart_state_file(uart_id);
             }
         }
         return master_fd;
