@@ -35,6 +35,8 @@ def main():
         print(f"[Runner] Cleaning environment for {s}...")
         clean_cmd = ["./tests/scenario_runner.sh", s_path, "--clean"]
         subprocess.run(clean_cmd, capture_output=True, text=True)
+        if os.path.exists("/tmp/fbb_memory_violation"):
+            os.remove("/tmp/fbb_memory_violation")
         
         # 2. Run
         print(f"[Runner] Executing scenario_runner.sh for {s}...")
@@ -53,6 +55,7 @@ def main():
         stdout, stderr = "", ""
         is_passed = False
         is_infinite = s in ("02d_oled_i2c", "S01_cpp_lfsr_sequencer")
+        is_violation_test = s == "04b_dev_mem_violation_legacy"
         try:
             if is_infinite:
                 # Wait for 15 seconds, then raise TimeoutExpired
@@ -60,7 +63,11 @@ def main():
                 is_passed = (proc.returncode == 0)
             else:
                 stdout, stderr = proc.communicate()
-                is_passed = (proc.returncode == 0)
+                if is_violation_test:
+                    has_violation_file = os.path.exists("/tmp/fbb_memory_violation")
+                    is_passed = (proc.returncode == 1) and has_violation_file
+                else:
+                    is_passed = (proc.returncode == 0)
         except subprocess.TimeoutExpired:
             print(f"[Runner] Scenario {s} timed out as expected. Terminating process group...")
             try:

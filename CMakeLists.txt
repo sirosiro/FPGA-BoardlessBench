@@ -9,6 +9,12 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Enable compile_commands.json export
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+option(FBB_ENABLE_ASAN "Enable AddressSanitizer for memory bug detection" OFF)
+if(FBB_ENABLE_ASAN)
+    add_compile_options(-fsanitize=address -fno-omit-frame-pointer)
+    add_link_options(-fsanitize=address)
+endif()
+
 # Active test scenario directory
 set(SCENARIO_DIR "" CACHE PATH "Path to the active test scenario")
 

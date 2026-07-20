@@ -614,9 +614,37 @@ function setupUartBaudWatcher() {
     });
 }
 
+function setupMemoryViolationWatcher() {
+    const filePath = '/tmp/fbb_memory_violation';
+    const watcher = chokidar.watch(filePath, {
+        persistent: true,
+        usePolling: true,
+        interval: 100
+    });
+
+    const notifyViolation = () => {
+        try {
+            if (fs.existsSync(filePath)) {
+                const content = fs.readFileSync(filePath, 'utf8').trim();
+                const violationData = JSON.parse(content);
+                io.emit('memory-error', violationData);
+            }
+        } catch (e) {
+            console.error("[Backend] Memory violation watcher error:", e.message);
+        }
+    };
+
+    watcher.on('add', notifyViolation);
+    watcher.on('change', notifyViolation);
+    watcher.on('unlink', () => {
+        io.emit('memory-error', null);
+    });
+}
+
 // サーバー起動時に最初のマニフェストロードを同期実行
 loadManifest();
 setupUartBaudWatcher();
+setupMemoryViolationWatcher();
 
 const PORT = process.env.PORT || 8080;
 server.listen(PORT, () => {

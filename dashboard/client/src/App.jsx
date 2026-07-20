@@ -10,6 +10,7 @@ import HdmiOutput from './components/HdmiOutput';
 import SpiAdcPanel from './components/SpiAdcPanel';
 import OledDisplay from './components/OledDisplay';
 import SdCardPanel from './components/SdCardPanel';
+import MemoryErrorModal from './components/MemoryErrorModal';
 import './App.css';
 
 
@@ -301,6 +302,7 @@ function DashboardInner() {
           onReady={onReady}
         />
       </main>
+      <MemoryErrorModal />
     </div>
   );
 }

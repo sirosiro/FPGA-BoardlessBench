@@ -16,6 +16,7 @@ export const DashboardProvider = ({ children }) => {
   const [hdmiFrame, setHdmiFrame] = useState(null);
   const [displayFrame, setDisplayFrame] = useState(null);
   const [hiddenTraceKeys, setHiddenTraceKeys] = useState({});
+  const [memoryError, setMemoryError] = useState(null);
 
 
   useEffect(() => {
@@ -33,6 +34,9 @@ export const DashboardProvider = ({ children }) => {
     });
     socket.on('uart-settings', (data) => {
       setUartSettings(data);
+    });
+    socket.on('memory-error', (data) => {
+      setMemoryError(data);
     });
 
     socket.on('trace-history-init', (data) => setTraceHistory(data));
@@ -52,6 +56,7 @@ export const DashboardProvider = ({ children }) => {
       socket.off('uart-data');
       socket.off('uart-init');
       socket.off('uart-settings');
+      socket.off('memory-error');
       socket.off('trace-history-init');
       socket.off('trace-history-update');
       socket.off('hdmi-frame');
@@ -105,6 +110,8 @@ export const DashboardProvider = ({ children }) => {
         displayFrame,
         hiddenTraceKeys,
         toggleTraceKey,
+        memoryError,
+        setMemoryError,
       }}
 
     >

@@ -18,6 +18,7 @@ fi
 
 # 以前の実行で設定された可能性があるLD_PRELOADを解除
 unset LD_PRELOAD
+unset LD_BIND_NOW
 
 # クリーンアップ関数
 cleanup() {
@@ -42,6 +43,7 @@ cleanup() {
     echo "Cleaning up temporary files..."
     rm -f /tmp/vfpga_* 2>/dev/null
     rm -f /tmp/fbb_uart_* 2>/dev/null
+    rm -f /tmp/fbb_memory_violation 2>/dev/null
     rm -f /tmp/vring0 /tmp/vfpga_reg /tmp/fbb_compatible /tmp/fbb_model 2>/dev/null
     rm -f /tmp/hdmi_output.bmp 2>/dev/null
     rm -f dashboard/data/board_manifest.json 2>/dev/null
@@ -59,8 +61,14 @@ echo "===================================================="
 
 # 1. 準備
 echo "[0/3] Cleaning up previous state..."
+ps -ef | grep "/workspaces/FPGA-BoardlessBench/build/bin/" | grep -v grep | awk '{print $2}' | xargs kill -9 2>/dev/null || true
+ps -ef | grep "/tmp/fbb_build/bin/" | grep -v grep | awk '{print $2}' | xargs kill -9 2>/dev/null || true
+ps -ef | grep "test_bin" | grep -v grep | awk '{print $2}' | xargs kill -9 2>/dev/null || true
+pkill -9 -f "vlogic_controller" 2>/dev/null || true
+pkill -9 -f "vfpga_sim" 2>/dev/null || true
 rm -f dashboard/data/vfpga_uart_* 2>/dev/null
 rm -f /tmp/fbb_uart_* 2>/dev/null
+rm -f /tmp/fbb_memory_violation 2>/dev/null
 rm -f /tmp/vring0 /tmp/vfpga_reg /tmp/fbb_compatible /tmp/fbb_model 2>/dev/null
 rm -f /tmp/hdmi_output.bmp 2>/dev/null
 rm -rf /tmp/fbb 2>/dev/null
@@ -149,10 +157,12 @@ export VFPGA_INTERACTIVE=1
 export FORCE_MESA_FALLBACK=1
 export FORCE_HOST_DISPLAY=1
 export LD_PRELOAD="$PWD/libfpgashim.so"
+export LD_BIND_NOW=1
 export FBB_ACTIVE=1
 "${SCENARIO_DIR}/run.sh"
 unset FBB_ACTIVE
 unset LD_PRELOAD
+unset LD_BIND_NOW
 
 # アプリ終了後もバックエンドの状態を監視し続ける
 while true; do

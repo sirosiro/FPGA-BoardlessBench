@@ -25,6 +25,7 @@
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <time.h>
+#include <pthread.h>
 #include "vfpga_system_config.h"
 #include "vfpga_device_config.h"
 #include <sys/mount.h>
@@ -66,6 +67,20 @@ static int (*original_tcsetattr)(int fd, int optional_actions, const struct term
 
 struct mmap_route { unsigned long base_addr; unsigned long size; const char *shm_path; const char *path; };
 static struct mmap_route routes[] = { %s };
+
+static pthread_mutex_t mappings_mutex = PTHREAD_MUTEX_INITIALIZER;
+struct active_mapping {
+    void *addr;
+    size_t size;
+    char path[128];
+};
+#define MAX_ACTIVE_MAPPINGS 32
+static struct active_mapping active_mappings[MAX_ACTIVE_MAPPINGS];
+static int num_active_mappings = 0;
+
+static struct sigaction old_segv_action;
+static void sigsegv_handler(int sig, siginfo_t *info, void *context);
+static void init_segv_handler(void);
 
 static int handle_rpmsg_open(void);
 
@@ -688,20 +703,148 @@ void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
         }
         
         if (target_idx != -1) {
-            int shm_fd = original_open(routes[target_idx].shm_path, O_RDWR, 0666);
+            if (!original_open) original_open = dlsym(RTLD_NEXT, "open");
+            int shm_fd = original_open ? original_open(routes[target_idx].shm_path, O_RDWR, 0666) : -1;
             if (shm_fd < 0) {
                 fprintf(stderr, "[Shim] ERROR: Failed to open %%s! (errno: %%d)\n", routes[target_idx].shm_path, errno);
             } else {
-                void *res = original_mmap(addr, length, prot, flags, shm_fd, offset);
+                size_t aligned_len = (length + 4095) & ~4095;
+                size_t reserve_size = aligned_len + 4096;
+                void *reserved = original_mmap(addr, reserve_size, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+                if (reserved == MAP_FAILED) {
+                    fprintf(stderr, "[Shim] ERROR: mmap reservation failed! (errno: %%d)\n", errno);
+                    close(shm_fd);
+                    return MAP_FAILED;
+                }
+                void *res = original_mmap(reserved, length, prot, flags | MAP_FIXED, shm_fd, offset);
                 if (res == MAP_FAILED) {
-                    fprintf(stderr, "[Shim] ERROR: original_mmap failed! (shm_fd: %%d, length: %%zu, offset: %%ld, errno: %%d)\n", shm_fd, length, (long)offset, errno);
+                    fprintf(stderr, "[Shim] ERROR: original_mmap MAP_FIXED failed! (shm_fd: %%d, length: %%zu, offset: %%ld, errno: %%d)\n", shm_fd, length, (long)offset, errno);
+                    // Use system munmap directly
+                    int (*real_munmap)(void *, size_t) = dlsym(RTLD_NEXT, "munmap");
+                    if (real_munmap) real_munmap(reserved, reserve_size);
+                    close(shm_fd);
+                    return MAP_FAILED;
                 }
                 close(shm_fd); 
+                
+                // Track this mapping for SIGSEGV handling
+                pthread_mutex_lock(&mappings_mutex);
+                if (num_active_mappings < MAX_ACTIVE_MAPPINGS) {
+                    active_mappings[num_active_mappings].addr = res;
+                    active_mappings[num_active_mappings].size = length;
+                    strncpy(active_mappings[num_active_mappings].path, routes[target_idx].path, sizeof(active_mappings[num_active_mappings].path) - 1);
+                    active_mappings[num_active_mappings].path[sizeof(active_mappings[num_active_mappings].path) - 1] = '\0';
+                    num_active_mappings++;
+                }
+                pthread_mutex_unlock(&mappings_mutex);
+                
                 return res;
             }
         }
     }
     return original_mmap(addr, length, prot, flags, fd, offset);
+}
+
+static void sigsegv_handler(int sig, siginfo_t *info, void *context) {
+    (void)sig;
+    (void)context;
+    void *fault_addr = info->si_addr;
+    int found = 0;
+    struct active_mapping matched_mapping;
+    
+    for (int i = 0; i < num_active_mappings; i++) {
+        unsigned long start = (unsigned long)active_mappings[i].addr;
+        unsigned long size = active_mappings[i].size;
+        unsigned long fault = (unsigned long)fault_addr;
+        unsigned long guard_start = (start + size + 4095) & ~4095;
+        if (fault >= guard_start && fault < guard_start + 4096) {
+            found = 1;
+            matched_mapping = active_mappings[i];
+            break;
+        }
+    }
+    
+    if (found) {
+        if (!original_open) original_open = dlsym(RTLD_NEXT, "open");
+        int fd = original_open ? original_open("/tmp/fbb_memory_violation", O_WRONLY | O_CREAT | O_TRUNC, 0666) : -1;
+        
+        if (fd >= 0) {
+            char buf[512];
+            char *p = buf;
+            
+            #define APPEND_STR(s) { const char *str = (s); while(*str) { *p++ = *str++; } }
+            
+            APPEND_STR("{\n  \"address\": \"0x");
+            unsigned long val = (unsigned long)fault_addr;
+            char hex_buf[32];
+            int idx = 0;
+            if (val == 0) {
+                hex_buf[idx++] = '0';
+            } else {
+                while (val > 0) {
+                    int rem = val %% 16;
+                    hex_buf[idx++] = (rem < 10) ? ('0' + rem) : ('a' + (rem - 10));
+                    val /= 16;
+                }
+            }
+            while (idx > 0) {
+                *p++ = hex_buf[--idx];
+            }
+            
+            APPEND_STR("\",\n  \"device\": \"");
+            APPEND_STR(matched_mapping.path);
+            APPEND_STR("\",\n  \"size\": ");
+            
+            val = matched_mapping.size;
+            idx = 0;
+            if (val == 0) {
+                hex_buf[idx++] = '0';
+            } else {
+                while (val > 0) {
+                    hex_buf[idx++] = '0' + (val %% 10);
+                    val /= 10;
+                }
+            }
+            while (idx > 0) {
+                *p++ = hex_buf[--idx];
+            }
+            APPEND_STR("\n}\n");
+            
+            write(fd, buf, p - buf);
+            close(fd);
+        }
+        
+        const char *err_msg = "\n[F-BB Memory Guard] FATAL ERROR: FW attempted to access invalid MMIO address outside bounds!\n";
+        write(2, err_msg, strlen(err_msg));
+        
+        _exit(1);
+    }
+    
+    sigaction(SIGSEGV, &old_segv_action, NULL);
+    raise(SIGSEGV);
+}
+
+static void init_segv_handler(void) {
+    struct sigaction sa;
+    memset(&sa, 0, sizeof(sa));
+    sa.sa_sigaction = sigsegv_handler;
+    sa.sa_flags = SA_SIGINFO;
+    sigemptyset(&sa.sa_mask);
+    sigaction(SIGSEGV, &sa, &old_segv_action);
+}
+
+static void __attribute__((constructor)) init_fbb_core(void) {
+    original_open = dlsym(RTLD_NEXT, "open");
+    original_open64 = dlsym(RTLD_NEXT, "open64");
+    original_openat = dlsym(RTLD_NEXT, "openat");
+    original_openat64 = dlsym(RTLD_NEXT, "openat64");
+    original_ioctl = dlsym(RTLD_NEXT, "ioctl");
+    original_mmap = dlsym(RTLD_NEXT, "mmap");
+    original_write = dlsym(RTLD_NEXT, "write");
+    original_read = dlsym(RTLD_NEXT, "read");
+    original_close = dlsym(RTLD_NEXT, "close");
+    original_tcsetattr = dlsym(RTLD_NEXT, "tcsetattr");
+    init_segv_handler();
 }
 
 int ioctl(int fd, unsigned long request, ...) {
@@ -1060,6 +1203,31 @@ static void __attribute__((constructor)) init_mcore_mapping(void) {
                 fprintf(stdout, "[Shim M-Core] Successfully mapped 0x%%lx -> %%p with MAP_FIXED_NOREPLACE (size: %%ld, offset: %%ld)\n",
                         routes[i].base_addr, mapped, (long)routes[i].size, (long)offset);
                 fflush(stdout);
+            }
+            
+            if (mapped != MAP_FAILED) {
+                // Try to map a guard page right after the valid mapping
+                unsigned long guard_addr = (unsigned long)mapped + routes[i].size;
+                int is_valid_addr = 0;
+                for (int j = 0; j < (int)(sizeof(routes)/sizeof(routes[0])); j++) {
+                    if (routes[j].base_addr == guard_addr) {
+                        is_valid_addr = 1; break;
+                    }
+                }
+                if (!is_valid_addr) {
+                    original_mmap((void *)guard_addr, 4096, PROT_NONE, MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED, -1, 0);
+                }
+                
+                // Track this mapping for SIGSEGV handling
+                pthread_mutex_lock(&mappings_mutex);
+                if (num_active_mappings < MAX_ACTIVE_MAPPINGS) {
+                    active_mappings[num_active_mappings].addr = mapped;
+                    active_mappings[num_active_mappings].size = routes[i].size;
+                    strncpy(active_mappings[num_active_mappings].path, routes[i].path, sizeof(active_mappings[num_active_mappings].path) - 1);
+                    active_mappings[num_active_mappings].path[sizeof(active_mappings[num_active_mappings].path) - 1] = '\0';
+                    num_active_mappings++;
+                }
+                pthread_mutex_unlock(&mappings_mutex);
             }
             close(shm_fd);
         }

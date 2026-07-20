@@ -1,0 +1,79 @@
+{
+    "grid": {
+        "root": {
+            "type": "branch",
+            "data": [
+                {
+                    "type": "branch",
+                    "data": [
+                        {
+                            "type": "branch",
+                            "data": [
+                                {
+                                    "type": "leaf",
+                                    "data": {
+                                        "views": [
+                                            "registerMonitor"
+                                        ],
+                                        "activeView": "registerMonitor",
+                                        "id": "2"
+                                    },
+                                    "size": 270
+                                },
+                                {
+                                    "type": "leaf",
+                                    "data": {
+                                        "views": [
+                                            "registerTracer"
+                                        ],
+                                        "activeView": "registerTracer",
+                                        "id": "4"
+                                    },
+                                    "size": 432
+                                }
+                            ],
+                            "size": 400
+                        },
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "uartTerminal_vfpga_uart_1"
+                                ],
+                                "activeView": "uartTerminal_vfpga_uart_1",
+                                "id": "1"
+                            },
+                            "size": 739
+                        }
+                    ],
+                    "size": 702
+                }
+            ],
+            "size": 1139
+        },
+        "width": 1139,
+        "height": 702,
+        "orientation": "VERTICAL"
+    },
+    "panels": {
+        "uartTerminal_vfpga_uart_1": {
+            "id": "uartTerminal_vfpga_uart_1",
+            "contentComponent": "uartTerminal",
+            "params": {
+                "deviceName": "vfpga_uart_1"
+            },
+            "title": "UART: vfpga_uart_1"
+        },
+        "registerMonitor": {
+            "id": "registerMonitor",
+            "contentComponent": "registerMonitor",
+            "title": "Registers"
+        },
+        "registerTracer": {
+            "id": "registerTracer",
+            "contentComponent": "registerTracer",
+            "title": "Tracer"
+        }
+    },
+    "activeGroup": "1"
+}

@@ -139,11 +139,13 @@ echo "[Runner] Executing application with LD_PRELOAD..."
 cd "${SCENARIO_DIR}"
 chmod +x ./run.sh
 export LD_PRELOAD="${SHIM}"
+export LD_BIND_NOW=1
 export FBB_ACTIVE=1
 ./run.sh
 RESULT=$?
 unset FBB_ACTIVE
 unset LD_PRELOAD
+unset LD_BIND_NOW
 
 if [ $RESULT -eq 0 ]; then
     echo -e "\n[Runner] RESULT: SUCCESS"
