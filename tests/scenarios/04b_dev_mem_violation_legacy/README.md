@@ -4,11 +4,7 @@
 
 特にレガシーなC言語コードで直接レジスタ操作を行う組み込み開発エンジニア向けに、実機やシミュレータ側を変更することなく安全にメモリ安全性を担保するデバッグアプローチを明示します。
 
-* AddressSanitizerで検出時の画面
 ![Fpga-BoardlessBench (F-BB) AroundView Dashboard](assets/dashboard.png)
-
-* ガードページ検出時のポップアップ画面
-![Fpga-BoardlessBench (F-BB) AroundView Dashboard](assets/error_popup.png)
 
 ---
 
@@ -69,11 +65,11 @@ Select option (1-3):
 
 * **AddressSanitizerによるヒープエラー検出画面**
   ASanが有効な状態で Option 2 を実行すると、ダッシュボードターミナル上にクラッシュレポートが出力されます。
-  ![AddressSanitizer Dashboard Output](file:///workspaces/FPGA-BoardlessBench/tests/scenarios/04b_dev_mem_violation_legacy/assets/dashboard.png)
+![Fpga-BoardlessBench (F-BB) AroundView Dashboard](assets/error_message.png)
 
 * **メモリガードページ違反検出時の警告ポップアップ（英語）**
   Option 1 を実行すると、ダッシュボードの最前面に以下の致命的エラーモーダルがポップアップ表示されます。
-  ![Memory Guard Page Error Popup](file:///workspaces/FPGA-BoardlessBench/tests/scenarios/04b_dev_mem_violation_legacy/assets/error_popup.png)
+![Fpga-BoardlessBench (F-BB) AroundView Dashboard](assets/error_popup.png)
 
 ---
 

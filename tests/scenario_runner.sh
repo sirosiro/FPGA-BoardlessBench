@@ -138,7 +138,19 @@ cmake --build build || exit 1
 echo "[Runner] Executing application with LD_PRELOAD..."
 cd "${SCENARIO_DIR}"
 chmod +x ./run.sh
-export LD_PRELOAD="${SHIM}"
+
+# Prepend ASan runtime if enabled to avoid LD_PRELOAD ordering warning/disablement
+if [[ "$CMAKE_ARGS" == *"-DFBB_ENABLE_ASAN=ON"* ]] || [ "$FBB_ENABLE_ASAN" = "ON" ]; then
+    ASAN_SO=$(gcc -print-file-name=libasan.so 2>/dev/null)
+    if [ -f "$ASAN_SO" ]; then
+        export LD_PRELOAD="$ASAN_SO:${SHIM}"
+    else
+        export LD_PRELOAD="${SHIM}"
+    fi
+else
+    export LD_PRELOAD="${SHIM}"
+fi
+
 export LD_BIND_NOW=1
 export FBB_ACTIVE=1
 ./run.sh

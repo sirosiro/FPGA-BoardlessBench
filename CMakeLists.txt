@@ -9,6 +9,11 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Enable compile_commands.json export
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
+# Support enabling ASan from environment variable
+if(DEFINED ENV{FBB_ENABLE_ASAN} AND "$ENV{FBB_ENABLE_ASAN}" STREQUAL "ON")
+    set(FBB_ENABLE_ASAN ON CACHE BOOL "Enable AddressSanitizer for memory bug detection" FORCE)
+endif()
+
 option(FBB_ENABLE_ASAN "Enable AddressSanitizer for memory bug detection" OFF)
 if(FBB_ENABLE_ASAN)
     add_compile_options(-fsanitize=address -fno-omit-frame-pointer)

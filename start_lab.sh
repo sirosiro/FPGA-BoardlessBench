@@ -108,7 +108,7 @@ echo "[1/3] Generating code and building artifacts..."
 python3 scripts/gen_vfpga.py "${DTS_PATH}" || exit 1
 
 # シミュレータとShimのビルド
-cmake -B build -DSCENARIO_DIR="${SCENARIO_DIR}" || { echo "[Error] CMake configuration failed!"; exit 1; }
+cmake -B build -DSCENARIO_DIR="${SCENARIO_DIR}" ${CMAKE_ARGS} || { echo "[Error] CMake configuration failed!"; exit 1; }
 cmake --build build --target fpgashim --target vfpga_sim || { echo "[Error] Simulator build failed!"; exit 1; }
 
 # アプリケーションのビルド
@@ -156,7 +156,19 @@ echo "   Starting firmware application..."
 export VFPGA_INTERACTIVE=1
 export FORCE_MESA_FALLBACK=1
 export FORCE_HOST_DISPLAY=1
-export LD_PRELOAD="$PWD/libfpgashim.so"
+
+# Prepend ASan runtime if enabled to avoid LD_PRELOAD ordering warning/disablement
+if [[ "$CMAKE_ARGS" == *"-DFBB_ENABLE_ASAN=ON"* ]] || [ "$FBB_ENABLE_ASAN" = "ON" ]; then
+    ASAN_SO=$(gcc -print-file-name=libasan.so 2>/dev/null)
+    if [ -f "$ASAN_SO" ]; then
+        export LD_PRELOAD="$ASAN_SO:$PWD/libfpgashim.so"
+    else
+        export LD_PRELOAD="$PWD/libfpgashim.so"
+    fi
+else
+    export LD_PRELOAD="$PWD/libfpgashim.so"
+fi
+
 export LD_BIND_NOW=1
 export FBB_ACTIVE=1
 "${SCENARIO_DIR}/run.sh"
