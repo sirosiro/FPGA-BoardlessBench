@@ -63,6 +63,12 @@ int main() {
         cfmakeraw(&options);
         tcsetattr(uart_fd, TCSANOW, &options);
 
+        // Redirect stdout and stderr to the UART terminal
+        // This ensures all standard printf and ASan error outputs (written to stderr)
+        // are routed to the dashboard's UART console interface.
+        dup2(uart_fd, STDOUT_FILENO);
+        dup2(uart_fd, STDERR_FILENO);
+
         const char *menu_str = 
             "\r\n==================================================\r\n"
             " F-BB Memory Violation Interactive Test Menu\r\n"
