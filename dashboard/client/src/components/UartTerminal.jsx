@@ -2,6 +2,94 @@ import { useState, useRef, useEffect } from 'react';
 import { Terminal as TerminalIcon, Send } from 'lucide-react';
 import { useDashboard } from './DashboardContext';
 
+// Simple ANSI escape sequence parser for terminal colors and formatting
+function parseAnsi(text) {
+  if (!text) return text;
+
+  // Clean non-color terminal control sequences (e.g. clear line, cursor movements)
+  const cleanedText = text.replace(/\u001b\[[0-9;]*[a-hK-Z]/g, '');
+
+  const ansiRegex = /\u001b\[([0-9;]*)m/;
+  const parts = [];
+  let remaining = cleanedText;
+
+  let currentStyle = {
+    color: null,
+    fontWeight: null,
+  };
+
+  const ansiColors = {
+    '30': '#0f1419', // Black
+    '31': '#ff5555', // Red (Bright red for better visibility)
+    '32': '#50fa7b', // Green
+    '33': '#f1fa8c', // Yellow
+    '34': '#bd93f9', // Blue
+    '35': '#ff79c6', // Magenta
+    '36': '#8be9fd', // Cyan
+    '37': '#f8f8f2', // White
+    '90': '#6272a4', // Grey
+    '91': '#ff6e6e',
+    '92': '#69ff94',
+    '93': '#ffffa5',
+    '94': '#d6acff',
+    '95': '#ff92df',
+    '96': '#a4ffff',
+    '97': '#ffffff',
+  };
+
+  let match;
+  let keyCounter = 0;
+  while ((match = ansiRegex.exec(remaining)) !== null) {
+    const matchIndex = match.index;
+    const matchLength = match[0].length;
+    const code = match[1];
+
+    if (matchIndex > 0) {
+      const textChunk = remaining.substring(0, matchIndex);
+      parts.push(
+        <span
+          key={keyCounter++}
+          style={{
+            color: currentStyle.color || undefined,
+            fontWeight: currentStyle.fontWeight || undefined,
+          }}
+        >
+          {textChunk}
+        </span>
+      );
+    }
+
+    const codes = code.split(';');
+    codes.forEach(c => {
+      if (c === '0' || c === '') {
+        currentStyle = { color: null, fontWeight: null };
+      } else if (c === '1') {
+        currentStyle.fontWeight = 'bold';
+      } else if (ansiColors[c]) {
+        currentStyle.color = ansiColors[c];
+      }
+    });
+
+    remaining = remaining.substring(matchIndex + matchLength);
+  }
+
+  if (remaining.length > 0) {
+    parts.push(
+      <span
+        key={keyCounter++}
+        style={{
+          color: currentStyle.color || undefined,
+          fontWeight: currentStyle.fontWeight || undefined,
+        }}
+      >
+        {remaining}
+      </span>
+    );
+  }
+
+  return parts;
+}
+
 function UartTerminal(props) {
   const {
     uartLogs,
@@ -58,7 +146,7 @@ function UartTerminal(props) {
 
       <div className="terminal-viewport" ref={terminalViewportRef} style={{ flex: 1, overflowY: 'auto', padding: '1.5rem' }}>
         <pre className="terminal-output" style={{ margin: 0, fontFamily: "'JetBrains Mono', monospace", fontSize: '0.9rem', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
-          {currentLog || 'Waiting for connection...'}
+          {currentLog ? parseAnsi(currentLog) : 'Waiting for connection...'}
         </pre>
       </div>
 
