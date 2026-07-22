@@ -15,7 +15,7 @@
                                 "activeView": "registerMonitor",
                                 "id": "2"
                             },
-                            "size": 290
+                            "size": 306
                         },
                         {
                             "type": "leaf",
@@ -26,10 +26,10 @@
                                 "activeView": "gpioPanel",
                                 "id": "3"
                             },
-                            "size": 512
+                            "size": 539
                         }
                     ],
-                    "size": 384
+                    "size": 387.5487155271694
                 },
                 {
                     "type": "leaf",
@@ -41,16 +41,26 @@
                         "activeView": "registerTracer",
                         "id": "1"
                     },
-                    "size": 901
+                    "size": 1039.4512844728306
                 }
             ],
-            "size": 802
+            "size": 845
         },
-        "width": 1285,
-        "height": 802,
+        "width": 1427,
+        "height": 845,
         "orientation": "HORIZONTAL"
     },
     "panels": {
+        "registerMonitor": {
+            "id": "registerMonitor",
+            "contentComponent": "registerMonitor",
+            "title": "Registers"
+        },
+        "gpioPanel": {
+            "id": "gpioPanel",
+            "contentComponent": "gpioPanel",
+            "title": "GPIO / Pin Array"
+        },
         "uartTerminal_default": {
             "id": "uartTerminal_default",
             "contentComponent": "uartTerminal",
@@ -63,16 +73,6 @@
             "id": "registerTracer",
             "contentComponent": "registerTracer",
             "title": "Tracer"
-        },
-        "registerMonitor": {
-            "id": "registerMonitor",
-            "contentComponent": "registerMonitor",
-            "title": "Registers"
-        },
-        "gpioPanel": {
-            "id": "gpioPanel",
-            "contentComponent": "gpioPanel",
-            "title": "GPIO / Pin Array"
         }
     },
     "activeGroup": "1"

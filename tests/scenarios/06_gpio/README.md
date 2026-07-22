@@ -2,6 +2,8 @@
 
 このシナリオでは、Zynq等のFPGAでよく利用される `AXI GPIO` (General Purpose Input/Output) のエミュレーション機能のテストを行います。
 
+![FPGA-BoardlessBench (F-BB) AroundView Dashboard](assets/dashboard.png)
+
 ## アーキテクチャ概念図
 
 ```mermaid
