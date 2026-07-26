@@ -239,6 +239,10 @@ protected:
         // 生のピン状態を読み取る (内部監視ループでは検証済みのピンしか走査しないため、ガードなしのRawアクセスを使用)
         bool current_raw_state = readPinRaw(handler.pin_num);
 
+        if (current_raw_state != handler.last_stable_state) {
+          fprintf(stderr, "[HAL-DEBUG] Pin %d state change detected: %d -> %d\n", handler.pin_num, handler.last_stable_state, current_raw_state);
+        }
+
         if (handler.use_filter) {
           // デジタルノイズフィルタ（Glitch Filter）:
           // 5msポーリングで4回連続して同じ変化後状態が安定検知されたら変化確定
@@ -249,6 +253,7 @@ protected:
                 handler.last_stable_state = current_raw_state;
                 handler.filter_counter = 0;
                 if (handler.callback) {
+                  fprintf(stderr, "[HAL-DEBUG] Triggering callback for Pin %d (state=%d)\n", handler.pin_num, handler.last_stable_state);
                   handler.callback(handler.pin_num, handler.last_stable_state);
                 }
               }
@@ -266,6 +271,7 @@ protected:
             handler.last_stable_state = current_raw_state;
             handler.last_raw_state = current_raw_state;
             if (handler.callback) {
+              fprintf(stderr, "[HAL-DEBUG] Triggering callback for Pin %d (state=%d)\n", handler.pin_num, handler.last_stable_state);
               handler.callback(handler.pin_num, handler.last_stable_state);
             }
           }

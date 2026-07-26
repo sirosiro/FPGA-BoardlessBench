@@ -34,10 +34,10 @@ module vfpga_top (
             case (addr)
                 // i.MX 8M Plus GPIO1 (0x30200000) & i.MX95 GPIO1 (0x47400000)
                 32'h30200000, 32'h47400000: DR   <= w_data;
-                // i.MX95 PDIR (offset 0x04) - writable from dashboard for input simulation
-                32'h47400004:               PDIR <= w_data;
-                // i.MX 8M Plus GDIR (0x30200004) & i.MX95 PDDR (0x47400008)
-                32'h30200004, 32'h47400008: GDIR <= w_data;
+                // PDIR (offset 0x04) - writable from dashboard for input simulation
+                32'h30200004, 32'h47400004: PDIR <= w_data;
+                // GDIR / PDDR (offset 0x08)
+                32'h30200008, 32'h47400008: GDIR <= w_data;
                 default: ;
             endcase
         end
@@ -48,13 +48,11 @@ module vfpga_top (
         case (addr)
             // i.MX 8M Plus DR / i.MX95 PDOR (offset 0x00)
             32'h30200000, 32'h47400000: r_data = DR;
-            // i.MX 8M Plus GDIR (offset 0x04)
-            32'h30200004:               r_data = GDIR;
-            // i.MX95 PDIR (offset 0x04): reads internal PDIR register
-            32'h47400004:               r_data = PDIR;
-            // i.MX95 PDDR (offset 0x08)
-            32'h47400008:               r_data = GDIR;
-            default:                    r_data = 32'hDEADBEEF;
+            // PDIR (offset 0x04)
+            32'h30200004, 32'h47400004: r_data = PDIR;
+            // GDIR / PDDR (offset 0x08)
+            32'h30200008, 32'h47400008: r_data = GDIR;
+            default:                    r_data = 32'h0;
         endcase
     end
 

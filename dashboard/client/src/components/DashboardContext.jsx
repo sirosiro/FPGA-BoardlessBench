@@ -72,6 +72,7 @@ export const DashboardProvider = ({ children }) => {
   };
 
   const handleGpioToggle = (deviceName, bitIndex, currentOn, dataRegName = 'DATA') => {
+    console.log(`[UI-DEBUG] Pin clicked: device=${deviceName}, bit=${bitIndex}, currentOn=${currentOn}, sending value=${!currentOn}`);
     socket.emit('gpio-inject', { deviceName, bitIndex, value: !currentOn, dataRegName });
   };
   

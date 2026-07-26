@@ -59,6 +59,7 @@ function loadManifest() {
             const newManifest = JSON.parse(data);
             const pathChanged = newManifest.hdmi_output_path !== manifest.hdmi_output_path;
             manifest = newManifest;
+            Object.keys(injectedPinOverrides).forEach(k => delete injectedPinOverrides[k]);
             if (pathChanged) {
                 setupHdmiWatcher();
             }
@@ -71,6 +72,62 @@ function loadManifest() {
 }
 
 
+// 手動注入された GPIO ピン入力状態の保持マップ { deviceName: { bitIndex: boolean } }
+const injectedPinOverrides = {};
+
+function applyInjectedGpioOverrides() {
+    if (!shmBuffer || !manifest.devices) return;
+    const uioGpioDevs = manifest.devices.filter(d => d.type === 'uio' || d.type === 'gpio');
+    if (uioGpioDevs.length === 0) return;
+    const shmBaseAddr = Math.min(...uioGpioDevs.map(d => d.base_addr || 0));
+
+    let shmModified = false;
+    for (const [deviceName, bits] of Object.entries(injectedPinOverrides)) {
+        const dev = manifest.devices.find(d => d.name === deviceName || d.name.startsWith(deviceName) || d.name.includes(deviceName) || d.type === deviceName);
+        if (!dev || !dev.registers) continue;
+
+        // Apply overrides to all matching data/input/output registers
+        const targetRegs = dev.registers.filter(r => {
+            const pName = r.name.toUpperCase();
+            const lName = (r.logical_name || r.name).toUpperCase();
+            return pName.includes('PDIR') || pName.includes('PDOR') || pName.includes('IN') || lName.startsWith('DATA');
+        });
+
+        const activeRegs = targetRegs.length > 0 ? targetRegs : [dev.registers[0]];
+
+        activeRegs.forEach(reg => {
+            const regOffset = typeof reg.offset === 'string' ? parseInt(reg.offset, 16) : (reg.offset || 0);
+            if (isNaN(regOffset)) return;
+
+            const physAddr = (dev.base_addr || 0) + regOffset;
+            const shmOffset = physAddr - shmBaseAddr;
+
+            if (shmOffset >= 0 && shmOffset + 4 <= shmBuffer.length) {
+                let currentVal = shmBuffer.readUInt32LE(shmOffset);
+                let newVal = currentVal;
+                for (const [bitStr, state] of Object.entries(bits)) {
+                    const bit = parseInt(bitStr, 10);
+                    if (state) newVal |= (1 << bit);
+                    else newVal &= ~(1 << bit);
+                }
+                if (newVal !== currentVal) {
+                    shmBuffer.writeUInt32LE(newVal, shmOffset);
+                    shmModified = true;
+                }
+            }
+        });
+    }
+
+    if (manifest.shm_path && fs.existsSync(manifest.shm_path)) {
+        try {
+            const fd = fs.openSync(manifest.shm_path, 'r+');
+            fs.writeSync(fd, shmBuffer, 0, shmBuffer.length, 0);
+            try { fs.fdatasyncSync(fd); } catch (e) {}
+            fs.closeSync(fd);
+        } catch (e) {}
+    }
+}
+
 // 共有メモリの読み取り
 function updateShm() {
     if (!manifest.shm_path) return;
@@ -79,6 +136,7 @@ function updateShm() {
             const stats = fs.statSync(manifest.shm_path);
             if (stats.size > 0) {
                 shmBuffer = fs.readFileSync(manifest.shm_path);
+                applyInjectedGpioOverrides();
                 broadcastRegisters();
             }
         }
@@ -88,12 +146,11 @@ function updateShm() {
 }
 
 // レジスタ情報のブロードキャスト
-function broadcastRegisters() {
+function broadcastRegisters(force = false) {
     if (!shmBuffer || !manifest.devices) return;
     
     const uioGpioDevs = manifest.devices.filter(d => d.type === 'uio' || d.type === 'gpio');
     if (uioGpioDevs.length === 0) {
-        console.log("[Backend Debug] uioGpioDevs is empty!");
         return;
     }
     const shmBaseAddr = Math.min(...uioGpioDevs.map(d => d.base_addr || 0));
@@ -104,7 +161,8 @@ function broadcastRegisters() {
     uioGpioDevs.forEach(dev => {
         const devBaseAddr = dev.base_addr || 0;
         dev.registers.forEach(reg => {
-            const regOffset = parseInt(reg.offset, 0);
+            const regOffset = typeof reg.offset === 'string' ? parseInt(reg.offset, 16) : (reg.offset || 0);
+            if (isNaN(regOffset)) return;
             const physAddr = devBaseAddr + regOffset;
             const shmOffset = physAddr - shmBaseAddr;
             if (shmOffset >= 0 && shmOffset + 4 <= shmBuffer.length) {
@@ -126,8 +184,8 @@ function broadcastRegisters() {
     });
 
     // 変化検知と履歴への記録
-    let hasChanged = !lastRegState;
-    if (lastRegState) {
+    let hasChanged = force || !lastRegState;
+    if (!hasChanged && lastRegState) {
         for (const key in currentState) {
             if (currentState[key] !== lastRegState[key]) {
                 hasChanged = true;
@@ -334,29 +392,18 @@ io.on('connection', (socket) => {
     });
 
     socket.on('gpio-inject', ({ deviceName, bitIndex, value, dataRegName = 'DATA' }) => {
-        if (!shmBuffer || !manifest.devices) return;
-        const dev = manifest.devices.find(d => d.name === deviceName);
-        if (!dev) return;
-        const dataReg = dev.registers.find(r => r.name === dataRegName);
-        if (!dataReg) return;
-
-        const uioGpioDevs = manifest.devices.filter(d => d.type === 'uio' || d.type === 'gpio');
-        const shmBaseAddr = Math.min(...uioGpioDevs.map(d => d.base_addr || 0));
-        const physAddr = (dev.base_addr || 0) + parseInt(dataReg.offset, 0);
-        const shmOffset = physAddr - shmBaseAddr;
-
-        if (shmOffset >= 0 && shmOffset + 4 <= shmBuffer.length) {
-            let currentVal = shmBuffer.readUInt32LE(shmOffset);
-            if (value) currentVal |= (1 << bitIndex);
-            else currentVal &= ~(1 << bitIndex);
-            shmBuffer.writeUInt32LE(currentVal, shmOffset);
-            try {
-                const fd = fs.openSync(manifest.shm_path, 'r+');
-                fs.writeSync(fd, shmBuffer, 0, shmBuffer.length, 0);
-                fs.closeSync(fd);
-            } catch (e) {
-                console.error(`[Backend] Failed to write SHM: ${e.message}`);
+        try {
+            console.log(`[BACKEND-DEBUG] Received gpio-inject event: deviceName=${deviceName}, bitIndex=${bitIndex}, value=${value}`);
+            if (!injectedPinOverrides[deviceName]) {
+                injectedPinOverrides[deviceName] = {};
             }
+            // Directly set injected state to passed value
+            injectedPinOverrides[deviceName][bitIndex] = !!value;
+            console.log(`[BACKEND-DEBUG] Current injectedPinOverrides for ${deviceName}:`, JSON.stringify(injectedPinOverrides[deviceName]));
+            applyInjectedGpioOverrides();
+            broadcastRegisters(true);
+        } catch (e) {
+            console.error(`[Backend Error] Safe caught gpio-inject exception: ${e.message}`);
         }
     });
 

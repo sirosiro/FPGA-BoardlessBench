@@ -55,7 +55,7 @@ module vfpga_top (
     always @(*) begin
         case (addr)
 %s
-            default: r_data = 32'hdeadbeef;
+            default: r_data = 32'h0;
         endcase
     end
 endmodule
@@ -325,7 +325,7 @@ void run_sim_loop(T* top, volatile uint32_t* shm, uint32_t* old_shm, VerilatedVc
                 uint32_t off = (registers[i].addr - SHM_BASE_ADDR) / 4;
                 
                 if constexpr (has_r_data<T>::value) {
-                    if (top->r_data != old_shm[off]) {
+                    if (top->r_data != 0xdeadbeef && top->r_data != old_shm[off]) {
                         shm[off] = top->r_data; old_shm[off] = top->r_data;
                     }
                 }
@@ -347,7 +347,7 @@ int main(int argc, char** argv) {
         return 1;
     }
     volatile uint32_t* shm = (volatile uint32_t*)mmap(NULL, SHM_SIZE, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
-    uint32_t* old_shm = new uint32_t[SHM_SIZE/4]; memset(old_shm, 0, SHM_SIZE);
+    uint32_t* old_shm = new uint32_t[SHM_SIZE/4]; memset(old_shm, 0xFF, SHM_SIZE);
 
     Verilated::traceEverOn(true);
     VerilatedVcdC* m_trace = new VerilatedVcdC;

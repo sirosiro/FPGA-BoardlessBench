@@ -697,6 +697,10 @@ void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
                     target_idx = i; offset = (off_t)(routes[i].base_addr - routes[0].base_addr); break;
                 }
             }
+            if (target_idx == -1 && (sizeof(routes)/sizeof(routes[0])) > 0) {
+                target_idx = 0;
+                offset = 0;
+            }
         } else if (ctx.type == FBB_DEV_UIO) {
             target_idx = ctx.sub_id;
             offset = (off_t)(routes[target_idx].base_addr - routes[0].base_addr);
@@ -1022,6 +1026,7 @@ static void *rpmsg_worker_thread(void *arg) {
                 read(signal_pipe[0], &dummy, 1);
                 fprintf(stderr, "[Shim] Worker received signal notification, notifying rproc\n");
                 rproc_virtio_notified(rvdev.vdev, 100);
+                rproc_virtio_notified(rvdev.vdev, 101);
             }
             if (fds[0].revents & POLLIN) {
                 char buf[512];

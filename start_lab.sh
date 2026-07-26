@@ -41,7 +41,7 @@ cleanup() {
 
     # 共有メモリファイルとマニフェストの削除
     echo "Cleaning up temporary files..."
-    rm -f /tmp/vfpga_* 2>/dev/null
+    rm -f /tmp/gpio /tmp/vfpga_* 2>/dev/null
     rm -f /tmp/fbb_uart_* 2>/dev/null
     rm -f /tmp/fbb_memory_violation 2>/dev/null
     rm -f /tmp/vring0 /tmp/vfpga_reg /tmp/fbb_compatible /tmp/fbb_model 2>/dev/null
@@ -67,7 +67,7 @@ ps -ef | grep "test_bin" | grep -v grep | awk '{print $2}' | xargs kill -9 2>/de
 pkill -9 -f "vlogic_controller" 2>/dev/null || true
 pkill -9 -f "vfpga_sim" 2>/dev/null || true
 rm -f dashboard/data/vfpga_uart_* 2>/dev/null
-rm -f /tmp/fbb_uart_* 2>/dev/null
+rm -f /tmp/gpio /tmp/fbb_uart_* 2>/dev/null
 rm -f /tmp/fbb_memory_violation 2>/dev/null
 rm -f /tmp/vring0 /tmp/vfpga_reg /tmp/fbb_compatible /tmp/fbb_model 2>/dev/null
 rm -f /tmp/hdmi_output.bmp 2>/dev/null

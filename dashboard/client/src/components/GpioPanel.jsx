@@ -6,47 +6,52 @@ function GpioPanel() {
 
   return (
     <div className="gpio-pane" style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <div className="panel-header"><ToggleRight size={16} /> GPIO / Pin Array (118ch)</div>
+      <div className="panel-header"><ToggleRight size={16} /> GPIO / Pin Array</div>
       <div className="gpio-viewport" style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
         {gpioDevices.map((dev, i) => {
-          // Find registers for this device
           const devRegs = registers.filter(r => r.deviceName === dev.name);
           if (devRegs.length === 0) return null;
 
-          // Find direction register (TRI or INV_TRI)
+          // Find direction register (PDDR, GDIR, TRI)
           const dirReg = devRegs.find(r => 
+            r.name.includes('PDDR') ||
+            r.name.includes('GDIR') ||
             (r.logical_name || r.name).includes('TRI')
           );
 
           // Find DATA registers (Data Out vs Data In)
           const dataRegs = devRegs.filter(r => (r.logical_name || r.name).startsWith('DATA'));
-          if (dataRegs.length === 0) return null;
-
-          // If there are multiple DATA registers, try to distinguish by physical name (PDOR vs PDIR)
-          let dataOutReg = dataRegs.find(r => r.name.includes('PDOR') || r.name.includes('OUT') || r.name === 'DR') || dataRegs[0];
-          let dataInReg = dataRegs.find(r => r.name.includes('PDIR') || r.name.includes('IN')) || dataRegs[0];
-
-          // If we couldn't distinguish, fallback to the same register
-          if (!dataOutReg) dataOutReg = dataRegs[0];
-          if (!dataInReg) dataInReg = dataRegs[0];
+          let dataOutReg = dataRegs.find(r => r.name.includes('PDOR') || r.name.includes('OUT') || r.name === 'DR') || dataRegs[0] || devRegs[0];
+          let dataInReg = dataRegs.find(r => r.name.includes('PDIR') || r.name.includes('IN')) || dataRegs[0] || dataOutReg;
 
           const dirVal = dirReg?.decimal || 0;
           const dataOutVal = dataOutReg?.decimal || 0;
           const dataInVal = dataInReg?.decimal || 0;
 
-          const isInverted = dirReg && (dirReg.logical_name || dirReg.name).includes('INV');
+          const dirName = (dirReg?.name || '').toUpperCase();
+          const isNxpDirection = dirName.includes('PDDR') || dirName.includes('GDIR');
+          const isInverted = !isNxpDirection && (dirReg?.logical_name || '').toUpperCase().includes('INV');
+
           const labelName = dev.name;
+          const totalPins = dev.pin_count || dev.pins || 16; // Default to 16 pins for SoC like i.MX95
 
           return (
             <div key={`gpio-${i}`} className="gpio-dev-group">
               <div className="gpio-dev-label">{labelName}</div>
               <div className="gpio-grid">
-                {Array.from({ length: 32 }).map((_, bitIndex) => {
-                  const isInput = dirReg 
-                    ? (isInverted 
-                        ? (dirVal & (1 << bitIndex)) === 0 
-                        : (dirVal & (1 << bitIndex)) !== 0)
-                    : false;
+                {Array.from({ length: totalPins }).map((_, bitIndex) => {
+                  let isInput = false;
+                  if (dirReg) {
+                    if (isNxpDirection) {
+                      isInput = (dirVal & (1 << bitIndex)) === 0;
+                    } else if (isInverted) {
+                      isInput = (dirVal & (1 << bitIndex)) === 0;
+                    } else {
+                      isInput = (dirVal & (1 << bitIndex)) !== 0;
+                    }
+                  } else {
+                    isInput = true;
+                  }
 
                   // Read from dataInReg if input, dataOutReg if output
                   const isOn = isInput 
@@ -57,11 +62,12 @@ function GpioPanel() {
                     <div 
                       key={bitIndex} 
                       className={`gpio-bit ${isInput ? 'input' : 'output'} ${isOn ? 'on' : 'off'}`}
-                      onClick={() => isInput && handleGpioToggle(dev.name, bitIndex, isOn, dataInReg.name)}
+                      onClick={() => handleGpioToggle(dev.name, bitIndex, isOn, dataInReg?.name || 'PDIR')}
+                      style={{ cursor: 'pointer' }}
                       title={`${labelName} Bit ${bitIndex} (${isInput ? 'Input' : 'Output'})`}
                     >
-                      <div className="gpio-indicator"></div>
-                      <span className="gpio-label">B{bitIndex}</span>
+                      <div className="gpio-indicator" style={{ pointerEvents: 'none' }}></div>
+                      <span className="gpio-label" style={{ pointerEvents: 'none' }}>B{bitIndex}</span>
                     </div>
                   );
                 })}
