@@ -13,35 +13,35 @@ set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
 # 1. 仮想I2C EEPROMエミュレータ
 add_executable(fbb_i2c_eeprom 
-    i2c/i2c_eeprom.cpp 
+    official_plugins/microchip_at24c02c/i2c_eeprom.cpp 
     common/i2c_slave.cpp
 )
 target_link_libraries(fbb_i2c_eeprom PRIVATE Threads::Threads)
 
 # 2. 仮想UARTループバックエミュレータ
 add_executable(fbb_uart_loopback 
-    uart/uart_loopback.cpp 
+    official_plugins/generic_uart_loopback/uart_loopback.cpp 
     common/uart_device.cpp
 )
 target_link_libraries(fbb_uart_loopback PRIVATE Threads::Threads)
 
 # 3. 仮想SPI Flashエミュレータ (W25Q128)
 add_executable(fbb_spi_flash
-    spi/spi_flash.cpp
+    official_plugins/winbond_w25q128/spi_flash.cpp
     common/spi_slave.cpp
 )
 target_link_libraries(fbb_spi_flash PRIVATE Threads::Threads)
 
 # 4. 仮想SPI ADCエミュレータ (MCP3208)
 add_executable(fbb_spi_adc
-    spi/spi_adc.cpp
+    official_plugins/microchip_mcp3208/spi_adc.cpp
     common/spi_slave.cpp
 )
 target_link_libraries(fbb_spi_adc PRIVATE Threads::Threads rt) # 共有メモリ用にrtをリンク
 
 # 5. 仮想I2C OLEDディスプレイエミュレータ (SSD1306)
 add_executable(fbb_i2c_oled
-    i2c_spi/ssd1306.cpp
+    official_plugins/solomon_ssd1306/ssd1306.cpp
     common/i2c_slave.cpp
 )
 target_link_libraries(fbb_i2c_oled PRIVATE Threads::Threads rt) # 共有メモリ用にrtをリンク

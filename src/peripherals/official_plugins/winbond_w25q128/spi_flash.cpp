@@ -1,4 +1,4 @@
-#include "../common/spi_slave.hpp"
+#include "../../common/spi_slave.hpp"
 #include <iostream>
 #include <fstream>
 #include <vector>

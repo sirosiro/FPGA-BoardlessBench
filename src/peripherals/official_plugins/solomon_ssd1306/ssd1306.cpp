@@ -1,4 +1,4 @@
-#include "../common/i2c_slave.hpp"
+#include "../../common/i2c_slave.hpp"
 #include <iostream>
 #include <vector>
 #include <cstring>

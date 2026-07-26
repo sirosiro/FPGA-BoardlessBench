@@ -302,7 +302,7 @@
 - **2026-07-26: サードパーティ・ペリフェラル・プラグイン・アーキテクチャ (PPA) と DTS インクルード機構の導入 (Peripheral Plugin Architecture & DTS Include Support)**
   - **Decision:**
     1. コントローラ (`vlogic_controller.py`) 内のハードコード辞書 (`LAUNCHER_REGISTRY`) を撤廃し、ペリフェラルモデルを独立パッケージ化する `fbb-plugin.json` マニフェスト規格と、5 段階の探索パス（シナリオローカル / プロジェクト / ユーザーホーム / システム共通 / `$FBB_PLUGIN_PATH`）から動的発見・自動起動する PPA エンジンを導入。
-    2. `src/peripherals/` を再構造化し、公式標準プラグイン群（`microchip_at24c02c`, `winbond_w25q128`, `microchip_mcp3208`, `solomon_ssd1306`, `generic_uart_loopback`）に `fbb-plugin.json` マニフェストおよびメーカー提供型 `.dtsi` 定義を整備。
+    2. `src/peripherals/` を再構造化し、公式標準プラグイン群（`microchip_at24c02c`, `winbond_w25q128`, `microchip_mcp3208`, `solomon_ssd1306`, `generic_uart_loopback`）内に `fbb-plugin.json` マニフェスト、メーカー提供型 `.dtsi` 定義、およびエミュレータ C++ ソースコード（`.cpp`）を全集約・再配置。
     3. `DTSParser`（`scripts/vfpga/parser.py`）に C プリプロセッサと同等の再帰的 `#include` プリプロセス機能および `&label` ノードアンカー参照の自動結合（マージ）機構を実装。シナリオ側 `config.dts` からメーカー提供 `.dtsi` をそのまま 1 行でインクルードして流用可能に改善。
     4. ダッシュボード（React UI）側に、JSON 宣言型 UI スキーマや Canvas ストリームを動的レンダリングする共通ペイン規格 `GenericPeripheralPane.jsx` を導入。
     5. PPA ペリフェラルの疑似データファイル (`mock_file`) の生成・参照先を `/tmp/fbb/<scenario_name>/` へ自動補正・ルーティングし、学習者のシナリオディレクトリ内に不要なゴミファイルやフォルダを発生させない「ノイズゼロ」構造を徹底。

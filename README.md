@@ -428,7 +428,8 @@ graph TD
 - `src/shim/`: システムコールインターセプト層（自動生成）
 - `src/rtl/`: Verilogソースファイル（スケルトンは自動生成）
 - `src/sim/`: Verilator用C++シミュレーションラッパー
-- `src/controller/`: Pythonバックエンド管理（共有メモリ初期化、RTL同期、UARTブリッジ制御）
+- `src/controller/`: Pythonバックエンド管理（共有メモリ初期化、RTL同期、UARTブリッジ制御、PPAプラグイン自動発見）
+- `src/peripherals/`: 周辺デバイス共通基底クラス（`common/`）および公式プラグイン群（`official_plugins/`）
 - `dashboard/`: Webダッシュボードサーバー (Node.js)
 - `tests/scenarios/`: 各プロジェクト（シナリオ）ごとのテスト一式
   - `config.dts`: デバイスツリー定義

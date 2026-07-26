@@ -84,18 +84,20 @@ classDiagram
 
 ---
 
-## 3. 新しいペリフェラルを追加する手順
+## 3. 新しいペリフェラル（公式プラグイン）を追加する手順
 
-C++ オブジェクト指向により、新しいデバイスを最小限のコードで追加できます。
+C++ オブジェクト指向およびプラグインマニフェスト（`fbb-plugin.json`）の採用により、新しいデバイスをディレクトリ単位で完結させて追加できます。
 
-1. **基底クラスの選択と継承**:
-   * I2Cデバイスを模倣する場合は `I2cSlave` を、UART/シリアル対向デバイスを模倣する場合は `UartDevice` を継承したクラスを新規作成します。
-2. **イベントハンドラの実装**:
+1. **プラグインディレクトリの作成**:
+   * `src/peripherals/official_plugins/<vendor_model>/`（例：`winbond_w25q128`）を作成します。
+2. **構成ファイルの配置**:
+   * **`fbb-plugin.json`**: プラグイン名、ベンダー情報、起動バイナリ名、起動引数テンプレートなどを定義します。
+   * **`<model>.dtsi`**: デバイスツリー組み込み用の標準デバイスツリーインクルードファイルを配置します。
+   * **`<emulator>.cpp`**: `I2cSlave`, `UartDevice`, `SpiSlave` などの基底クラスを継承したC++エミュレータソースコードを同ディレクトリ内に配置します。
+3. **イベントハンドラの実装**:
    * `I2cSlave` なら `onWrite`/`onRead`、`UartDevice` なら `onReceive` の中で、デバイス固有のレジスタ挙動や応答データ生成論理を実装します。
-3. **CMake への登録**:
-   * [CMakeLists.txt](file:///workspaces/FPGA-BoardlessBench/src/peripherals/CMakeLists.txt) に `add_executable` としてターゲットを追加し、`common/i2c_slave.cpp` または `common/uart_device.cpp` を一緒にリンクします。
-4. **コントローラへの組み込み**:
-   * コントローラ (`vlogic_controller.py`) のデバイススキャナに対応する `compatible` 名の起動ルーチンを紐付けます。
+4. **CMake への登録**:
+   * [CMakeLists.txt](file:///workspaces/FPGA-BoardlessBench/src/peripherals/CMakeLists.txt) に `add_executable` としてターゲットを追加し、`official_plugins/<vendor_model>/<emulator>.cpp` と共通基底クラス (`common/i2c_slave.cpp` 等) をリンクします。
 
 ---
 
@@ -123,9 +125,9 @@ F-BB コントローラは起動時、DTS 内の `compatible` 名に一致する
 | 検索順位 | 検索パス | 設置の目的 (Why) |
 | :--- | :--- | :--- |
 | **1. シナリオローカル** | `<scenario_dir>/plugins/` | **シナリオ限定モックの分離**: 当該シナリオ専用に作成した特殊なカスタムペリフェラルや実験用デバッグモックの置き場。他のシナリオに影響を与えずに安全にテスト可能。 |
-| **2. プロジェクトローカル** | `<project_root>/.fbb/plugins/` | **チーム/リポジトリ共有**: チーム開発において Git リポジトリに含めて管理し、プロジェクトメンバー全員で共有・実行する共通ペリフェラルプラグインの置き場。 |
+| **2. プロジェクトローカル** | `<project_root>/.fbb/plugins/`<br>`src/peripherals/official_plugins/` | **チーム/プロジェクト公式共有**: Gitリポジトリで管理し、プロジェクトメンバー全員で共有・実行する公式およびプロジェクト共通ペリフェラルプラグインの置き場。 |
 | **3. ユーザーホーム** | `~/.fbb/plugins/` | **個人開発環境での汎用再利用**: 各開発者の PC 上でダウンロード・ビルドしたメーカー製プラグインを、複数プロジェクト横断で使い回すための開発者個人の標準ライブラリ置き場。 |
 | **4. システム共通** | `/usr/local/share/fbb/plugins/` | **OS全体のシステムワイド導入**: Docker コンテナイメージ内やシステム全体にパッケージ（Debian / RPM パッケージ等）として標準インストールされる公式プラグインの置き場。 |
-| **5. 環境変数** | `$FBB_PLUGIN_PATH` | **CI/CD環境やカスタムパスの柔軟指定**: 自動テスト（CI/CD パイプライン）や任意の外部ディレクトリに配置されたサードパーティ製プラグインを柔軟に読み込ませるためのエスケープハッチ。 |
+| **5. 環境変数** | `$FBB_PLUGIN_PATH` | **CI/CD環境やカスタムパスの柔軟指定**: 自動テスト（CI/CD パイプライン）や任意の外部ディレクトリに配置されたサードパーティ製プラグインを柔軟に読み込ませるためのエスケープハッチ。 | |
 
 
