@@ -46,6 +46,79 @@ LAUNCHER_REGISTRY = {
 }
 
 
+def discover_plugins(scenario_dir=None):
+    """
+    Scans 5 plugin search locations for fbb-plugin.json manifests (PPA ADR #005):
+    1. <scenario_dir>/plugins/
+    2. <project_root>/.fbb/plugins/
+    3. ~/.fbb/plugins/
+    4. /usr/local/share/fbb/plugins/
+    5. $FBB_PLUGIN_PATH
+    Returns a dict mapping compatible_string -> plugin_info
+    """
+    import json
+    search_paths = []
+    
+    # 1. Scenario local
+    if scenario_dir:
+        search_paths.append(os.path.join(scenario_dir, "plugins"))
+    
+    # 2. Project local
+    search_paths.append(os.path.join(PROJECT_ROOT, ".fbb/plugins"))
+    search_paths.append(os.path.join(PROJECT_ROOT, "src/peripherals/official_plugins"))
+    
+    # 3. User home
+    user_home_fbb = os.path.expanduser("~/.fbb/plugins")
+    search_paths.append(user_home_fbb)
+    
+    # 4. System wide
+    search_paths.append("/usr/local/share/fbb/plugins")
+    
+    # 5. Environment variable FBB_PLUGIN_PATH
+    env_path = os.getenv("FBB_PLUGIN_PATH")
+    if env_path:
+        for p in env_path.split(":"):
+            if p.strip():
+                search_paths.append(p.strip())
+                
+    discovered = {}
+    
+    # Iterate in reverse so higher-priority paths overwrite lower-priority ones
+    for spath in reversed(search_paths):
+        if not os.path.exists(spath):
+            continue
+        
+        manifest_files = []
+        # Check direct manifest or subdirectories
+        for root, dirs, files in os.walk(spath):
+            if "fbb-plugin.json" in files:
+                manifest_files.append(os.path.join(root, "fbb-plugin.json"))
+                
+        for mfile in manifest_files:
+            try:
+                plugin_dir = os.path.dirname(mfile)
+                with open(mfile, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                
+                peripherals = data.get("peripherals", [])
+                for p in peripherals:
+                    compat = p.get("compatible")
+                    if compat:
+                        discovered[compat] = {
+                            "manifest_path": mfile,
+                            "plugin_dir": plugin_dir,
+                            "binary": p.get("binary"),
+                            "default_args": p.get("default_args", []),
+                            "ui_widget": p.get("ui_widget"),
+                            "bindings": p.get("bindings", {})
+                        }
+            except Exception as e:
+                print(f"[Python] Warning: Could not parse plugin manifest {mfile}: {e}")
+                
+    return discovered
+
+
+
 def get_peripherals_from_dts(dts_path):
     peripherals = []
     try:
@@ -431,15 +504,64 @@ def main():
         max_end = max(d['base_addr'] + d['size'] for d in uio_gpio_devs)
         board_size = max_end - min_addr
 
-    # Start virtual peripherals from DTS (already populated in main start)
+    # Discover PPA plugins (ADR #005)
+    discovered_plugins = discover_plugins(scenario_dir)
+    if discovered_plugins:
+        print(f"[Python] Discovered {len(discovered_plugins)} PPA plugin(s): {', '.join(discovered_plugins.keys())}")
+
     peripheral_processes = []
     for p in peripherals:
         p_type = p.get('type')
         compat = p.get('compatible') if p_type != 'uart' else p.get('peripheral_type')
         
+        # 1. Try PPA Discovered Plugin
+        if compat in discovered_plugins:
+            plugin_info = discovered_plugins[compat]
+            bin_rel = plugin_info['binary']
+            bin_path = os.path.join(plugin_info['plugin_dir'], bin_rel) if not os.path.isabs(bin_rel) else bin_rel
+            if not os.path.exists(bin_path):
+                # Fallback check in build/bin
+                bin_path = os.path.join(PROJECT_ROOT, f"build/bin/{os.path.basename(bin_rel)}")
+            
+            # Format default arguments with DTS parameters
+            args_template = plugin_info.get('default_args', [])
+            formatted_args = []
+            for arg in args_template:
+                if p_type == 'i2c':
+                    arg = arg.replace("{socket_path}", f"/tmp/fbb_i2c_b{p['bus_id']}_a{p['addr']:02x}")
+                elif p_type == 'spi':
+                    arg = arg.replace("{socket_path}", f"/tmp/fbb_spi_b{p['bus_id']}_c{p['cs']}")
+                elif p_type == 'uart':
+                    arg = arg.replace("{pts_file}", os.path.join(PROJECT_ROOT, f"dashboard/data/vfpga_uart_{p['uart_id']}"))
+                arg = arg.replace("{init_val}", str(p.get('init_val', '0')))
+                if "{mock_file}" in arg:
+                    raw_mfile = p.get('mock_file')
+                    sname = os.path.basename(scenario_dir.rstrip('/'))
+                    tmp_dir = f"/tmp/fbb/{sname}"
+                    os.makedirs(tmp_dir, exist_ok=True)
+                    if raw_mfile:
+                        if os.path.isabs(raw_mfile):
+                            mfile = raw_mfile
+                        else:
+                            mfile = os.path.join(tmp_dir, os.path.basename(raw_mfile))
+                    else:
+                        mfile = os.path.join(tmp_dir, "mock_storage.bin")
+                    arg = arg.replace("{mock_file}", mfile)
+                formatted_args.append(arg)
+                
+            cmd = [bin_path] + formatted_args
+            print(f"[Python] Starting PPA Plugin ({compat}): {' '.join(cmd)}")
+            try:
+                proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+                peripheral_processes.append(proc)
+                continue
+            except Exception as e:
+                print(f"[Python] Error starting PPA plugin for {compat}: {e}")
+
+        # 2. Fallback to LAUNCHER_REGISTRY
         registry = LAUNCHER_REGISTRY.get(p_type, {}).get(compat)
         if not registry:
-            print(f"[Python] Warning: No launcher registered for peripheral {p_type}/{compat}")
+            print(f"[Python] Warning: No launcher or PPA plugin registered for peripheral {p_type}/{compat}")
             continue
             
         bin_name = registry['binary']

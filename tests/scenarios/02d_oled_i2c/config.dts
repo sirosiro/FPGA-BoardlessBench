@@ -1,5 +1,7 @@
 /dts-v1/;
 
+#include "src/peripherals/official_plugins/solomon_ssd1306/ssd1306.dtsi"
+
 / {
     /* 
      * 【解説: I2Cバス0の定義】
@@ -10,17 +12,5 @@
         reg = <0xe0004000 0x1000>;
         bus_id = <0>;
         label = "/dev/i2c-0";
-
-        /*
-         * 【解説: Solomon Systech SSD1306 OLEDディスプレイ】
-         * - oled@3c: スレーブアドレス 0x3C
-         * - compatible: 互換性ドライバ名。Linuxの標準ドライバともマッピングされます。
-         * - fbb,shm-path: ディスプレイエミュレータが書き込む共有メモリファイル名
-         */
-        oled_dev: oled@3c {
-            compatible = "solomon,ssd1306";
-            reg = <0x3c>;
-            fbb,shm-path = "/dev/shm/fbb_display_0";
-        };
     };
 };

@@ -1,31 +1,18 @@
 /dts-v1/;
 
+#include "src/peripherals/official_plugins/microchip_at24c02c/at24c02c.dtsi"
+
 / {
     /* 
      * 【解説: I2Cバス0の定義】
      * ベースアドレス 0xe0004000 にある Cadence I2C コントローラを定義します。
+     * スレーブデバイス (eeprom@50) はベンダー提供の at24c02c.dtsi を #include して配置します。
      */
     i2c1: i2c@e0004000 {
         compatible = "cdns,i2c-r1p10";
         reg = <0xe0004000 0x1000>;
-        /* 【解説】 Linuxカーネル内でのバス番号を指定します */
         bus_id = <0>;
-        /* 【解説】 アプリケーションが使用するデバイスファイル名 (/dev/i2c-0) */
         label = "/dev/i2c-0";
-
-        /*
-         * 【解説: スレーブデバイスの定義（I2Cバス0配下）】
-         * - eeprom_dev1: ラベル (DTS内部での他の場所からの参照名)
-         * - eeprom@50: ノード名（デバイス種類 @ I2Cスレーブアドレス）
-         * - compatible: 互換性ドライバ名 (Atmel 24C02 EEPROM)
-         * - reg: スレーブアドレス (0x50)
-         * - fbb,mock-data: F-BB独自のプロパティ（通信時にエミュレータが返却する初期値データ）
-         */
-        eeprom_dev1: eeprom@50 {
-            compatible = "atmel,24c02";
-            reg = <0x50>;
-            fbb,mock-data = <0x10>;
-        };
     };
 
     /* 

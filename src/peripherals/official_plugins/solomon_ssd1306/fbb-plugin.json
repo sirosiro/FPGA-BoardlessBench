@@ -1,0 +1,22 @@
+{
+  "name": "fbb-plugin-solomon-ssd1306",
+  "vendor": "Solomon Systech",
+  "version": "1.0.0",
+  "description": "F-BB Virtual Peripheral Emulator for SSD1306 128x64 I2C OLED Display",
+  "peripherals": [
+    {
+      "bus": "i2c",
+      "compatible": "solomon,ssd1306",
+      "binary": "fbb_i2c_oled",
+      "default_args": [
+        "--socket", "{socket_path}"
+      ],
+      "ui_widget": {
+        "title": "SSD1306 OLED Display (128x64)",
+        "controls": [
+          { "type": "canvas_stream", "name": "display", "width": 128, "height": 64, "format": "mono_raw" }
+        ]
+      }
+    }
+  ]
+}

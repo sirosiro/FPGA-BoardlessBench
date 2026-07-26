@@ -1,7 +1,11 @@
 /dts-v1/;
 
 / {
-    /* PL-side AXI SPI IP config */
+    /* 
+     * 【PPA 構造: PL側 AXI SPI IP アサイン】
+     * 本シナリオでは PL 側の固有アドレス (0x40001000) および CS0 へのカスタムアサインのため、
+     * ベンダーの .dtsi を #include せず config.dts 内で直接スレーブノード (adc@0) をアサイン・定義しています。
+     */
     pl_spi0: spi@40001000 {
         compatible = "xlnx,axi-quad-spi-3.2";
         reg = <0x40001000 0x1000>;

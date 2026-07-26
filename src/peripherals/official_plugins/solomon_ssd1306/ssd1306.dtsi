@@ -1,0 +1,11 @@
+/*
+ * Solomon Systech SSD1306 I2C OLED Display Device Tree Include
+ * Vendor: Solomon Systech
+ */
+&i2c1 {
+    oled0: oled@3c {
+        compatible = "solomon,ssd1306";
+        reg = <0x3c>;
+        fbb,shm-path = "/dev/shm/fbb_display_0";
+    };
+};

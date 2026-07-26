@@ -1,0 +1,10 @@
+/*
+ * Microchip AT24C02C I2C EEPROM Device Tree Include
+ * Vendor: Microchip Technology / Atmel
+ */
+&i2c0 {
+    eeprom@50 {
+        compatible = "atmel,24c02";
+        reg = <0x50>;
+    };
+};

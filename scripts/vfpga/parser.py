@@ -4,6 +4,40 @@ from vfpga.models import Device, Register, I2CSlave, SPISlave, BoardModel
 
 class DTSParser:
     @staticmethod
+    def preprocess_includes(content, base_dir, visited=None):
+        if visited is None:
+            visited = set()
+            
+        def replace_inc(match):
+            inc_path = match.group(1).strip()
+            # Try resolving relative to base_dir
+            target_path = os.path.normpath(os.path.join(base_dir, inc_path))
+            if not os.path.exists(target_path):
+                # Try relative to PROJECT_ROOT
+                proj_root = os.path.abspath(os.path.join(os.path.dirname(__file__), "../../"))
+                target_path = os.path.normpath(os.path.join(proj_root, inc_path))
+            
+            if not os.path.exists(target_path):
+                print(f"[DTSParser] Warning: Included file not found: {inc_path}")
+                return ""
+                
+            if target_path in visited:
+                return "" # Avoid circular inclusion
+            visited.add(target_path)
+            
+            try:
+                with open(target_path, 'r', encoding='utf-8') as f_inc:
+                    inc_content = f_inc.read()
+                return DTSParser.preprocess_includes(inc_content, os.path.dirname(target_path), visited)
+            except Exception as e:
+                print(f"[DTSParser] Error reading include file {target_path}: {e}")
+                return ""
+
+        # Match #include "..." or #include <...>
+        pattern = r'#include\s+["<]([^">]+)[">]'
+        return re.sub(pattern, replace_inc, content)
+
+    @staticmethod
     def find_matching_braces(text, start_pos):
         brace_pos = text.find('{', start_pos)
         if brace_pos == -1:
@@ -23,7 +57,11 @@ class DTSParser:
     @staticmethod
     def parse(dts_path):
         with open(dts_path, 'r') as f:
-            content = f.read()
+            raw_content = f.read()
+            
+        # Preprocess #include statements recursively
+        content = DTSParser.preprocess_includes(raw_content, os.path.dirname(os.path.abspath(dts_path)))
+
             
         # Extract root-level compatible and model BEFORE trimming content
         compatible_bytes = b"generic,fbb-vfpga\x00"
@@ -37,6 +75,17 @@ class DTSParser:
         if root_model_match:
             model_name = root_model_match.group(1).strip()
 
+        # Extract and merge top-level &label { ... } node references into root content
+        ref_matches = list(re.finditer(r'&[a-zA-Z0-9_]+\s*\{', content))
+        ref_contents = []
+        for rmatch in reversed(ref_matches):
+            b_start, b_end = DTSParser.find_matching_braces(content, rmatch.start())
+            if b_start != -1:
+                label_name = rmatch.group(0).split('{')[0].strip('& \t')
+                block_body = content[b_start + 1 : b_end - 1]
+                ref_contents.append((label_name, block_body))
+                content = content[:rmatch.start()] + content[b_end:]
+
         devices = []
         
         # 1. Look for root node '/'
@@ -45,6 +94,16 @@ class DTSParser:
             brace_start, brace_end = DTSParser.find_matching_braces(content, root_match.start())
             if brace_start != -1:
                 content = content[brace_start + 1 : brace_end - 1]
+
+        # Merge reference node contents into matching label nodes
+        for label_name, block_body in ref_contents:
+            lbl_pattern = r'(' + re.escape(label_name) + r'\s*:\s*[a-zA-Z0-9_@:-]+\s*\{)'
+            m_lbl = re.search(lbl_pattern, content)
+            if m_lbl:
+                b_start, b_end = DTSParser.find_matching_braces(content, m_lbl.start())
+                if b_start != -1:
+                    content = content[:b_end - 1] + "\n" + block_body + "\n" + content[b_end - 1:]
+
                 
         pos = 0
         while True:

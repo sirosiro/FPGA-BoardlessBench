@@ -1,0 +1,22 @@
+{
+  "name": "fbb-plugin-generic-uart-loopback",
+  "vendor": "F-BB Core",
+  "version": "1.0.0",
+  "description": "F-BB Virtual Peripheral Emulator for Generic UART Loopback Device",
+  "peripherals": [
+    {
+      "bus": "uart",
+      "compatible": "uart_loopback",
+      "binary": "fbb_uart_loopback",
+      "default_args": [
+        "--pts-file", "{pts_file}"
+      ],
+      "ui_widget": {
+        "title": "UART Loopback Diagnostic Device",
+        "controls": [
+          { "type": "terminal", "name": "console", "label": "Loopback Console" }
+        ]
+      }
+    }
+  ]
+}

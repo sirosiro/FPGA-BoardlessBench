@@ -24,7 +24,10 @@
 ## 3. アーキテクチャ階層 (Architectural Layers)
 
 ### 3.1 Parser Layer (`DTSParser`)
-DTS ファイルを読み込み、意味論的な検証を行った上で `BoardModel` オブジェクトを構築する（標準の UIO/GPIO デバイスに加え、VirtIO vring ノードや仮想IPIコントローラの解析もサポート）。
+DTS ファイルを読み込み、意味論的な検証を行った上で `BoardModel` オブジェクトを構築する。
+- **再帰的 `#include` プリプロセス機能**: C プリプロセッサと同等に `#include "..."` および `#include <...>` ディレクティブを再帰的に解析し、メーカー提供の `.dtsi` 定義等を自動的にインライン展開する。
+- **`&label` ノードオーバーライド自動マージ**: `&i2c1 { ... }` のようなアンカー参照・オーバーライド構文を検知し、ルートノード (`/`) 内の該当ターゲットバスノードの中へ自動的に挿入・結合（マージ）する。
+- **マルチプロトコル解析**: 標準の UIO/GPIO デバイスに加え、VirtIO vring ノード、仮想 IPI コントローラ、PPA ペリフェラル互換性タグの解析をサポートする。
 
 ### 3.2 Logic Layer (`BoardModel`, `Device`, `Register`)
 DTS の論理構造を抽象化したデータモデル。
@@ -45,6 +48,8 @@ DTS の論理構造を抽象化したデータモデル。
 ```mermaid
 classDiagram
     class DTSParser {
+        +preprocess_includes(content, base_dir) String
+        +find_matching_braces(text, start_pos) Tuple
         +parse(dts_path) BoardModel
     }
     class BoardModel {

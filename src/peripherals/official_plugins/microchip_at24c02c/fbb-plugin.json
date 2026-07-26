@@ -1,0 +1,23 @@
+{
+  "name": "fbb-plugin-microchip-at24c02c",
+  "vendor": "Microchip Technology",
+  "version": "1.0.0",
+  "description": "F-BB Virtual Peripheral Emulator for AT24C02C I2C EEPROM",
+  "peripherals": [
+    {
+      "bus": "i2c",
+      "compatible": "atmel,24c02",
+      "binary": "fbb_i2c_eeprom",
+      "default_args": [
+        "--socket", "{socket_path}",
+        "--init-val", "{init_val}"
+      ],
+      "ui_widget": {
+        "title": "AT24C02C I2C EEPROM",
+        "controls": [
+          { "type": "hex_editor", "name": "memory", "size": 256 }
+        ]
+      }
+    }
+  ]
+}

@@ -1,0 +1,23 @@
+{
+  "name": "fbb-plugin-microchip-mcp3208",
+  "vendor": "Microchip Technology",
+  "version": "1.0.0",
+  "description": "F-BB Virtual Peripheral Emulator for MCP3208 12-Bit SPI ADC",
+  "peripherals": [
+    {
+      "bus": "spi",
+      "compatible": "microchip,mcp3208",
+      "binary": "fbb_spi_adc",
+      "default_args": [
+        "--socket", "{socket_path}",
+        "--init-val", "{init_val}"
+      ],
+      "ui_widget": {
+        "title": "MCP3208 12-Bit SPI ADC",
+        "controls": [
+          { "type": "slider", "name": "channel0", "label": "CH0 Input Voltage (V)", "min": 0, "max": 3.3, "default": 1.65 }
+        ]
+      }
+    }
+  ]
+}
