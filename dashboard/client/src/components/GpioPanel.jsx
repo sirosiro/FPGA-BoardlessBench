@@ -12,25 +12,21 @@ function GpioPanel() {
           const devRegs = registers.filter(r => r.deviceName === dev.name);
           if (devRegs.length === 0) return null;
 
-          // Find direction register (PDDR, GDIR, TRI)
+          // Find direction register
           const dirReg = devRegs.find(r => 
-            r.name.includes('PDDR') ||
-            r.name.includes('GDIR') ||
-            (r.logical_name || r.name).includes('TRI')
+            r.direction_mode !== null ||
+            (r.logical_name || r.name).includes('TRI') ||
+            (r.logical_name || r.name).includes('DIR')
           );
 
           // Find DATA registers (Data Out vs Data In)
-          const dataRegs = devRegs.filter(r => (r.logical_name || r.name).startsWith('DATA'));
+          const dataRegs = devRegs.filter(r => (r.logical_name || r.name).startsWith('DATA') || r.name.includes('DIR') || r.name.includes('DR'));
           let dataOutReg = dataRegs.find(r => r.name.includes('PDOR') || r.name.includes('OUT') || r.name === 'DR') || dataRegs[0] || devRegs[0];
           let dataInReg = dataRegs.find(r => r.name.includes('PDIR') || r.name.includes('IN')) || dataRegs[0] || dataOutReg;
 
           const dirVal = dirReg?.decimal || 0;
           const dataOutVal = dataOutReg?.decimal || 0;
           const dataInVal = dataInReg?.decimal || 0;
-
-          const dirName = (dirReg?.name || '').toUpperCase();
-          const isNxpDirection = dirName.includes('PDDR') || dirName.includes('GDIR');
-          const isInverted = !isNxpDirection && (dirReg?.logical_name || '').toUpperCase().includes('INV');
 
           const labelName = dev.name;
           const totalPins = dev.pin_count || dev.pins || 16; // Default to 16 pins for SoC like i.MX95
@@ -42,9 +38,8 @@ function GpioPanel() {
                 {Array.from({ length: totalPins }).map((_, bitIndex) => {
                   let isInput = false;
                   if (dirReg) {
-                    if (isNxpDirection) {
-                      isInput = (dirVal & (1 << bitIndex)) === 0;
-                    } else if (isInverted) {
+                    const isActiveLow = dirReg.direction_mode === 'active_low_input' || (dirReg.logical_name || '').toUpperCase().includes('INV');
+                    if (isActiveLow) {
                       isInput = (dirVal & (1 << bitIndex)) === 0;
                     } else {
                       isInput = (dirVal & (1 << bitIndex)) !== 0;

@@ -3,11 +3,12 @@
 # =============================================================================
 
 class Register:
-    def __init__(self, name, offset, direction='RW', logical_name=None):
+    def __init__(self, name, offset, direction='RW', logical_name=None, direction_mode=None):
         self.name = name
         self.offset = offset
         self.direction = direction.upper()
         self.logical_name = logical_name
+        self.direction_mode = direction_mode
 
 class I2CSlave:
     def __init__(self, name, addr, compatible, mock_file=None, init_val=0x10):

@@ -281,10 +281,14 @@ class DTSParser:
                             if paren_match:
                                 reg_name = paren_match.group(1)
                                 logical_name = paren_match.group(2)
-                            else:
-                                logical_name = reg_name
+                            direction_mode = None
+                            l_upper = (logical_name or reg_name).upper()
+                            if 'INV' in l_upper:
+                                direction_mode = 'active_low_input'
+                            elif 'TRI' in l_upper or 'DIR' in l_upper or 'TRI' in reg_name.upper() or 'DIR' in reg_name.upper():
+                                direction_mode = 'active_high_input'
                             
-                            device.registers.append(Register(reg_name, reg_offset, 'RW', logical_name))
+                            device.registers.append(Register(reg_name, reg_offset, 'RW', logical_name, direction_mode))
                 devices.append(device)
         
         # 共有メモリ名として使用するボード名を決定（UIO > GPIO > デフォルト）

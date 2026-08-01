@@ -390,7 +390,7 @@ class ManifestGenerator(BaseGenerator):
                 "path": dev.path,
                 "base_addr": dev.base_addr,
                 "base_reg": dev.base_reg,
-                "registers": [{"name": r.name, "logical_name": r.logical_name or r.name, "offset": r.offset} for r in dev.registers],
+                "registers": [{"name": r.name, "logical_name": r.logical_name or r.name, "offset": r.offset, "direction_mode": getattr(r, 'direction_mode', None)} for r in dev.registers],
                 "extra": dev.extra_props
             }
             if dev.type == 'i2c' and hasattr(dev, 'i2c_slaves'):

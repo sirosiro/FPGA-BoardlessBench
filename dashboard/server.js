@@ -172,6 +172,7 @@ function broadcastRegisters(force = false) {
                 regData.push({
                     name: reg.name,
                     logical_name: reg.logical_name || reg.name,
+                    direction_mode: reg.direction_mode || null,
                     offset: reg.offset,
                     value: `0x${value.toString(16).padStart(8, '0')}`,
                     decimal: value,

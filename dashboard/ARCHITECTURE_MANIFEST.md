@@ -35,7 +35,7 @@
 - **技術スタック**: Vite + React + Lucide-react (Icons) + Socket.io-client + **recharts** (Charting) + **dockview-react** (Docking Layout)。
 - **特徴**: 
     - **Register Monitor**: デバイス（モジュール）ごとにアコーディオンパネルで展開・折りたたみ可能にグルーピング表示。各レジスタに「Trace」チェックボックスを備え、Tracerでの描画および凡例の動的フィルタリングを双方向同期。
-    - **GPIO / Pin Array**: 118 チャネルの GPIO をグリッド表示し、方向レジスタ（TRI や GDIR など）の論理名に基づき LED（出力）とトグルスイッチ（入力）を動的に切り替えて描画。
+    - **GPIO / Pin Array**: 118 チャネルの GPIO をグリッド表示し、マニフェスト経由で配信される方向モード属性（`direction_mode`: `active_low_input` / `active_high_input`）に基づき LED（出力）とトグルスイッチ（入力）を完全なデータ駆動（SoC非依存）で動的に切り替えて描画。
     - **Register State Tracer**: レジスタの変化履歴を正規化表示し、微小な変化も可視化。凡例クリックまたは Register Monitor のチェックボックスと連動した、表示・非表示および凡例の動的な削除・追加に対応。
     - **IDE-style Docking Layout (Dockview)**: VS Code互換のドッキングレイアウトを採用。パネルのドラッグ＆ドロップによる分割・結合・タブ化・フローティング化をネイティブサポートし、UI全体の配置リセット機能（Reset Layout）も完備。レレガシーな手動リサイズコードを撤去し、高精度なリサイズ体験を提供。
     - **レイアウト状態の保存と復元**: 起動時に自動でサーバーからシナリオ別レイアウトを読み込み復元し、ヘッダーの「Save Layout」ボタンから現在の配置状態を保存可能にする。
