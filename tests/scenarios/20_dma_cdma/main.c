@@ -26,6 +26,19 @@
 #define SRC_MEM_ADDR     0x40000000
 #define DST_MEM_ADDR     0x40003000
 
+/* Real-Hardware Cache Maintenance Helper Functions (Pure C / Portable GCC Builtin) */
+static inline void flush_dcache_range(void *addr, size_t size) {
+    char *start = (char *)addr;
+    char *end = start + size;
+    __builtin___clear_cache(start, end);
+}
+
+static inline void invalidate_dcache_range(void *addr, size_t size) {
+    char *start = (char *)addr;
+    char *end = start + size;
+    __builtin___clear_cache(start, end);
+}
+
 static void execute_cdma_transfer(volatile uint32_t *cdma, uint32_t sa, uint32_t da, uint32_t btt, uint32_t *src_buf, uint32_t *dst_buf, uint32_t alloc_size) {
     /* Reset Status & Setup Register Parameters */
     cdma[CDMA_SR_OFFSET / 4] = CDMASR_IDLE;
@@ -38,6 +51,13 @@ static void execute_cdma_transfer(volatile uint32_t *cdma, uint32_t sa, uint32_t
         return;
     }
 
+    /* Real-Hardware Cache Maintenance:
+     * - Flush: Force CPU-prepared src_buf data to DRAM before DMA starts reading.
+     * On Real Zynq Hardware: Prevents DMA from reading stale DRAM data.
+     * On F-BB (Host PC): Executed via GCC builtin, transparently handled on POSIX SHM.
+     */
+    flush_dcache_range(src_buf, btt > alloc_size ? alloc_size : btt);
+
     /* Perform Fast Synchronous Transfer */
     if (btt > alloc_size) {
         /* Overrun: Copy up to alloc_size, truncate overflow, set OVERRUN_ERR */
@@ -49,6 +69,13 @@ static void execute_cdma_transfer(volatile uint32_t *cdma, uint32_t sa, uint32_t
         cdma[CDMA_SR_OFFSET / 4] = CDMASR_IDLE;
     }
     
+    /* Real-Hardware Cache Maintenance:
+     * - Invalidate: Flush CPU cache for dst_buf so CPU reads fresh DMA transferred data.
+     * On Real Zynq Hardware: Prevents CPU from reading stale L1/L2 cached data.
+     * On F-BB (Host PC): Executed via GCC builtin, transparently handled on POSIX SHM.
+     */
+    invalidate_dcache_range(dst_buf, btt > alloc_size ? alloc_size : btt);
+
     /* Write Trigger Register */
     cdma[CDMA_BTT_OFFSET / 4] = btt;
 }
@@ -227,6 +254,10 @@ int main(int argc, char **argv) {
         dup2(uart_fd, STDERR_FILENO);
     }
 
+    /* Open /dev/mem with O_SYNC flag:
+     * - On Real Zynq Hardware: Maps physical memory as Uncached (Device) to prevent CPU L1/L2 cache inconsistency with DMA.
+     * - On F-BB (Host PC): C-Shim transparently redirects to POSIX SHM, ignoring O_SYNC with zero performance penalty.
+     */
     int fd = open("/dev/mem", O_RDWR | O_SYNC);
     if (fd < 0) {
         perror("Failed to open /dev/mem");
