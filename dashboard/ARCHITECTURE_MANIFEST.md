@@ -21,8 +21,8 @@
 ### 3.1 Dashboard Backend (`server.js`)
 - **責務**: 
     - マニフェストの管理（動的リロード）。
-    - SHM の定期監視と WebSocket (Socket.io) へのブロードキャスト。
-    - **Register State Tracer**: レジスタ値の変化を検知し、最大500件のスナップショットを履歴として保持・配信。
+    - SHM の定期監視と WebSocket (Socket.io) へのブロードキャスト（UIO, GPIO, DMA デバイス）。
+    - **Register State Tracer**: UIO/GPIO/DMA レジスタ値の変化を検知し、最大500件のスナップショットを履歴として保持・配信。
     - フロントエンドからの **GPIO インジェクション**（トグル操作）のリクエストを SHM へ反映。
     - UART ブリッジ (PTY <-> TCP) の仲介。
     - **レイアウト永続化 API**: シナリオフォルダの `fbb_layout.json` を通じてレイアウト情報をロード (`GET /api/layout`) および保存 (`POST /api/layout`) するエンドポイントを提供。

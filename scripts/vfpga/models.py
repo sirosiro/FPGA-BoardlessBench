@@ -50,8 +50,8 @@ class BoardModel:
         self.devices = devices
         self.name = name
     def get_uio_device(self):
-        return next((d for d in self.devices if d.type in ['uio', 'gpio']), None)
+        return next((d for d in self.devices if d.type in ['uio', 'gpio', 'dma']), None)
     def get_uio_devices(self):
-        return [d for d in self.devices if d.type in ['uio', 'gpio']]
+        return [d for d in self.devices if d.type in ['uio', 'gpio', 'dma']]
     def get_uart_devices(self):
         return [d for d in self.devices if d.type == 'uart']

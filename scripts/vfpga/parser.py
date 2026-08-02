@@ -164,6 +164,7 @@ class DTSParser:
                 elif 'uart' in compatible or 'xlnx,xps-uart' in compatible: dev_type = 'uart'
                 elif 'gpio' in compatible or 'xlnx,xps-gpio' in compatible: dev_type = 'gpio'
                 elif 'spi' in compatible or 'cdns,spi' in compatible or 'xlnx,zynq-spi' in compatible: dev_type = 'spi'
+                elif 'dma' in compatible or 'xlnx,axi-dma' in compatible or 'xlnx,axi-cdma' in compatible: dev_type = 'dma'
                 elif 'rpmsg' in compatible: dev_type = 'rpmsg'
                 if dev_type == 'unknown' and label.startswith('/dev/uio'):
                     dev_type = 'uio'

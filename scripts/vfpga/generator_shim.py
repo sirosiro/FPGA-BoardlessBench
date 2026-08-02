@@ -6,12 +6,14 @@ class ShimGenerator(BaseGenerator):
     def generate(self, model: BoardModel):
         mmap_routes, i2c_matches, uart_matches, spi_matches, rpmsg_matches = [], [], [], [], []
         uart_count = 0
+        mmap_devs = [dev for dev in model.devices if dev.type in ['uio', 'gpio', 'dma']]
+        mmap_devs.sort(key=lambda d: d.base_addr)
+        for dev in mmap_devs:
+            reg_parts = dev.base_reg.split()
+            if len(reg_parts) >= 2:
+                mmap_routes.append('    { %s, %s, SHM_FILE, "%s" }' % (reg_parts[0], reg_parts[1], dev.path))
         for i, dev in enumerate(model.devices):
-            if dev.type in ['uio', 'gpio']:
-                reg_parts = dev.base_reg.split()
-                if len(reg_parts) >= 2:
-                    mmap_routes.append('    { %s, %s, SHM_FILE, "%s" }' % (reg_parts[0], reg_parts[1], dev.path))
-            elif dev.type == 'i2c':
+            if dev.type == 'i2c':
                 bus_id = dev.extra_props.get('bus_id', '1')
                 i2c_matches.append('    if (pathname != NULL && strcmp(pathname, "%s") == 0) { if (out_bus_id) *out_bus_id = %s; return 1; }' % (dev.path, bus_id))
             elif dev.type == 'uart':

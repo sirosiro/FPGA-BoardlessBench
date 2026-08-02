@@ -149,7 +149,7 @@ function updateShm() {
 function broadcastRegisters(force = false) {
     if (!shmBuffer || !manifest.devices) return;
     
-    const uioGpioDevs = manifest.devices.filter(d => d.type === 'uio' || d.type === 'gpio');
+    const uioGpioDevs = manifest.devices.filter(d => d.type === 'uio' || d.type === 'gpio' || d.type === 'dma');
     if (uioGpioDevs.length === 0) {
         return;
     }

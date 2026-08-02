@@ -1,0 +1,105 @@
+{
+    "grid": {
+        "root": {
+            "type": "branch",
+            "data": [
+                {
+                    "type": "branch",
+                    "data": [
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "registerMonitor"
+                                ],
+                                "activeView": "registerMonitor",
+                                "id": "2"
+                            },
+                            "size": 458
+                        },
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "gpioPanel"
+                                ],
+                                "activeView": "gpioPanel",
+                                "id": "3"
+                            },
+                            "size": 184
+                        },
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "registerTracer"
+                                ],
+                                "activeView": "registerTracer",
+                                "id": "4"
+                            },
+                            "size": 406
+                        }
+                    ],
+                    "size": 413
+                },
+                {
+                    "type": "leaf",
+                    "data": {
+                        "views": [
+                            "uartTerminal_serial"
+                        ],
+                        "activeView": "uartTerminal_serial",
+                        "id": "1"
+                    },
+                    "size": 799
+                },
+                {
+                    "type": "leaf",
+                    "data": {
+                        "views": [
+                            "dtsVisualizer"
+                        ],
+                        "activeView": "dtsVisualizer",
+                        "id": "6"
+                    },
+                    "size": 503
+                }
+            ],
+            "size": 1048
+        },
+        "width": 1715,
+        "height": 1048,
+        "orientation": "HORIZONTAL"
+    },
+    "panels": {
+        "registerMonitor": {
+            "id": "registerMonitor",
+            "contentComponent": "registerMonitor",
+            "title": "Registers"
+        },
+        "gpioPanel": {
+            "id": "gpioPanel",
+            "contentComponent": "gpioPanel",
+            "title": "GPIO / Pin Array"
+        },
+        "registerTracer": {
+            "id": "registerTracer",
+            "contentComponent": "registerTracer",
+            "title": "Tracer"
+        },
+        "uartTerminal_serial": {
+            "id": "uartTerminal_serial",
+            "contentComponent": "uartTerminal",
+            "params": {
+                "deviceName": "serial"
+            },
+            "title": "UART: serial"
+        },
+        "dtsVisualizer": {
+            "id": "dtsVisualizer",
+            "contentComponent": "dtsVisualizer",
+            "title": "DTS Visualizer & AI"
+        }
+    },
+    "activeGroup": "4"
+}
