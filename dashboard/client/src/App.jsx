@@ -10,6 +10,7 @@ import HdmiOutput from './components/HdmiOutput';
 import SpiAdcPanel from './components/SpiAdcPanel';
 import OledDisplay from './components/OledDisplay';
 import SdCardPanel from './components/SdCardPanel';
+import DtsVisualizer from './components/DtsVisualizer';
 import MemoryErrorModal from './components/MemoryErrorModal';
 import './App.css';
 
@@ -24,6 +25,7 @@ const components = {
   spiAdcPanel: () => <SpiAdcPanel />,
   oledDisplay: () => <OledDisplay />,
   sdCard: () => <SdCardPanel />,
+  dtsVisualizer: () => <DtsVisualizer />,
 };
 
 
@@ -42,6 +44,18 @@ function DashboardInner() {
       if (response.ok) {
         const layoutData = await response.json();
         if (layoutData && Object.keys(layoutData).length > 0) {
+          // Remap stale UART device names in saved layout to actual manifest UARTs
+          const validUartNames = (manifest?.uarts || []).map(u => u.name);
+          if (validUartNames.length > 0 && layoutData.panels) {
+            Object.values(layoutData.panels).forEach(panel => {
+              if (panel.contentComponent === 'uartTerminal' && panel.params?.deviceName) {
+                if (!validUartNames.includes(panel.params.deviceName)) {
+                  panel.params.deviceName = validUartNames[0];
+                  panel.title = `UART: ${validUartNames[0]}`;
+                }
+              }
+            });
+          }
           api.fromJSON(layoutData);
           return;
         }
@@ -58,7 +72,7 @@ function DashboardInner() {
     const rawUarts = manifest?.uarts || [];
     const uarts = rawUarts.map((uart, index) => ({
       ...uart,
-      name: `vfpga_uart_${index + 1}`
+      name: uart.name || `vfpga_uart_${index + 1}`
     }));
 
     // 1. Create a separate panel for each UART device
@@ -143,6 +157,17 @@ function DashboardInner() {
       id: 'sdCard',
       component: 'sdCard',
       title: 'Virtual SD Card',
+      position: {
+        referencePanel: 'gpioPanel',
+        direction: 'within',
+      },
+    });
+
+    // 3e. Add dtsVisualizer within gpioPanel group (as a tab)
+    api.addPanel({
+      id: 'dtsVisualizer',
+      component: 'dtsVisualizer',
+      title: 'DTS Visualizer & AI',
       position: {
         referencePanel: 'gpioPanel',
         direction: 'within',

@@ -64,6 +64,8 @@ class DeviceConfigGenerator(BaseGenerator):
             else:
                 macro_name = f"FBB_DEV_PATH_{clean_name}"
             dev_path_macros.append(f'#ifndef {macro_name}\n#define {macro_name} "{dev.path}"\n#endif')
+            if not macro_name.endswith('_0') and name_counts[clean_name] == 1:
+                dev_path_macros.append(f'#ifndef {macro_name}_0\n#define {macro_name}_0 {macro_name}\n#endif')
         dev_path_macros_str = "\n".join(dev_path_macros)
         
         return """/* Auto-generated Device Config from DTS */

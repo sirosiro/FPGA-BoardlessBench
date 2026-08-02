@@ -15,7 +15,7 @@
                                 "activeView": "registerMonitor",
                                 "id": "2"
                             },
-                            "size": 306
+                            "size": 293
                         },
                         {
                             "type": "leaf",
@@ -26,31 +26,46 @@
                                 "activeView": "gpioPanel",
                                 "id": "3"
                             },
-                            "size": 539
+                            "size": 628
                         }
                     ],
-                    "size": 387.5487155271694
+                    "size": 384.23346290178597
                 },
                 {
                     "type": "leaf",
                     "data": {
                         "views": [
-                            "uartTerminal_default",
                             "registerTracer"
                         ],
                         "activeView": "registerTracer",
                         "id": "1"
                     },
-                    "size": 1039.4512844728306
+                    "size": 619.766537098214
+                },
+                {
+                    "type": "leaf",
+                    "data": {
+                        "views": [
+                            "dtsVisualizer"
+                        ],
+                        "activeView": "dtsVisualizer",
+                        "id": "6"
+                    },
+                    "size": 504
                 }
             ],
-            "size": 845
+            "size": 921
         },
-        "width": 1427,
-        "height": 845,
+        "width": 1508,
+        "height": 921,
         "orientation": "HORIZONTAL"
     },
     "panels": {
+        "registerTracer": {
+            "id": "registerTracer",
+            "contentComponent": "registerTracer",
+            "title": "Tracer"
+        },
         "registerMonitor": {
             "id": "registerMonitor",
             "contentComponent": "registerMonitor",
@@ -61,18 +76,10 @@
             "contentComponent": "gpioPanel",
             "title": "GPIO / Pin Array"
         },
-        "uartTerminal_default": {
-            "id": "uartTerminal_default",
-            "contentComponent": "uartTerminal",
-            "params": {
-                "deviceName": "default"
-            },
-            "title": "UART Console"
-        },
-        "registerTracer": {
-            "id": "registerTracer",
-            "contentComponent": "registerTracer",
-            "title": "Tracer"
+        "dtsVisualizer": {
+            "id": "dtsVisualizer",
+            "contentComponent": "dtsVisualizer",
+            "title": "DTS Visualizer & AI"
         }
     },
     "activeGroup": "1"

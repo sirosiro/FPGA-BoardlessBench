@@ -124,10 +124,13 @@ class DTSParser:
             
             # Extract node name after label if colon exists
             node_name = raw_name
+            label_prefix = None
             if ':' in raw_name:
-                node_name = raw_name.split(':')[-1].strip()
+                parts = raw_name.split(':')
+                label_prefix = parts[0].strip()
+                node_name = parts[-1].strip()
                 
-            name = node_name.split('@')[0]
+            name = label_prefix if label_prefix else node_name.split('@')[0]
 
             # Clean body by removing nested sub-node blocks to prevent property overriding
             clean_body = body
@@ -283,12 +286,24 @@ class DTSParser:
                                 logical_name = paren_match.group(2)
                             direction_mode = None
                             l_upper = (logical_name or reg_name).upper()
-                            if 'INV' in l_upper:
-                                direction_mode = 'active_low_input'
-                            elif 'TRI' in l_upper or 'DIR' in l_upper or 'TRI' in reg_name.upper() or 'DIR' in reg_name.upper():
-                                direction_mode = 'active_high_input'
+                            r_upper = reg_name.upper()
+
+                            is_dir_reg = ('INV' in l_upper or 'TRI' in l_upper or l_upper in ['DIR', 'DDR'] or r_upper in ['PDDR', 'GDIR', 'TRI', 'DIR', 'DDR'])
+                            if r_upper.startswith('PDIR') or r_upper.startswith('PDOR'):
+                                is_dir_reg = False
+
+                            if is_dir_reg:
+                                if 'INV' in l_upper or 'INV' in r_upper:
+                                    direction_mode = 'active_low_input'
+                                else:
+                                    direction_mode = 'active_high_input'
                             
                             device.registers.append(Register(reg_name, reg_offset, 'RW', logical_name, direction_mode))
+                base_name = device.name
+                counter = 1
+                while any(d.name == device.name for d in devices):
+                    device.name = f"{base_name}_{counter}"
+                    counter += 1
                 devices.append(device)
         
         # 共有メモリ名として使用するボード名を決定（UIO > GPIO > デフォルト）

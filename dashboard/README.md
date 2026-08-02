@@ -87,6 +87,8 @@ node server.js
 - `GET /api/manifest`: 現在ロードされているボード構成情報（`board_manifest.json`）を返します。
 - `GET /api/layout`: 現在アクティブなシナリオのフォルダから UI レイアウト情報（`fbb_layout.json`）を読み込みます。
 - `POST /api/layout`: 現在アクティブなシナリオのフォルダへ UI レイアウト情報を保存します。
+- `GET /api/dts/tree`: 32-bit物理アドレス空間のメモリマップ割り当て、デバイス間/High/Low未割り当て空間（Unmapped Gap）サイズ、および重なり検知ステータスとDTSソースを取得します。
+- `POST /api/dts/diagnose`: DTSエラーメッセージをローカルLLM (Ollama/qwen3.6) へ投入し、AIによる自然言語解説と推奨Fix Diffを取得します。
 - `GET /api/sdcard/status`: 仮想 SD カードの現在のマウント・エミュレーションステータスを取得します。
 - `GET /api/sdcard/list`: 仮想 SD カードイメージ内のファイル一覧を取得します。
 - `GET /api/sdcard/dump`: 仮想 SD カードイメージから指定したファイルをダウンロードします。

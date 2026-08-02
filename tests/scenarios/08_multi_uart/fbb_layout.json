@@ -4,51 +4,98 @@
             "type": "branch",
             "data": [
                 {
-                    "type": "leaf",
-                    "data": {
-                        "views": [
-                            "uartTerminal_vfpga_uart_1"
-                        ],
-                        "activeView": "uartTerminal_vfpga_uart_1",
-                        "id": "1"
-                    },
-                    "size": 643
+                    "type": "branch",
+                    "data": [
+                        {
+                            "type": "branch",
+                            "data": [
+                                {
+                                    "type": "leaf",
+                                    "data": {
+                                        "views": [
+                                            "uartTerminal_serial"
+                                        ],
+                                        "activeView": "uartTerminal_serial",
+                                        "id": "7"
+                                    },
+                                    "size": 482
+                                },
+                                {
+                                    "type": "leaf",
+                                    "data": {
+                                        "views": [
+                                            "uartTerminal_serial_1"
+                                        ],
+                                        "activeView": "uartTerminal_serial_1",
+                                        "id": "1"
+                                    },
+                                    "size": 482.9853026419878
+                                }
+                            ],
+                            "size": 662
+                        },
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "uartTerminal_serial_2"
+                                ],
+                                "activeView": "uartTerminal_serial_2",
+                                "id": "6"
+                            },
+                            "size": 259
+                        }
+                    ],
+                    "size": 964.9853026419878
                 },
                 {
                     "type": "leaf",
                     "data": {
                         "views": [
-                            "uartTerminal_vfpga_uart_2"
+                            "dtsVisualizer"
                         ],
-                        "activeView": "uartTerminal_vfpga_uart_2",
-                        "id": "6"
+                        "activeView": "dtsVisualizer",
+                        "id": "3"
                     },
-                    "size": 642
+                    "size": 543.0146973580122
                 }
             ],
-            "size": 802
+            "size": 921
         },
-        "width": 1285,
-        "height": 802,
+        "width": 1508,
+        "height": 921,
         "orientation": "HORIZONTAL"
     },
     "panels": {
-        "uartTerminal_vfpga_uart_1": {
-            "id": "uartTerminal_vfpga_uart_1",
+        "uartTerminal_serial_1": {
+            "id": "uartTerminal_serial_1",
             "contentComponent": "uartTerminal",
             "params": {
-                "deviceName": "vfpga_uart_1"
+                "deviceName": "serial_1"
             },
-            "title": "UART: vfpga_uart_1"
+            "title": "UART: serial_1"
         },
-        "uartTerminal_vfpga_uart_2": {
-            "id": "uartTerminal_vfpga_uart_2",
+        "dtsVisualizer": {
+            "id": "dtsVisualizer",
+            "contentComponent": "dtsVisualizer",
+            "title": "DTS Visualizer & AI"
+        },
+        "uartTerminal_serial_2": {
+            "id": "uartTerminal_serial_2",
             "contentComponent": "uartTerminal",
             "params": {
-                "deviceName": "vfpga_uart_2"
+                "deviceName": "serial_2"
             },
-            "title": "UART: vfpga_uart_2"
+            "title": "UART: serial_2"
+        },
+        "uartTerminal_serial": {
+            "id": "uartTerminal_serial",
+            "contentComponent": "uartTerminal",
+            "params": {
+                "deviceName": "serial"
+            },
+            "title": "UART: serial"
         }
     },
-    "activeGroup": "6"
+    "activeGroup": "3"
 }

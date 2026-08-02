@@ -12,7 +12,9 @@
                 "ms-python.vscode-pylance",
                 "mshr-h.veriloghdl",
                 "mshr-h.vsc-vcd-viewer",
-                "rust-lang.rust-analyzer"
+                "rust-lang.rust-analyzer",
+                "nordic-semiconductor.nrf-devicetree",
+                "avalek.vscode-devicetree"
             ]
         }
     },

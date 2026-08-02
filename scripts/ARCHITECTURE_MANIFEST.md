@@ -27,6 +27,8 @@
 DTS ファイルを読み込み、意味論的な検証を行った上で `BoardModel` オブジェクトを構築する。
 - **再帰的 `#include` プリプロセス機能**: C プリプロセッサと同等に `#include "..."` および `#include <...>` ディレクティブを再帰的に解析し、メーカー提供の `.dtsi` 定義等を自動的にインライン展開する。
 - **`&label` ノードオーバーライド自動マージ**: `&i2c1 { ... }` のようなアンカー参照・オーバーライド構文を検知し、ルートノード (`/`) 内の該当ターゲットバスノードの中へ自動的に挿入・結合（マージ）する。
+- **ノードラベル保持と重複自動解消**: DTS ノード定義時のラベルプレフィックス（`uart1`, `uart2`, `uart3` 等）をデバイス名として保持。さらに同名ノードが複数存在するシナリオ（例: `serial@...`）においてもユニークインデックス（`serial`, `serial_1`, `serial_2`）を自動付与して上書き・衝突を防止する。
+- **方向レジスタ分類の精密化**: レジスタの `direction_mode` 自動識別時、データレジスタ (`PDIR`/`PDOR`) を方向設定から除外し、方向制御専用レジスタ (`PDDR`, `GDIR`, `TRI`, `DIR` 等) のみを正確に判定する。
 - **マルチプロトコル解析**: 標準の UIO/GPIO デバイスに加え、VirtIO vring ノード、仮想 IPI コントローラ、PPA ペリフェラル互換性タグの解析をサポートする。
 
 ### 3.2 Logic Layer (`BoardModel`, `Device`, `Register`)
@@ -37,7 +39,7 @@ DTS の論理構造を抽象化したデータモデル。
 ### 3.3 Generation Layer (`GeneratorOrchestrator`, `BaseGenerator`)
 `GeneratorOrchestrator` が `BoardModel` を各 `BaseGenerator` 実装へと配布し、一貫性のあるファイルセットを出力する。
 - **SystemConfigGenerator**: F-BBシステム構成ヘッダー (`vfpga_system_config.h`) を生成
-- **DeviceConfigGenerator**: シナリオ固有のデバイス定義ヘッダー (`vfpga_device_config.h`) を生成
+- **DeviceConfigGenerator**: シナリオ固有のデバイス定義ヘッダー (`vfpga_device_config.h`) を生成。`FBB_DEV_PATH_<NAME>` に加え、互換マクロ `FBB_DEV_PATH_<NAME>_0` を自動出力して既存ファームウェアとの後方互換性を保証する。
 - **ShimGenerator**: Shimライブラリ (`libfpgashim.c`) を生成。通常の UIO/GPIO/UART のラップに加え、非対称マルチコア（AMP）開発用の **VirtIO/RPMsg 仮想デバイススタック**（Unixドメインソケットを用いたAコア/Mコア間の通信、および proxy_pid を用いたIPIシグナル送信）を自動生成する。
 - **RTLGenerator**: Verilog トップモジュール (`vfpga_top.v`) を生成
 - **SimulatorGenerator**: Verilator 用 C++ ラッパー (`sim_main.cpp`) を生成。共有メモリとRTLレジスタ間の同期を行うとともに、仮想IPI（`TRIG`）レジスタへの書き込み検知時に、Aコアの対応プロセスへシグナル（`SIGUSR2`）を自動中継して自身をクリアする調停ロジックを生成する。

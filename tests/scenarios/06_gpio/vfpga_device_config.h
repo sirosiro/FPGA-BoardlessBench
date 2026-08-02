@@ -6,4 +6,7 @@
 #ifndef FBB_DEV_PATH_VFPGA_GPIO
 #define FBB_DEV_PATH_VFPGA_GPIO "/dev/uio0"
 #endif
+#ifndef FBB_DEV_PATH_VFPGA_GPIO_0
+#define FBB_DEV_PATH_VFPGA_GPIO_0 FBB_DEV_PATH_VFPGA_GPIO
+#endif
 #endif

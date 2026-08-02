@@ -18,9 +18,9 @@
                     "type": "leaf",
                     "data": {
                         "views": [
-                            "uartTerminal_vfpga_uart_1"
+                            "uartTerminal_serial"
                         ],
-                        "activeView": "uartTerminal_vfpga_uart_1",
+                        "activeView": "uartTerminal_serial",
                         "id": "1"
                     },
                     "size": 457.60546875
@@ -38,13 +38,13 @@
             "contentComponent": "sdCard",
             "title": "Virtual SD Card"
         },
-        "uartTerminal_vfpga_uart_1": {
-            "id": "uartTerminal_vfpga_uart_1",
+        "uartTerminal_serial": {
+            "id": "uartTerminal_serial",
             "contentComponent": "uartTerminal",
             "params": {
-                "deviceName": "vfpga_uart_1"
+                "deviceName": "serial"
             },
-            "title": "UART: vfpga_uart_1"
+            "title": "UART: serial"
         }
     },
     "activeGroup": "1"

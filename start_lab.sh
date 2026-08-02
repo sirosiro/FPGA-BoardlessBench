@@ -28,6 +28,7 @@ cleanup() {
     [ -n "$SIM_PID" ] && kill $SIM_PID 2>/dev/null
     [ -n "$DASHBOARD_PID" ] && kill $DASHBOARD_PID 2>/dev/null
     pkill -f "node dashboard/server.js" 2>/dev/null
+    pkill -f "vlogic_controller.py" 2>/dev/null
     pkill test_bin 2>/dev/null
     
     # remoteproc M-core processes cleanup
@@ -46,7 +47,7 @@ cleanup() {
     rm -f /tmp/fbb_memory_violation 2>/dev/null
     rm -f /tmp/vring0 /tmp/vfpga_reg /tmp/fbb_compatible /tmp/fbb_model 2>/dev/null
     rm -f /tmp/hdmi_output.bmp 2>/dev/null
-    rm -f dashboard/data/board_manifest.json 2>/dev/null
+    rm -f dashboard/data/board_manifest.json dashboard/data/vfpga_uart_* dashboard/data/uart_map.json 2>/dev/null
     
     echo "Done."
     exit

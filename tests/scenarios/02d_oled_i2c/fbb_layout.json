@@ -4,24 +4,46 @@
             "type": "branch",
             "data": [
                 {
-                    "type": "leaf",
-                    "data": {
-                        "views": [
-                            "oledDisplay"
-                        ],
-                        "activeView": "oledDisplay",
-                        "id": "3"
-                    },
-                    "size": 872
+                    "type": "branch",
+                    "data": [
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "oledDisplay"
+                                ],
+                                "activeView": "oledDisplay",
+                                "id": "6"
+                            },
+                            "size": 988
+                        },
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "dtsVisualizer"
+                                ],
+                                "activeView": "dtsVisualizer",
+                                "id": "3"
+                            },
+                            "size": 520
+                        }
+                    ],
+                    "size": 921
                 }
             ],
-            "size": 1088
+            "size": 1508
         },
-        "width": 1088,
-        "height": 872,
+        "width": 1508,
+        "height": 921,
         "orientation": "VERTICAL"
     },
     "panels": {
+        "dtsVisualizer": {
+            "id": "dtsVisualizer",
+            "contentComponent": "dtsVisualizer",
+            "title": "DTS Visualizer & AI"
+        },
         "oledDisplay": {
             "id": "oledDisplay",
             "contentComponent": "oledDisplay",

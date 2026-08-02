@@ -14,9 +14,9 @@ function GpioPanel() {
 
           // Find direction register
           const dirReg = devRegs.find(r => 
-            r.direction_mode !== null ||
-            (r.logical_name || r.name).includes('TRI') ||
-            (r.logical_name || r.name).includes('DIR')
+            Boolean(r.direction_mode) ||
+            ['PDDR', 'GDIR', 'TRI', 'DIR', 'DDR'].includes(r.name.toUpperCase()) ||
+            ['INV_TRI', 'INV_DIR', 'TRI', 'DIR'].includes((r.logical_name || '').toUpperCase())
           );
 
           // Find DATA registers (Data Out vs Data In)

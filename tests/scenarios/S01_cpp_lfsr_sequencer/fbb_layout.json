@@ -7,76 +7,83 @@
                     "type": "branch",
                     "data": [
                         {
-                            "type": "leaf",
-                            "data": {
-                                "views": [
-                                    "registerMonitor"
-                                ],
-                                "activeView": "registerMonitor",
-                                "id": "2"
-                            },
-                            "size": 423
+                            "type": "branch",
+                            "data": [
+                                {
+                                    "type": "leaf",
+                                    "data": {
+                                        "views": [
+                                            "registerMonitor"
+                                        ],
+                                        "activeView": "registerMonitor",
+                                        "id": "6"
+                                    },
+                                    "size": 418
+                                },
+                                {
+                                    "type": "leaf",
+                                    "data": {
+                                        "views": [
+                                            "gpioPanel"
+                                        ],
+                                        "activeView": "gpioPanel",
+                                        "id": "2"
+                                    },
+                                    "size": 630
+                                }
+                            ],
+                            "size": 405
+                        },
+                        {
+                            "type": "branch",
+                            "data": [
+                                {
+                                    "type": "leaf",
+                                    "data": {
+                                        "views": [
+                                            "uartTerminal_vfpga_uart_1"
+                                        ],
+                                        "activeView": "uartTerminal_vfpga_uart_1",
+                                        "id": "1"
+                                    },
+                                    "size": 524
+                                },
+                                {
+                                    "type": "leaf",
+                                    "data": {
+                                        "views": [
+                                            "registerTracer"
+                                        ],
+                                        "activeView": "registerTracer",
+                                        "id": "4"
+                                    },
+                                    "size": 524
+                                }
+                            ],
+                            "size": 877
                         },
                         {
                             "type": "leaf",
                             "data": {
                                 "views": [
-                                    "gpioPanel"
+                                    "dtsVisualizer"
                                 ],
-                                "activeView": "gpioPanel",
+                                "activeView": "dtsVisualizer",
                                 "id": "3"
                             },
-                            "size": 423
+                            "size": 427
                         }
                     ],
-                    "size": 417
-                },
-                {
-                    "type": "branch",
-                    "data": [
-                        {
-                            "type": "leaf",
-                            "data": {
-                                "views": [
-                                    "uartTerminal_vfpga_uart_1"
-                                ],
-                                "activeView": "uartTerminal_vfpga_uart_1",
-                                "id": "1"
-                            },
-                            "size": 359
-                        },
-                        {
-                            "type": "leaf",
-                            "data": {
-                                "views": [
-                                    "registerTracer"
-                                ],
-                                "activeView": "registerTracer",
-                                "id": "4"
-                            },
-                            "size": 487
-                        }
-                    ],
-                    "size": 922
+                    "size": 1048
                 }
             ],
-            "size": 846
+            "size": 1709
         },
-        "width": 1339,
-        "height": 846,
-        "orientation": "HORIZONTAL"
+        "width": 1709,
+        "height": 1048,
+        "orientation": "VERTICAL"
     },
     "panels": {
-        "registerMonitor": {
-            "id": "registerMonitor",
-            "contentComponent": "registerMonitor",
-            "title": "Registers"
-        },
-        "gpioPanel": {
-            "id": "gpioPanel",
-            "contentComponent": "gpioPanel",
-            "title": "GPIO / Pin Array"
-        },
         "uartTerminal_vfpga_uart_1": {
             "id": "uartTerminal_vfpga_uart_1",
             "contentComponent": "uartTerminal",
@@ -85,11 +92,26 @@
             },
             "title": "UART: vfpga_uart_1"
         },
+        "gpioPanel": {
+            "id": "gpioPanel",
+            "contentComponent": "gpioPanel",
+            "title": "GPIO / Pin Array"
+        },
+        "dtsVisualizer": {
+            "id": "dtsVisualizer",
+            "contentComponent": "dtsVisualizer",
+            "title": "DTS Visualizer & AI"
+        },
         "registerTracer": {
             "id": "registerTracer",
             "contentComponent": "registerTracer",
             "title": "Tracer"
+        },
+        "registerMonitor": {
+            "id": "registerMonitor",
+            "contentComponent": "registerMonitor",
+            "title": "Registers"
         }
     },
-    "activeGroup": "4"
+    "activeGroup": "3"
 }
