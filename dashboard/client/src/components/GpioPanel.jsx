@@ -12,17 +12,19 @@ function GpioPanel() {
           const devRegs = registers.filter(r => r.deviceName === dev.name);
           if (devRegs.length === 0) return null;
 
-          // Find direction register
+          // Find direction register:
+          // 1. Primary: Driven strictly by DTS/Manifest direction_mode metadata (Single Source of Truth)
+          // 2. Fallback: Zynq PS / XPS GPIO standard ('TRI' / 'GPIO_TRI')
           const dirReg = devRegs.find(r => 
-            Boolean(r.direction_mode) ||
-            ['PDDR', 'GDIR', 'TRI', 'DIR', 'DDR'].includes(r.name.toUpperCase()) ||
-            ['INV_TRI', 'INV_DIR', 'TRI', 'DIR'].includes((r.logical_name || '').toUpperCase())
+            Boolean(r.direction_mode) || 
+            (r.name || '').toUpperCase().includes('TRI') || 
+            (r.logical_name || '').toUpperCase().includes('TRI')
           );
 
-          // Find DATA registers (Data Out vs Data In)
-          const dataRegs = devRegs.filter(r => (r.logical_name || r.name).startsWith('DATA') || r.name.includes('DIR') || r.name.includes('DR'));
-          let dataOutReg = dataRegs.find(r => r.name.includes('PDOR') || r.name.includes('OUT') || r.name === 'DR') || dataRegs[0] || devRegs[0];
-          let dataInReg = dataRegs.find(r => r.name.includes('PDIR') || r.name.includes('IN')) || dataRegs[0] || dataOutReg;
+          // Find DATA registers (Zynq / Standard DATA)
+          const dataRegs = devRegs.filter(r => (r.logical_name || r.name).toUpperCase().includes('DATA') || r.name.toUpperCase().includes('DR'));
+          let dataOutReg = dataRegs[0] || devRegs[0];
+          let dataInReg = dataRegs.find(r => r.name.toUpperCase().includes('IN')) || dataOutReg;
 
           const dirVal = dirReg?.decimal || 0;
           const dataOutVal = dataOutReg?.decimal || 0;

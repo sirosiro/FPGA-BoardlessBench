@@ -1,0 +1,55 @@
+/dts-v1/;
+
+/ {
+    #address-cells = <1>;
+    #size-cells = <1>;
+    model = "vfpga-amp-mcore-cdma-scenario";
+    compatible = "generic,fbb-vfpga";
+
+    /* Source Buffer Region */
+    src_mem: memory@40000000 {
+        compatible = "generic-uio";
+        reg = <0x40000000 0x1000>;
+        label = "/dev/uio2";
+    };
+
+    /* GPIO Controller for Interactive Lab Mode */
+    gpio0: gpio@40001000 {
+        compatible = "xlnx,xps-gpio-1.00.a";
+        reg = <0x40001000 0x1000>;
+        registers = "GPIO_DATA @ 0x00, GPIO_TRI @ 0x04";
+        gpio-controller;
+        #gpio-cells = <2>;
+        label = "/dev/uio1";
+    };
+
+    /* AXI CDMA IP Controller */
+    cdma0: dma@40002000 {
+        compatible = "xlnx,axi-cdma-1.00.a";
+        reg = <0x40002000 0x1000>;
+        registers = "CDMACR @ 0x00, CDMASR @ 0x04, SA @ 0x18, DA @ 0x20, BTT @ 0x28";
+        interrupts = <6>;
+        label = "/dev/uio0";
+    };
+
+    /* Destination Buffer Region */
+    dst_mem: memory@40003000 {
+        compatible = "generic-uio";
+        reg = <0x40003000 0x1000>;
+        label = "/dev/uio3";
+    };
+
+    /* UART Controller for Web Dashboard UART Console */
+    uart0: serial@40004000 {
+        compatible = "xlnx,xps-uart-1.00.a";
+        reg = <0x40004000 0x1000>;
+        label = "/dev/ttyPS0";
+    };
+
+    /* RemoteProc for M-Core Lifecycle Management */
+    remoteproc0: remoteproc@40005000 {
+        compatible = "generic-uio";
+        reg = <0x40005000 0x1000>;
+        label = "/dev/uio4";
+    };
+};

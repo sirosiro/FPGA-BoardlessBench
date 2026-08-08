@@ -376,6 +376,7 @@ F-BB環境には、基本的なペリフェラル操作から高度なマルチ�
 | [18_amp_mcore_Rust_rtic](tests/scenarios/18_amp_mcore_Rust_rtic/) | Rust を用いた RTIC リアルタイム割り込み駆動タスクディスパッチの検証（対称設計） | RTIC, Rust, 仮想割り込み (SIGUSR1), 対称設計 |
 | [19_acore_sd](tests/scenarios/19_acore_sd/) | Aコア（Linux環境）アプリケーションにおける仮想SDカードマウント・読み書き検証 | システムコールフックエミュレーション, `mount`/`umount` フック, 対話型UARTメニュー, 512MB仮想容量, Text/HEXプレビューア |
 | [20_dma_cdma](tests/scenarios/20_dma_cdma/) | Zynq AXI CDMA IP (`xlnx,axi-cdma-1.00.a`) による超高速・高信頼 DMA エミュレーションおよび事前境界チェックの検証 | AXI CDMA, `memcpy` エミュレーション, アライメント判定 (`DMADecErr`), アンダーラン (Stale Data), オーバーラン (`OVERRUN_ERR`) |
+| [20b_mcore_cdma](tests/scenarios/20b_mcore_cdma/) | AMP Mコア (Cortex-M / ベアメタル) による AXI CDMA オフロード制御 & リアルタイム DMA エミュレーションの検証 | AMP, Mコアベアメタル, AXI CDMA オフロード, ゼロコピー DRAM 共有, `remoteproc` 連携 |
 | [P01_frdmIMX](tests/scenarios/P01_frdmIMX/) | i.MX95/8MP HAL C++ を使用したOpenGL ES 4カメラ入力 | OpenGL ES, HDMIエミュレーション, C++ HAL |
 | [S01_cpp_lfsr_sequencer](tests/scenarios/S01_cpp_lfsr_sequencer/) | CLI シェルと Web ダッシュボードを統合したショーケースデモ | 統合 Web UI, Dockview, Recharts, CLI |
 
@@ -457,21 +458,20 @@ F-BBは、ハードウェア記述言語（RTL）から、低レイヤーのシ�
 
 | 言語分類 | 拡張子 | ファイル数 | 総行数 | 主な構成要素と役割 |
 | :--- | :---: | :---: | :---: | :--- |
-| **C/C++** | `.cpp` / `.hpp` / `.c` / `.h` / `.template` | 54 | **8,882行** | システムコール横取り（C Shimテンプレート含む）のランタイム、周辺デバイス抽象クラス・エミュレータ、およびファームウェアテストコード |
+| **C/C++** | `.cpp` / `.hpp` / `.c` / `.h` / `.template` | 56 | **9,215行** | システムコール横取り（C Shimテンプレート含む）のランタイム、周辺デバイス抽象クラス・エミュレータ、およびファームウェアテストコード |
 | **Python** | `.py` | 12 | **1,995行** | DTSパース・コード自動生成エンジン（`vfpga` パッケージ）、PPAプラグイン動的発見エンジン、ノードラベル保持・重複自動解消、およびバックエンド制御スクリプト |
 | **JavaScript / React** | `.jsx` / `.js` / `.css` / `.html` | 20 | **3,906行** | Webダッシュボードサーバー（Express）、Vite + React 19 のフロントエンド UI（Dockview レイアウト、Recharts グラフ描画、DTS Visualizer メモリマップ、汎用ペイン規格 `GenericPeripheralPane`） |
 | **Verilog** | `.v` | 20 | **1,112行** | シミュレーション対象の FPGA ハードウェア記述（RTLモックやシナリオ固有のロジック） |
-| **Device Tree (DTS)** | `.dts` / `.dtsi` | 31 | **726行** | 仮想デバイス仕様の定義（アドレスマップ、レジスタ名、メーカー提供 `.dtsi` 定義、ペリフェラル構成） |
-| **JSON / Manifest** | `.json` | 22 | **5,754行** | PPAペリフェラルマニフェスト (`fbb-plugin.json`)、ボード構造メタデータ、UARTマッピング設定 |
-| **Shell Script** | `.sh` | 29 | **1,099行** | テスト一括実行ランナー（`run_tests.sh`）、およびラボ起動ランナー（`start_lab.sh`） |
+| **Device Tree (DTS)** | `.dts` / `.dtsi` | 32 | **775行** | 仮想デバイス仕様の定義（アドレスマップ、レジスタ名、メーカー提供 `.dtsi` 定義、ペリフェラル構成） |
+| **JSON / Manifest** | `.json` | 23 | **5,859行** | PPAペリフェラルマニフェスト (`fbb-plugin.json`)、ボード構造メタデータ、UARTマッピング設定 |
+| **Shell Script** | `.sh` | 30 | **1,133行** | テスト一括実行ランナー（`run_tests.sh`）、およびラボ起動ランナー（`start_lab.sh`） |
 | **Rust** | `.rs` | 6 | **222行** | Mコア用ベアメタル・リアルタイムOSファームウェア（Rust対応シナリオ、※自動生成される `fbb_pac.rs` は除く） |
-| **合計 (Total)** | **-** | **194** | **23,696行** | **F-BB プラットフォーム全体の静的ソースコード総数** |
+| **合計 (Total)** | **-** | **200** | **24,217行** | **F-BB プラットフォーム全体の静的ソースコード総数** |
 
-> **前回からの比較と増減 (シナリオ20 Zynq AXI CDMA エミュレーション / アライメント & 境界判定機能の統合)**
-> Scenario 20 ([`20_dma_cdma`](tests/scenarios/20_dma_cdma/README.md)) による Zynq AXI CDMA 高速転送・境界エラー検証環境の開発、C-Shim MMIO ベースアドレスソート（`base_addr`）の強化、ダッシュボード Telemetry (UIO/GPIO/DMA) 統合、およびドキュメント体系の完全同期に伴い、プラットフォーム全域の静的ソースコード統計は **194ファイル / 23,696行** に拡大しました：
-> - **Scenario 20 (`20_dma_cdma`)**: +5ファイル（`config.dts`, `fbb_layout.json`, `main.c`, `run.sh`, `README.md`）
-> - **C-Shim & Telemetry**: DMA デバイス認識 (`parser.py` / `models.py`)、ベースアドレスソート (`generator_shim.py`)、および Telemetry 受信フィルター更新 (`server.js`)
-> - **ドキュメント完全同期**: ルートおよび各サブディレクトリの `README.md` / `ARCHITECTURE_MANIFEST.md` 完全修正
+> **前回からの比較と増減 (シナリオ20b AMP Mコア AXI CDMA オフロード & リアルタイム DMA エミュレーションの統合)**
+> Scenario 20b ([`20b_mcore_cdma`](tests/scenarios/20b_mcore_cdma/README.md)) による AMP Mコアからの AXI CDMA 直接制御・オフロード検証環境の開発、Aコア/Mコア間の remoteproc 連携およびドキュメント体系の完全同期に伴い、プラットフォーム全域の静的ソースコード統計は **200ファイル / 24,217行** に拡大しました：
+> - **Scenario 20b (`20b_mcore_cdma`)**: +6ファイル（`config.dts`, `fbb_layout.json`, `main.c`, `mcore_cdma.c`, `run.sh`, `README.md`）
+> - **ドキュメント完全同期**: ルートおよび各サブディレクトリの `README.md` / `ARCHITECTURE_MANIFEST.md` / `AddInfo` 完全修正
 
 > **コード生成エンジンによる動的コード**
 > F-BBの設計上、上記の静的コードに加えて、DTSを読み込んだ際に Python スクリプトが、外部テンプレート `libfpgashim.c.template` を基にして **C言語 Shim (`libfpgashim.c` / 約680行)** を生成するほか、**C++ シミュレーションラッパー (`sim_main.cpp` / 約100行)**、**Verilog スケルトン (`vfpga_top.v` / 約40行)**、**Rust PAC (`fbb_pac.rs` / 約80行)** などをビルド時に自動生成します。
