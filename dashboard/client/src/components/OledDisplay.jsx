@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { Monitor, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
+import { Monitor, ZoomIn, ZoomOut, RotateCcw, Layers } from 'lucide-react';
 import { useDashboard } from './DashboardContext';
 
 function OledDisplay() {
@@ -15,7 +15,17 @@ function OledDisplay() {
     setZoom(250);
   };
 
+  const oledSlave = manifest?.devices
+    ?.flatMap(d => d.i2c_slaves || [])
+    ?.find(s => s.compatible === 'solomon,ssd1306');
+  const boardSvgContent = oledSlave?.ui_widget?.board_svg_content;
+
+  // DTS内にSSD1306が存在するか、またはPPAプラグインが存在するか判定
+  const hasActivePeripheral = Boolean(oledSlave || boardSvgContent);
+
   useEffect(() => {
+    if (!hasActivePeripheral) return;
+
     const canvas = canvasRef.current;
     if (!canvas) return;
 
@@ -74,7 +84,7 @@ function OledDisplay() {
     }
 
     ctx.putImageData(imgData, 0, 0);
-  }, [displayFrame]);
+  }, [displayFrame, hasActivePeripheral]);
 
   // CSS ネジ穴・金属パッドのスタイル定義
   const screwPadStyle = (top = 'auto', left = 'auto', right = 'auto', bottom = 'auto') => ({
@@ -102,11 +112,6 @@ function OledDisplay() {
     boxShadow: 'inset 0 3px 6px rgba(0,0,0,0.9), 0 1px 1px rgba(255,255,255,0.2)'
   };
 
-  const oledSlave = manifest?.devices
-    ?.flatMap(d => d.i2c_slaves || [])
-    ?.find(s => s.compatible === 'solomon,ssd1306');
-  const boardSvgContent = oledSlave?.ui_widget?.board_svg_content;
-
   const baseWidth = 280;
   const baseHeight = 280;
   const scaledWidth = baseWidth * (zoom / 100);
@@ -132,226 +137,295 @@ function OledDisplay() {
         fontWeight: 600,
         fontSize: '0.85rem'
       }}>
-        <Monitor size={16} /> Virtual OLED Display (128x64)
+        <Monitor size={16} /> Virtual Peripheral View
       </div>
 
-      {/* ズームコントロールパネル (フローティング) */}
-      <div style={{
-        position: 'absolute',
-        top: '2.5rem',
-        right: '1.5rem',
-        zIndex: 10,
-        background: 'rgba(22, 27, 34, 0.85)',
-        backdropFilter: 'blur(8px)',
-        border: '1px solid #30363d',
-        borderRadius: '8px',
-        padding: '6px 12px',
-        display: 'flex',
-        alignItems: 'center',
-        gap: '8px',
-        boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
-      }}>
-        <ZoomOut size={14} style={{ color: '#8b949e' }} />
-        <input 
-          type="range" 
-          min="100" 
-          max="600" 
-          step="50"
-          value={zoom} 
-          onChange={handleZoomChange}
-          style={{
-            width: '80px',
-            accentColor: '#58a6ff',
-            cursor: 'pointer'
-          }}
-        />
-        <ZoomIn size={14} style={{ color: '#8b949e' }} />
-        <span style={{ fontSize: '0.75rem', fontWeight: 600, minWidth: '40px', textAlign: 'right' }}>
-          {zoom}%
-        </span>
-        <button 
-          onClick={resetZoom}
-          title="Reset Zoom"
-          style={{
-            background: 'none',
-            border: 'none',
-            color: '#8b949e',
-            cursor: 'pointer',
+      {hasActivePeripheral ? (
+        <>
+          {/* ズームコントロールパネル (フローティング) */}
+          <div style={{
+            position: 'absolute',
+            top: '2.5rem',
+            right: '1.5rem',
+            zIndex: 10,
+            background: 'rgba(22, 27, 34, 0.85)',
+            backdropFilter: 'blur(8px)',
+            border: '1px solid #30363d',
+            borderRadius: '8px',
+            padding: '6px 12px',
             display: 'flex',
             alignItems: 'center',
-            padding: '2px',
-            borderRadius: '4px',
-            transition: 'background 0.2s',
-          }}
-          onMouseEnter={(e) => e.currentTarget.style.background = '#21262d'}
-          onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
-        >
-          <RotateCcw size={14} />
-        </button>
-      </div>
-
-      <div className="oled-viewport" style={{ 
-        flex: 1, 
-        display: 'flex', 
-        justifyContent: 'center', 
-        alignItems: 'center', 
-        backgroundColor: '#050705',
-        padding: '1.5rem',
-        overflow: 'auto',
-        boxShadow: 'inset 0 4px 20px rgba(0,0,0,0.7)'
-      }}>
-        {/* スケーリング用のダミー枠 */}
-        <div style={{
-          width: `${scaledWidth}px`,
-          height: `${scaledHeight}px`,
-          display: 'flex',
-          alignItems: 'center',
-          justifyContent: 'center',
-          transition: 'width 0.1s ease-out, height 0.1s ease-out'
-        }}>
-          {/* OLED 物理モジュール自作ボード */}
-          <div style={{
-            position: 'relative',
-            width: `${baseWidth}px`,
-            height: `${baseHeight}px`,
-            transform: `scale(${zoom / 100})`,
-            transformOrigin: 'center center',
-            transition: 'transform 0.1s ease-out',
-            userSelect: 'none',
-            background: boardSvgContent ? 'transparent' : 'linear-gradient(135deg, #104eae 0%, #082860 100%)',
-            border: boardSvgContent ? 'none' : '1.5px solid #183e78',
-            borderRadius: '12px',
-            boxShadow: boardSvgContent ? 'none' : '0 10px 30px rgba(0,0,0,0.6), inset 0 1.5px 2px rgba(255,255,255,0.25)'
+            gap: '8px',
+            boxShadow: '0 4px 12px rgba(0,0,0,0.5)'
           }}>
-            {/* PPA 2.0 SVG Vector Board Background Overlay */}
-            {boardSvgContent && (
-              <div 
-                style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 0 }}
-                dangerouslySetInnerHTML={{ __html: boardSvgContent }} 
-              />
-            )}
+            <ZoomOut size={14} style={{ color: '#8b949e' }} />
+            <input 
+              type="range" 
+              min="100" 
+              max="600" 
+              step="50"
+              value={zoom} 
+              onChange={handleZoomChange}
+              style={{
+                width: '80px',
+                accentColor: '#58a6ff',
+                cursor: 'pointer'
+              }}
+            />
+            <ZoomIn size={14} style={{ color: '#8b949e' }} />
+            <span style={{ fontSize: '0.75rem', fontWeight: 600, minWidth: '40px', textAlign: 'right' }}>
+              {zoom}%
+            </span>
+            <button 
+              onClick={resetZoom}
+              title="Reset Zoom"
+              style={{
+                background: 'none',
+                border: 'none',
+                color: '#8b949e',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                padding: '2px',
+                borderRadius: '4px',
+                transition: 'background 0.2s',
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.background = '#21262d'}
+              onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
+            >
+              <RotateCcw size={14} />
+            </button>
+          </div>
 
-            {!boardSvgContent && (
-              <>
-                {/* 四隅の取り付けネジ穴 */}
-                <div style={screwPadStyle('8px', '8px')}><div style={screwHoleStyle} /></div>
-                <div style={screwPadStyle('8px', 'auto', '8px')}><div style={screwHoleStyle} /></div>
-                <div style={screwPadStyle('auto', '8px', 'auto', '8px')}><div style={screwHoleStyle} /></div>
-                <div style={screwPadStyle('auto', 'auto', '8px', '8px')}><div style={screwHoleStyle} /></div>
-
-                {/* 上部I2C接続ピンホール (4ピン端子) */}
-                <div style={{
-                  position: 'absolute',
-                  top: '6px',
-                  left: '50%',
-                  transform: 'translateX(-50%)',
-                  display: 'flex',
-                  gap: '12px',
-                  alignItems: 'center'
-                }}>
-                  {[0, 1, 2, 3].map(i => (
-                    <div key={i} style={{
-                      width: '9px',
-                      height: '9px',
-                      borderRadius: '50%',
-                      background: 'radial-gradient(circle, #ffd040 30%, #a27500 80%)',
-                      border: '1px solid #1a1a1a',
-                      boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.6)'
-                    }} />
-                  ))}
-                </div>
-
-                {/* シルク印刷ピン名文字 */}
-                <div style={{
-                  position: 'absolute',
-                  top: '18px',
-                  left: '50%',
-                  transform: 'translateX(-50%)',
-                  color: '#ffffff',
-                  fontFamily: 'monospace, "Courier New", sans-serif',
-                  fontSize: '7.5px',
-                  fontWeight: 'bold',
-                  letterSpacing: '1px',
-                  opacity: 0.9,
-                  whiteSpace: 'nowrap',
-                  textShadow: '0 1px 0 rgba(0,0,0,0.5)'
-                }}>
-                  GND &nbsp;VCC &nbsp;SCL &nbsp;SDA
-                </div>
-
-                {/* 下部FPCコネクタ接続部（OLEDモジュールのリアリティ再現） */}
-                <div style={{
-                  position: 'absolute',
-                  bottom: '16px',
-                  left: '50%',
-                  transform: 'translateX(-50%)',
-                  width: '60px',
-                  height: '24px',
-                  background: '#111622',
-                  border: '1px solid #232e42',
-                  borderRadius: '3px',
-                  boxShadow: '0 4px 8px rgba(0,0,0,0.6)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center'
-                }}>
-                  <div style={{
-                    width: '78%',
-                    height: '55%',
-                    background: 'linear-gradient(to right, #d99b00, #f5b700, #d99b00)',
-                    borderRadius: '1px',
-                    border: '1px solid #a37400'
-                  }} />
-                </div>
-              </>
-            )}
-
-            {/* ディスプレイのガラス窓枠 */}
+          <div className="oled-viewport" style={{ 
+            flex: 1, 
+            display: 'flex', 
+            justifyContent: 'center', 
+            alignItems: 'center', 
+            backgroundColor: '#050705',
+            padding: '1.5rem',
+            overflow: 'auto',
+            boxShadow: 'inset 0 4px 20px rgba(0,0,0,0.7)'
+          }}>
+            {/* スケーリング用のダミー枠 */}
             <div style={{
-              position: 'absolute',
-              top: '36px',
-              left: '12px',
-              width: '252px',
-              height: '144px',
-              background: '#14171a',
-              border: '2px solid #07080a',
-              borderRadius: '4px',
-              boxShadow: '0 6px 15px rgba(0,0,0,0.8), inset 0 2px 4px rgba(255,255,255,0.1)',
+              width: `${scaledWidth}px`,
+              height: `${scaledHeight}px`,
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              overflow: 'hidden',
-              zIndex: 1
+              transition: 'width 0.1s ease-out, height 0.1s ease-out'
             }}>
-              {/* 実表示領域 (Canvas) を 2:1 アスペクト比で完璧にフィット */}
+              {/* OLED 物理モジュール自作ボード */}
               <div style={{
-                width: '92%',
-                height: '76%',
-                backgroundColor: '#040604',
-                border: '1.2px solid #111',
-                borderRadius: '2px',
-                boxShadow: 'inset 0 0 15px rgba(0,0,0,0.95)',
-                display: 'flex',
-                alignItems: 'center',
-                justifyContent: 'center',
-                overflow: 'hidden'
+                position: 'relative',
+                width: `${baseWidth}px`,
+                height: `${baseHeight}px`,
+                transform: `scale(${zoom / 100})`,
+                transformOrigin: 'center center',
+                transition: 'transform 0.1s ease-out',
+                userSelect: 'none',
+                background: boardSvgContent ? 'transparent' : 'linear-gradient(135deg, #104eae 0%, #082860 100%)',
+                border: boardSvgContent ? 'none' : '1.5px solid #183e78',
+                borderRadius: '12px',
+                boxShadow: boardSvgContent ? 'none' : '0 10px 30px rgba(0,0,0,0.6), inset 0 1.5px 2px rgba(255,255,255,0.25)'
               }}>
-                <canvas 
-                  ref={canvasRef} 
-                  style={{ 
-                    display: 'block',
-                    width: '100%', 
-                    height: '100%',
-                    imageRendering: 'pixelated', 
-                    filter: 'drop-shadow(0 0 2px rgba(0, 255, 80, 0.3))'
-                  }} 
-                />
+                {/* PPA 2.0 SVG Vector Board Background Overlay */}
+                {boardSvgContent && (
+                  <div 
+                    style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 0 }}
+                    dangerouslySetInnerHTML={{ __html: boardSvgContent }} 
+                  />
+                )}
+
+                {!boardSvgContent && (
+                  <>
+                    {/* 四隅の取り付けネジ穴 */}
+                    <div style={screwPadStyle('8px', '8px')}><div style={screwHoleStyle} /></div>
+                    <div style={screwPadStyle('8px', 'auto', '8px')}><div style={screwHoleStyle} /></div>
+                    <div style={screwPadStyle('auto', '8px', 'auto', '8px')}><div style={screwHoleStyle} /></div>
+                    <div style={screwPadStyle('auto', 'auto', '8px', '8px')}><div style={screwHoleStyle} /></div>
+
+                    {/* 上部I2C接続ピンホール (4ピン端子) */}
+                    <div style={{
+                      position: 'absolute',
+                      top: '6px',
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      display: 'flex',
+                      gap: '12px',
+                      alignItems: 'center'
+                    }}>
+                      {[0, 1, 2, 3].map(i => (
+                        <div key={i} style={{
+                          width: '9px',
+                          height: '9px',
+                          borderRadius: '50%',
+                          background: 'radial-gradient(circle, #ffd040 30%, #a27500 80%)',
+                          border: '1px solid #1a1a1a',
+                          boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.6)'
+                        }} />
+                      ))}
+                    </div>
+
+                    {/* シルク印刷ピン名文字 */}
+                    <div style={{
+                      position: 'absolute',
+                      top: '18px',
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      color: '#ffffff',
+                      fontFamily: 'monospace, "Courier New", sans-serif',
+                      fontSize: '7.5px',
+                      fontWeight: 'bold',
+                      letterSpacing: '1px',
+                      opacity: 0.9,
+                      whiteSpace: 'nowrap',
+                      textShadow: '0 1px 0 rgba(0,0,0,0.5)'
+                    }}>
+                      GND &nbsp;VCC &nbsp;SCL &nbsp;SDA
+                    </div>
+
+                    {/* 下部FPCコネクタ接続部（OLEDモジュールのリアリティ再現） */}
+                    <div style={{
+                      position: 'absolute',
+                      bottom: '16px',
+                      left: '50%',
+                      transform: 'translateX(-50%)',
+                      width: '60px',
+                      height: '24px',
+                      background: '#111622',
+                      border: '1px solid #232e42',
+                      borderRadius: '3px',
+                      boxShadow: '0 4px 8px rgba(0,0,0,0.6)',
+                      display: 'flex',
+                      alignItems: 'center',
+                      justifyContent: 'center'
+                    }}>
+                      <div style={{
+                        width: '78%',
+                        height: '55%',
+                        background: 'linear-gradient(to right, #d99b00, #f5b700, #d99b00)',
+                        borderRadius: '1px',
+                        border: '1px solid #a37400'
+                      }} />
+                    </div>
+                  </>
+                )}
+
+                {/* ディスプレイのガラス窓枠 */}
+                <div style={{
+                  position: 'absolute',
+                  top: '36px',
+                  left: '12px',
+                  width: '252px',
+                  height: '144px',
+                  background: '#14171a',
+                  border: '2px solid #07080a',
+                  borderRadius: '4px',
+                  boxShadow: '0 6px 15px rgba(0,0,0,0.8), inset 0 2px 4px rgba(255,255,255,0.1)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  overflow: 'hidden',
+                  zIndex: 1
+                }}>
+                  {/* 実表示領域 (Canvas) を 2:1 アスペクト比で完璧にフィット */}
+                  <div style={{
+                    width: '92%',
+                    height: '76%',
+                    backgroundColor: '#040604',
+                    border: '1.2px solid #111',
+                    borderRadius: '2px',
+                    boxShadow: 'inset 0 0 15px rgba(0,0,0,0.95)',
+                    display: 'flex',
+                    alignItems: 'center',
+                    justifyContent: 'center',
+                    overflow: 'hidden'
+                  }}>
+                    <canvas 
+                      ref={canvasRef} 
+                      style={{ 
+                        display: 'block',
+                        width: '100%', 
+                        height: '100%',
+                        imageRendering: 'pixelated', 
+                        filter: 'drop-shadow(0 0 2px rgba(0, 255, 80, 0.3))'
+                      }} 
+                    />
+                  </div>
+                </div>
+
               </div>
             </div>
-
+          </div>
+        </>
+      ) : (
+        /* Standby Viewport when no active peripheral is connected */
+        <div style={{ 
+          flex: 1, 
+          display: 'flex', 
+          flexDirection: 'column',
+          justifyContent: 'center', 
+          alignItems: 'center', 
+          backgroundColor: '#050705',
+          padding: '2rem',
+          boxShadow: 'inset 0 4px 20px rgba(0,0,0,0.7)'
+        }}>
+          <div style={{
+            display: 'flex',
+            flexDirection: 'column',
+            alignItems: 'center',
+            justifyContent: 'center',
+            gap: '16px',
+            color: '#8b949e',
+            background: '#161b22',
+            border: '1px solid #30363d',
+            borderRadius: '12px',
+            padding: '2.5rem 3rem',
+            boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
+            textAlign: 'center',
+            maxWidth: '460px'
+          }}>
+            <div style={{
+              width: '64px',
+              height: '64px',
+              borderRadius: '50%',
+              background: 'rgba(88, 166, 255, 0.1)',
+              border: '1px solid rgba(88, 166, 255, 0.2)',
+              display: 'flex',
+              alignItems: 'center',
+              justifyContent: 'center',
+              boxShadow: '0 0 20px rgba(88, 166, 255, 0.15)'
+            }}>
+              <Layers size={32} style={{ color: '#58a6ff' }} />
+            </div>
+            <div>
+              <h3 style={{ margin: '0 0 6px 0', color: '#f0f6fc', fontSize: '1.1rem', fontWeight: 600 }}>
+                NO ACTIVE PERIPHERAL CONNECTED
+              </h3>
+              <p style={{ margin: 0, fontSize: '0.8rem', color: '#8b949e', lineHeight: 1.5 }}>
+                Waiting for DTS PPA peripheral device specification<br />
+                (e.g., SSD1306 OLED, 7-Segment LED, SPI Sensors).
+              </p>
+            </div>
+            <div style={{
+              display: 'inline-flex',
+              alignItems: 'center',
+              gap: '6px',
+              padding: '4px 10px',
+              borderRadius: '12px',
+              background: '#21262d',
+              border: '1px solid #30363d',
+              fontSize: '0.75rem',
+              color: '#8b949e'
+            }}>
+              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#8b949e', display: 'inline-block' }} />
+              STANDBY / DISCONNECTED
+            </div>
           </div>
         </div>
-      </div>
+      )}
     </div>
   );
 }

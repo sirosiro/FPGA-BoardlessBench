@@ -1,5 +1,5 @@
-import { useRef, useState } from 'react';
-import { Box } from 'lucide-react';
+import { useRef, useState, useEffect } from 'react';
+import { Box, Plus, ChevronDown, Monitor, Cpu, Activity, Terminal, Tv, HardDrive, Layers, FileCode } from 'lucide-react';
 import { DockviewReact } from 'dockview-react';
 import { DashboardProvider, useDashboard } from './components/DashboardContext';
 import RegisterMonitor from './components/RegisterMonitor';
@@ -35,6 +35,19 @@ function DashboardInner() {
   const { connected, manifest } = useDashboard();
   const apiRef = useRef(null);
   const [saveStatus, setSaveStatus] = useState('Save Layout');
+  const [isAddPaneOpen, setIsAddPaneOpen] = useState(false);
+  const dropdownRef = useRef(null);
+
+  // Close dropdown on outside click
+  useEffect(() => {
+    const handleClickOutside = (event) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(event.target)) {
+        setIsAddPaneOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, []);
 
   // @intent:rationale マウント時にバックエンドから保存済みのレイアウト（fbb_layout.json）をフェッチし、存在する場合は Dockview API にロードして復元します。存在しない場合はデフォルトレイアウトを適用します。
   const onReady = async (event) => {
@@ -147,7 +160,7 @@ function DashboardInner() {
     api.addPanel({
       id: 'oledDisplay',
       component: 'oledDisplay',
-      title: 'Virtual OLED',
+      title: 'Virtual Peripheral View',
       position: {
         referencePanel: 'gpioPanel',
         direction: 'within',
@@ -230,6 +243,23 @@ function DashboardInner() {
     }
   };
 
+  // 単体ペインの追加・アクティブ化ハンドラー
+  const handleAddPane = (id, component, title, params = {}) => {
+    setIsAddPaneOpen(false);
+    if (!apiRef.current) return;
+    const existing = apiRef.current.getPanel(id);
+    if (existing) {
+      existing.api.setActive();
+    } else {
+      apiRef.current.addPanel({
+        id,
+        component,
+        title,
+        params,
+      });
+    }
+  };
+
   // @intent:rationale 現在の Dockview のペイン配置情報をシリアライズし、バックエンド経由でアクティブなシナリオフォルダ配下の fbb_layout.json に保存します。保存結果はボタン表記を通じて非侵襲的に通知されます。
   const handleSaveLayout = async () => {
     if (!apiRef.current) return;
@@ -257,6 +287,40 @@ function DashboardInner() {
     }
   };
 
+  // 利用可能な標準ペインの一覧
+  const standardPaneCategories = [
+    {
+      category: 'Observability & Control',
+      items: [
+        { id: 'registerMonitor', component: 'registerMonitor', title: 'Registers', icon: Cpu },
+        { id: 'gpioPanel', component: 'gpioPanel', title: 'GPIO / Pin Array', icon: Activity },
+        { id: 'registerTracer', component: 'registerTracer', title: 'Tracer', icon: Layers },
+        { id: 'dtsVisualizer', component: 'dtsVisualizer', title: 'DTS Visualizer & AI', icon: FileCode },
+      ]
+    },
+    {
+      category: 'Peripherals & I/O',
+      items: [
+        { id: 'oledDisplay', component: 'oledDisplay', title: 'Virtual Peripheral View', icon: Monitor },
+        { id: 'spiAdcPanel', component: 'spiAdcPanel', title: 'SPI ADC (12-bit)', icon: Activity },
+        { id: 'sdCard', component: 'sdCard', title: 'Virtual SD Card', icon: HardDrive },
+        { id: 'hdmiOutput', component: 'hdmiOutput', title: 'HDMI Output Preview', icon: Tv },
+      ]
+    }
+  ];
+
+  // UART Consoles (動的生成)
+  const rawUarts = manifest?.uarts || [];
+  const uartItems = rawUarts.length > 0
+    ? rawUarts.map(u => ({
+        id: `uartTerminal_${u.name}`,
+        component: 'uartTerminal',
+        title: `UART: ${u.name}`,
+        params: { deviceName: u.name },
+        icon: Terminal
+      }))
+    : [{ id: 'uartTerminal_default', component: 'uartTerminal', title: 'UART Console', params: { deviceName: 'default' }, icon: Terminal }];
+
   return (
     <div className="dashboard-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', overflow: 'hidden' }}>
       <header className="main-header" style={{ flex: '0 0 60px', padding: '0 2rem', background: '#161b22', borderBottom: '1px solid #30363d', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
@@ -264,7 +328,125 @@ function DashboardInner() {
           <span className="logo-text" style={{ fontWeight: 800, fontSize: '1.2rem', color: '#58a6ff' }}>FPGA-BoardlessBench (F-BB)</span>
           <span className="version-tag" style={{ marginLeft: '0.5rem', fontSize: '0.7rem', color: '#8b949e', border: '1px solid #30363d', padding: '2px 6px', borderRadius: '4px' }}>v3.0 Premium</span>
         </div>
-        <div className="system-meta" style={{ display: 'flex', alignItems: 'center', gap: '1.5rem' }}>
+        <div className="system-meta" style={{ display: 'flex', alignItems: 'center', gap: '1.2rem' }}>
+
+          {/* Add Pane Dropdown Menu */}
+          <div ref={dropdownRef} style={{ position: 'relative' }}>
+            <button
+              className="add-pane-btn"
+              onClick={() => setIsAddPaneOpen(!isAddPaneOpen)}
+              style={{
+                backgroundColor: '#1f6feb',
+                color: '#ffffff',
+                border: '1px solid #388bfd',
+                padding: '6px 12px',
+                fontSize: '0.75rem',
+                borderRadius: '6px',
+                cursor: 'pointer',
+                fontWeight: '600',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '6px',
+                transition: 'background 0.2s'
+              }}
+              onMouseEnter={(e) => e.currentTarget.style.backgroundColor = '#388bfd'}
+              onMouseLeave={(e) => e.currentTarget.style.backgroundColor = '#1f6feb'}
+            >
+              <Plus size={14} /> Add Pane <ChevronDown size={12} style={{ transform: isAddPaneOpen ? 'rotate(180deg)' : 'none', transition: 'transform 0.2s' }} />
+            </button>
+
+            {isAddPaneOpen && (
+              <div 
+                className="add-pane-dropdown"
+                style={{
+                  position: 'absolute',
+                  top: 'calc(100% + 6px)',
+                  right: 0,
+                  width: '260px',
+                  background: '#161b22',
+                  border: '1px solid #30363d',
+                  borderRadius: '8px',
+                  boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
+                  padding: '8px 0',
+                  zIndex: 1000,
+                  userSelect: 'none'
+                }}
+              >
+                {standardPaneCategories.map((cat, idx) => (
+                  <div key={idx} style={{ marginBottom: '6px' }}>
+                    <div style={{ padding: '4px 12px', fontSize: '0.68rem', fontWeight: 700, color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                      {cat.category}
+                    </div>
+                    {cat.items.map(item => {
+                      const ItemIcon = item.icon;
+                      return (
+                        <div
+                          key={item.id}
+                          onClick={() => handleAddPane(item.id, item.component, item.title, item.params || {})}
+                          style={{
+                            padding: '6px 14px',
+                            fontSize: '0.8rem',
+                            color: '#c9d1d9',
+                            display: 'flex',
+                            alignItems: 'center',
+                            gap: '10px',
+                            cursor: 'pointer',
+                            transition: 'background 0.15s, color 0.15s'
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.backgroundColor = '#21262d';
+                            e.currentTarget.style.color = '#58a6ff';
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.backgroundColor = 'transparent';
+                            e.currentTarget.style.color = '#c9d1d9';
+                          }}
+                        >
+                          <ItemIcon size={14} style={{ color: '#8b949e' }} />
+                          {item.title}
+                        </div>
+                      );
+                    })}
+                  </div>
+                ))}
+
+                {/* UART Group */}
+                <div style={{ borderTop: '1px solid #21262d', paddingTop: '6px', marginTop: '4px' }}>
+                  <div style={{ padding: '4px 12px', fontSize: '0.68rem', fontWeight: 700, color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
+                    Serial Terminals
+                  </div>
+                  {uartItems.map(item => (
+                    <div
+                      key={item.id}
+                      onClick={() => handleAddPane(item.id, item.component, item.title, item.params || {})}
+                      style={{
+                        padding: '6px 14px',
+                        fontSize: '0.8rem',
+                        color: '#c9d1d9',
+                        display: 'flex',
+                        alignItems: 'center',
+                        gap: '10px',
+                        cursor: 'pointer',
+                        transition: 'background 0.15s, color 0.15s'
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.backgroundColor = '#21262d';
+                        e.currentTarget.style.color = '#58a6ff';
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.backgroundColor = 'transparent';
+                        e.currentTarget.style.color = '#c9d1d9';
+                      }}
+                    >
+                      <Terminal size={14} style={{ color: '#8b949e' }} />
+                      {item.title}
+                    </div>
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
           <button
             className="save-layout-btn"
             onClick={handleSaveLayout}

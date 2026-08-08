@@ -425,7 +425,7 @@ graph TD
 - **実物理アドレスの強制マッピング（Mコア/MAP_FIXED_NOREPLACE）**: ベアメタルやRTOSファームウェアで用いられる直接のポインタ操作（物理アドレス直書き）に対し、`libfpgashim.so` の起動コンストラクタが `mmap(MAP_FIXED_NOREPLACE)`（および `MAP_FIXED` への自動フォールバック）を実行することで、ホストLinuxのプロセス仮想空間上に実機と同じアドレスマップを安全に構築し、セグメンテーション違反や他マッピングの意図しない上書きを防止しつつ仮想FPGAへルーティングします。
 - **マルチデバイス・マルチバス対応**: 複数のI2Cバスの個別識別や、UART通信のPTYリダイレクト（TCPブリッジ経由でのコンソール対話）、SoC規模（最大118チャネル）の双方向GPIOエミュレーションをサポートします。
 - **RTL統合シミュレーション**: [Verilator](./docs/architecture/AddInfo_verilator.md) を用いた高速なRTLシミュレーションをサポートし、共有メモリ経由でレジスタ値を同期します。
-- **Webダッシュボード**: Webベースのインターフェース（ポート 8080）を介して、レジスタやGPIOの入出力状態をリアルタイムで監視・操作できます。また、レジスタの変化履歴を記録し、波形として可視化する **Register State Tracer** を備えています。
+- **Webダッシュボード**: Webベースのインターフェース（ポート 8080）を介して、レジスタやGPIOの入出力状態をリアルタイムで監視・操作できます。VS Codeライクなドッキングレイアウト（Dockview）を採用し、閉じたペインを個別復元できる **`+ Add Pane` プルダウンメニュー** や、ペリフェラル未接続時の **`Virtual Peripheral View` スタンバイ画面**、レジスタの変化履歴を可視化する **Register State Tracer** を備えています。
   * **標準レジスタ/GPIO監視画面 (例: `S01_cpp_lfsr_sequencer` シナリオ)**
     ![FPGA-BoardlessBench (F-BB) Dashboard](docs/assets/dashboard.png)
 - **HDMI プレビュー出力エミュレーション**: DRM/KMS 経由での物理モニターへの出力と、ダンプファイル（`/tmp/hdmi_output.bmp`）を介したダッシュボード上へのリアルタイムプレビューに対応しています。ホスト環境と実機評価ボード環境を同一コードで透過的にサポートし、ダッシュボード上でピクセル等倍〜1600%のズーム・スクロール操作が可能です。
@@ -480,7 +480,7 @@ F-BBは、ハードウェア記述言語（RTL）から、低レイヤーのシ�
 - **Verilog (RTL)**: テスト対象となるFPGA内の回路ロジック。
 - **C/C++**: `LD_PRELOAD` によるシステムコールの横取り（`open`/`mmap`/`ioctl`等のリダイレクト）、および Verilator シミュレーション実行エンジン（`sim_main.cpp`）。
 - **Python**: DTS仕様を読み取ってShimやRTLスケルトンを自動出力するコード生成器、PPAプラグイン発見・自動起動エンジン、および共有メモリ初期化やシリアル（UART PTY）中継を担うバックエンドコントローラ。
-- **JavaScript (Node.js & React 19)**: 共有メモリのデータをWebSocketでリアルタイム受信・配信するダッシュボードサーバー、VS Codeライクなドラッグ分割レイアウト（Dockview）、および `fbb-plugin.json` の UI スキーマを動的レンダリングする共通ペイン規格 (`GenericPeripheralPane`)。
+- **JavaScript (Node.js & React 19)**: 共有メモリのデータをWebSocketでリアルタイム受信・配信するダッシュボードサーバー、VS Codeライクなドラッグ分割レイアウト（Dockview）、閉じたペインを動的復元する `+ Add Pane` ドロップダウン、および `fbb-plugin.json` の UI スキーマを動的レンダリングする共通ペイン規格 (`GenericPeripheralPane`)。
 
 ## Antigravity IDE とローカル Ollama の連携 (任意)
 
