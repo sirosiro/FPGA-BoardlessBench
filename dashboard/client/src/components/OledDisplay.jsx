@@ -3,7 +3,7 @@ import { Monitor, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 import { useDashboard } from './DashboardContext';
 
 function OledDisplay() {
-  const { displayFrame } = useDashboard();
+  const { displayFrame, manifest } = useDashboard();
   const canvasRef = useRef(null);
   const [zoom, setZoom] = useState(250); // デフォルト拡大率: 250%
 
@@ -98,9 +98,14 @@ function OledDisplay() {
     width: '15px',
     height: '15px',
     borderRadius: '50%',
-    background: '#0d1117', // ダッシュボードのベース背景色に合わせる
+    background: '#0d1117',
     boxShadow: 'inset 0 3px 6px rgba(0,0,0,0.9), 0 1px 1px rgba(255,255,255,0.2)'
   };
+
+  const oledSlave = manifest?.devices
+    ?.flatMap(d => d.i2c_slaves || [])
+    ?.find(s => s.compatible === 'solomon,ssd1306');
+  const boardSvgContent = oledSlave?.ui_widget?.board_svg_content;
 
   const baseWidth = 280;
   const baseHeight = 280;
@@ -190,9 +195,9 @@ function OledDisplay() {
         display: 'flex', 
         justifyContent: 'center', 
         alignItems: 'center', 
-        backgroundColor: '#050705', // 有機ELが映えるように少し深めの黒
+        backgroundColor: '#050705',
         padding: '1.5rem',
-        overflow: 'auto', // 拡大時にスクロール可能にする
+        overflow: 'auto',
         boxShadow: 'inset 0 4px 20px rgba(0,0,0,0.7)'
       }}>
         {/* スケーリング用のダミー枠 */}
@@ -204,7 +209,7 @@ function OledDisplay() {
           justifyContent: 'center',
           transition: 'width 0.1s ease-out, height 0.1s ease-out'
         }}>
-          {/* OLED 物理モジュール自作ボード（CSS設計） */}
+          {/* OLED 物理モジュール自作ボード */}
           <div style={{
             position: 'relative',
             width: `${baseWidth}px`,
@@ -213,57 +218,93 @@ function OledDisplay() {
             transformOrigin: 'center center',
             transition: 'transform 0.1s ease-out',
             userSelect: 'none',
-            // PCBボード風グラデーション
-            background: 'linear-gradient(135deg, #104eae 0%, #082860 100%)',
-            border: '1.5px solid #183e78',
+            background: boardSvgContent ? 'transparent' : 'linear-gradient(135deg, #104eae 0%, #082860 100%)',
+            border: boardSvgContent ? 'none' : '1.5px solid #183e78',
             borderRadius: '12px',
-            boxShadow: '0 10px 30px rgba(0,0,0,0.6), inset 0 1.5px 2px rgba(255,255,255,0.25)'
+            boxShadow: boardSvgContent ? 'none' : '0 10px 30px rgba(0,0,0,0.6), inset 0 1.5px 2px rgba(255,255,255,0.25)'
           }}>
-            {/* 四隅の取り付けネジ穴 */}
-            <div style={screwPadStyle('8px', '8px')}><div style={screwHoleStyle} /></div>
-            <div style={screwPadStyle('8px', 'auto', '8px')}><div style={screwHoleStyle} /></div>
-            <div style={screwPadStyle('auto', '8px', 'auto', '8px')}><div style={screwHoleStyle} /></div>
-            <div style={screwPadStyle('auto', 'auto', '8px', '8px')}><div style={screwHoleStyle} /></div>
+            {/* PPA 2.0 SVG Vector Board Background Overlay */}
+            {boardSvgContent && (
+              <div 
+                style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 0 }}
+                dangerouslySetInnerHTML={{ __html: boardSvgContent }} 
+              />
+            )}
 
-            {/* 上部I2C接続ピンホール (4ピン端子) */}
-            <div style={{
-              position: 'absolute',
-              top: '6px',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              display: 'flex',
-              gap: '12px',
-              alignItems: 'center'
-            }}>
-              {[0, 1, 2, 3].map(i => (
-                <div key={i} style={{
-                  width: '9px',
-                  height: '9px',
-                  borderRadius: '50%',
-                  background: 'radial-gradient(circle, #ffd040 30%, #a27500 80%)',
-                  border: '1px solid #1a1a1a',
-                  boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.6)'
-                }} />
-              ))}
-            </div>
+            {!boardSvgContent && (
+              <>
+                {/* 四隅の取り付けネジ穴 */}
+                <div style={screwPadStyle('8px', '8px')}><div style={screwHoleStyle} /></div>
+                <div style={screwPadStyle('8px', 'auto', '8px')}><div style={screwHoleStyle} /></div>
+                <div style={screwPadStyle('auto', '8px', 'auto', '8px')}><div style={screwHoleStyle} /></div>
+                <div style={screwPadStyle('auto', 'auto', '8px', '8px')}><div style={screwHoleStyle} /></div>
 
-            {/* シルク印刷ピン名文字 */}
-            <div style={{
-              position: 'absolute',
-              top: '18px',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              color: '#ffffff',
-              fontFamily: 'monospace, "Courier New", sans-serif',
-              fontSize: '7.5px',
-              fontWeight: 'bold',
-              letterSpacing: '1px',
-              opacity: 0.9,
-              whiteSpace: 'nowrap',
-              textShadow: '0 1px 0 rgba(0,0,0,0.5)'
-            }}>
-              GND &nbsp;VCC &nbsp;SCL &nbsp;SDA
-            </div>
+                {/* 上部I2C接続ピンホール (4ピン端子) */}
+                <div style={{
+                  position: 'absolute',
+                  top: '6px',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  display: 'flex',
+                  gap: '12px',
+                  alignItems: 'center'
+                }}>
+                  {[0, 1, 2, 3].map(i => (
+                    <div key={i} style={{
+                      width: '9px',
+                      height: '9px',
+                      borderRadius: '50%',
+                      background: 'radial-gradient(circle, #ffd040 30%, #a27500 80%)',
+                      border: '1px solid #1a1a1a',
+                      boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.6)'
+                    }} />
+                  ))}
+                </div>
+
+                {/* シルク印刷ピン名文字 */}
+                <div style={{
+                  position: 'absolute',
+                  top: '18px',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  color: '#ffffff',
+                  fontFamily: 'monospace, "Courier New", sans-serif',
+                  fontSize: '7.5px',
+                  fontWeight: 'bold',
+                  letterSpacing: '1px',
+                  opacity: 0.9,
+                  whiteSpace: 'nowrap',
+                  textShadow: '0 1px 0 rgba(0,0,0,0.5)'
+                }}>
+                  GND &nbsp;VCC &nbsp;SCL &nbsp;SDA
+                </div>
+
+                {/* 下部FPCコネクタ接続部（OLEDモジュールのリアリティ再現） */}
+                <div style={{
+                  position: 'absolute',
+                  bottom: '16px',
+                  left: '50%',
+                  transform: 'translateX(-50%)',
+                  width: '60px',
+                  height: '24px',
+                  background: '#111622',
+                  border: '1px solid #232e42',
+                  borderRadius: '3px',
+                  boxShadow: '0 4px 8px rgba(0,0,0,0.6)',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center'
+                }}>
+                  <div style={{
+                    width: '78%',
+                    height: '55%',
+                    background: 'linear-gradient(to right, #d99b00, #f5b700, #d99b00)',
+                    borderRadius: '1px',
+                    border: '1px solid #a37400'
+                  }} />
+                </div>
+              </>
+            )}
 
             {/* ディスプレイのガラス窓枠 */}
             <div style={{
@@ -279,7 +320,8 @@ function OledDisplay() {
               display: 'flex',
               alignItems: 'center',
               justifyContent: 'center',
-              overflow: 'hidden'
+              overflow: 'hidden',
+              zIndex: 1
             }}>
               {/* 実表示領域 (Canvas) を 2:1 アスペクト比で完璧にフィット */}
               <div style={{
@@ -305,48 +347,6 @@ function OledDisplay() {
                   }} 
                 />
               </div>
-            </div>
-
-            {/* 下部FPCコネクタ接続部（OLEDモジュールのリアリティ再現） */}
-            <div style={{
-              position: 'absolute',
-              bottom: '16px',
-              left: '50%',
-              transform: 'translateX(-50%)',
-              width: '90px',
-              height: '46px',
-              display: 'flex',
-              flexDirection: 'column',
-              alignItems: 'center',
-              pointerEvents: 'none'
-            }}>
-              {/* 黒いフラットケーブル押さえパーツ */}
-              <div style={{
-                width: '80px',
-                height: '14px',
-                background: '#1b1c1e',
-                border: '1px solid #0c0c0d',
-                borderRadius: '2px 2px 0 0',
-                boxShadow: '0 2px 4px rgba(0,0,0,0.4), inset 0 1px 1px rgba(255,255,255,0.1)'
-              }} />
-              {/* 黄色いフラットケーブル（FPC） */}
-              <div style={{
-                width: '70px',
-                height: '16px',
-                background: 'linear-gradient(to bottom, #d2991a 0%, #ad760e 100%)',
-                borderLeft: '1px solid #855803',
-                borderRight: '1px solid #855803',
-                boxShadow: 'inset 0 1px 2px rgba(255,255,255,0.2)'
-              }} />
-              {/* 基板接続コネクタ */}
-              <div style={{
-                width: '84px',
-                height: '16px',
-                background: '#111213',
-                border: '1px solid #060606',
-                borderRadius: '0 0 2px 2px',
-                boxShadow: '0 -1px 3px rgba(0,0,0,0.4)'
-              }} />
             </div>
 
           </div>

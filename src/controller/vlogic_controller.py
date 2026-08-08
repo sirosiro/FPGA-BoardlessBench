@@ -104,12 +104,21 @@ def discover_plugins(scenario_dir=None):
                 for p in peripherals:
                     compat = p.get("compatible")
                     if compat:
+                        ui_widget = p.get("ui_widget")
+                        if ui_widget and isinstance(ui_widget, dict) and "board_svg" in ui_widget:
+                            svg_path = os.path.join(plugin_dir, ui_widget["board_svg"])
+                            if os.path.exists(svg_path):
+                                try:
+                                    with open(svg_path, "r", encoding="utf-8") as sf:
+                                        ui_widget["board_svg_content"] = sf.read()
+                                except Exception as se:
+                                    print(f"[Python] Warning: Could not read {svg_path}: {se}")
                         discovered[compat] = {
                             "manifest_path": mfile,
                             "plugin_dir": plugin_dir,
                             "binary": p.get("binary"),
                             "default_args": p.get("default_args", []),
-                            "ui_widget": p.get("ui_widget"),
+                            "ui_widget": ui_widget,
                             "bindings": p.get("bindings", {})
                         }
             except Exception as e:

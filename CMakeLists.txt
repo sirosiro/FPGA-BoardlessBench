@@ -64,19 +64,22 @@ if(NOT SCENARIO_DIR STREQUAL "")
     
     # Verilator execution
     set(VERILATOR_OUTPUT_DIR "${CMAKE_BINARY_DIR}/obj_dir")
+    set(VERILATOR_STATIC_LIB "${VERILATOR_OUTPUT_DIR}/Vvfpga_top__ALL.a")
+    set(VERILATOR_HEADER "${VERILATOR_OUTPUT_DIR}/Vvfpga_top.h")
     
     add_custom_command(
         OUTPUT 
-            "${VERILATOR_OUTPUT_DIR}/Vvfpga_top__ALL.a"
-            "${VERILATOR_OUTPUT_DIR}/Vvfpga_top.h"
+            "${VERILATOR_STATIC_LIB}"
+            "${VERILATOR_HEADER}"
         COMMAND ${CMAKE_COMMAND} -E make_directory "${VERILATOR_OUTPUT_DIR}"
         COMMAND verilator -Wall --cc --trace -CFLAGS "-I${PROJECT_SOURCE_DIR}/src/include -std=c++17" --Mdir "${VERILATOR_OUTPUT_DIR}" ${RTL_SRCS}
         COMMAND make -C "${VERILATOR_OUTPUT_DIR}" -f Vvfpga_top.mk
         DEPENDS ${RTL_SRCS}
+        BYPRODUCTS "${VERILATOR_STATIC_LIB}" "${VERILATOR_HEADER}"
         COMMENT "Running Verilator to generate simulation model"
     )
     
-    add_custom_target(generate_verilator DEPENDS "${VERILATOR_OUTPUT_DIR}/Vvfpga_top__ALL.a")
+    add_custom_target(generate_verilator DEPENDS "${VERILATOR_STATIC_LIB}")
     
     # Find verilator root directory
     if(NOT DEFINED VERILATOR_ROOT)
@@ -109,7 +112,7 @@ if(NOT SCENARIO_DIR STREQUAL "")
     find_package(Threads REQUIRED)
     target_link_libraries(vfpga_sim PRIVATE 
         Threads::Threads
-        "${VERILATOR_OUTPUT_DIR}/Vvfpga_top__ALL.a"
+        "${VERILATOR_STATIC_LIB}"
     )
     
     set_target_properties(vfpga_sim PROPERTIES

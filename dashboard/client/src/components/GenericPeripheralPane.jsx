@@ -48,6 +48,23 @@ export const GenericPeripheralPane = ({ pluginId, manifest, socket }) => {
         <span style={{ fontSize: '11px', color: '#94a3b8', fontWeight: 'normal' }}>PPA Plugin</span>
       </div>
 
+      {/* SVG Board Background Overlay (500%+ Vector Zooming Support) */}
+      {manifest?.ui_widget?.board_svg_content && (
+        <div 
+          style={{ 
+            marginBottom: '12px', 
+            borderRadius: '6px', 
+            overflow: 'hidden', 
+            display: 'flex', 
+            justifyContent: 'center',
+            backgroundColor: '#090d16',
+            padding: '8px',
+            border: '1px solid #1e293b'
+          }}
+          dangerouslySetInnerHTML={{ __html: manifest.ui_widget.board_svg_content }}
+        />
+      )}
+
       {controls.length === 0 ? (
         <div style={{ color: '#94a3b8', fontSize: '12px', fontStyle: 'italic' }}>
           No custom UI controls specified in fbb-plugin.json

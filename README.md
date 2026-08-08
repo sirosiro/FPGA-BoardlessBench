@@ -2,7 +2,7 @@
 
 **Software-only FPGA testing & FPGA Simulation environment / 物理ボード不要のFPGAシミュレーション・Verilogテストベンチ環境**
 
-FPGA-BoardlessBench (F-BB)は、FPGAを搭載した実機や評価ボードが無い環境でも、FPGA上に実装された周辺回路（IPデバイス）を操作するファームウェアの開発を行えるようにするためのソフトウェア完結型テスト環境（Software-only FPGA testing environment）です。Linuxのシステムコールをインターセプトし、エミュレートしたFPGAのデバイスへリダイレクトすることで、あたかも物理的なFPGAを操作しているかのような開発体験ができます。
+FPGA-BoardlessBench (F-BB)は、FPGAを搭載した実機や評価ボードが無い環境でも、FPGA上に実装された周辺回路（IPデバイス）を操作するファームウェアの開発を行えるようにするためのソフトウェア完結型テスト環境（Software-only FPGA testing environment）です。Linuxのシステムコールをインターセプトし、エミュレートしたFPGAのデバイスへリダイレクトすることで、あたかも物理的なFPGAを操作しているかのような開発体験ができます。標準プロダクション・リファレンスアーキテクチャとして Zynq 7000 / UltraScale+ (AXI CDMA, XPS GPIO, RemoteProc AMP 等) をフルサポートしており、DTS駆動の汎用32/64bit SoCエミュレーション環境として100%実機透過なファームウェアテストを提供します。
 
 もし上記の紹介文を読んで、**「SystemVerilogのUVMもRenodeも知らず、AXIバスの複雑さを無視したハリボテ（おもちゃ）だ」** と直感した方は、正しい見解の持ち主です。[こちら](https://github.com/search?q=%22awesome-opensource-hardware%22%20OR%20%22awesome-fpga%22&type=repositories)へどうぞ。
 
@@ -14,7 +14,7 @@ FPGA-BoardlessBench (F-BB)は、FPGAを搭載した実機や評価ボードが�
 
 > **「仕様書のExcelをアップデートしました。各自確認してください」──そんな不毛なコミュニケーションは、もう終わりにしましょう。**
 
-F-BB（FPGA-BoardlessBench）がハードウェア（FPGA）とソフトウェア（FW）の境界線に「DTS（Device Tree）駆動」という唯一の軸を通すことで、エンジニア同士のコミュニケーション構造そのものを変革します。
+FPGA-BoardlessBench (F-BB)がハードウェア（FPGA）とソフトウェア（FW）の境界線に「DTS（Device Tree）駆動」という唯一の軸を通すことで、エンジニア同士のコミュニケーション構造そのものを変革します。
 
 ```mermaid
 graph TD
@@ -41,7 +41,7 @@ graph TD
 
 ## F-BBで実現できること（何ができるのか）
 
-F-BB（FPGA-BoardlessBench）は、物理的なFPGA評価ボードや実機ハードウェアがない環境でも、ソフトウェアだけでFPGA制御用ファームウェア（FW）を論理デバッグ・検証できるようにする環境です。主に以下の4つの価値を提供します。
+FPGA-BoardlessBench (F-BB)は、物理的なFPGA評価ボードや実機ハードウェアがない環境でも、ソフトウェアだけでFPGA制御用ファームウェア（FW）を論理デバッグ・検証できるようにする環境です。主に以下の4つの価値を提供します。
 
 ### 1. ファームウェアの「透過性」を維持したままでのホスト開発
 ホストPC上で動作するFWアプリケーションは、実機上で動かすコードと**1行も書き換える必要がありません**。
@@ -168,7 +168,7 @@ F-BBは「Aコア（Linux/C言語）」と「Mコア（ベアメタル/Rustま�
 
 ## Zynq実稼働FW開発への適用性とQEMUに対する優位性 / 使い分け
 
-F-BB（FPGA-BoardlessBench）が「Zynqを想定した実働FW（ファームウェア）開発に耐えうるものか」、そして「QEMUに対する決定的な優位性は何か」や使い分けの詳細については、以下の追加情報を参照してください。
+FPGA-BoardlessBench (F-BB)が「Zynqを想定した実働FW（ファームウェア）開発に耐えうるものか」、および「QEMUに対する決定的な優位性は何か」や使い分けの詳細については、以下の追加情報を参照してください。
 
 - [Zynq実稼働FW開発への適用性とQEMUに対する優位性 (AddInfo_vs_QEMU.md)](./docs/architecture/AddInfo_vs_QEMU.md)
 

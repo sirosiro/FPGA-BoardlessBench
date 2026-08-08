@@ -13,6 +13,7 @@
       ],
       "ui_widget": {
         "title": "SSD1306 OLED Display (128x64)",
+        "board_svg": "board.svg",
         "controls": [
           { "type": "canvas_stream", "name": "display", "width": 128, "height": 64, "format": "mono_raw" }
         ]

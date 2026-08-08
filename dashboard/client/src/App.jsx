@@ -11,6 +11,7 @@ import SpiAdcPanel from './components/SpiAdcPanel';
 import OledDisplay from './components/OledDisplay';
 import SdCardPanel from './components/SdCardPanel';
 import DtsVisualizer from './components/DtsVisualizer';
+import GenericPeripheralPane from './components/GenericPeripheralPane';
 import MemoryErrorModal from './components/MemoryErrorModal';
 import './App.css';
 
@@ -26,6 +27,7 @@ const components = {
   oledDisplay: () => <OledDisplay />,
   sdCard: () => <SdCardPanel />,
   dtsVisualizer: () => <DtsVisualizer />,
+  genericPeripheralPane: (props) => <GenericPeripheralPane {...props} />,
 };
 
 
@@ -240,31 +242,20 @@ function DashboardInner() {
         },
         body: JSON.stringify(layoutData),
       });
+
       if (response.ok) {
         setSaveStatus('Saved!');
         setTimeout(() => setSaveStatus('Save Layout'), 2000);
       } else {
-        setSaveStatus('Failed');
+        setSaveStatus('Save Failed');
         setTimeout(() => setSaveStatus('Save Layout'), 2000);
       }
     } catch (e) {
       console.error('[Dashboard] Failed to save layout:', e);
-      setSaveStatus('Error');
+      setSaveStatus('Save Failed');
       setTimeout(() => setSaveStatus('Save Layout'), 2000);
     }
   };
-
-  // Wait for manifest to load before mounting the Dockview interface to avoid race conditions.
-  if (!manifest) {
-    return (
-      <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', height: '100vh', background: '#0d1117', color: '#c9d1d9' }}>
-        <div style={{ textAlign: 'center', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
-          <div style={{ fontSize: '1.5rem', marginBottom: '1rem', color: '#58a6ff', fontWeight: 800 }}>FPGA-BoardlessBench (F-BB)</div>
-          <div>Loading board manifest...</div>
-        </div>
-      </div>
-    );
-  }
 
   return (
     <div className="dashboard-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', overflow: 'hidden' }}>

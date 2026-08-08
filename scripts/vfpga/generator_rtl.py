@@ -1,4 +1,5 @@
 import os
+import sys
 import json
 from vfpga.models import BoardModel
 from vfpga.generator_base import BaseGenerator, SystemConfigGenerator
@@ -383,6 +384,14 @@ class ManifestGenerator(BaseGenerator):
             "devices": [],
             "uarts": [{"name": d.name, "port": int(d.extra_props.get("port", 2000))} for d in model.get_uart_devices()]
         }
+        # Discover PPA plugin UI widgets (ADR #005)
+        sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../src/controller")))
+        try:
+            from vlogic_controller import discover_plugins
+            discovered_plugins = discover_plugins(getattr(model, "scenario_dir", ""))
+        except Exception:
+            discovered_plugins = {}
+
         for dev in model.devices:
             dev_info = {
                 "name": dev.name,
@@ -394,9 +403,21 @@ class ManifestGenerator(BaseGenerator):
                 "extra": dev.extra_props
             }
             if dev.type == 'i2c' and hasattr(dev, 'i2c_slaves'):
-                dev_info["i2c_slaves"] = [{"name": s.name, "addr": s.addr, "compatible": s.compatible} for s in dev.i2c_slaves]
+                slaves = []
+                for s in dev.i2c_slaves:
+                    s_info = {"name": s.name, "addr": s.addr, "compatible": s.compatible}
+                    if s.compatible in discovered_plugins:
+                        s_info["ui_widget"] = discovered_plugins[s.compatible].get("ui_widget")
+                    slaves.append(s_info)
+                dev_info["i2c_slaves"] = slaves
             if dev.type == 'spi' and hasattr(dev, 'spi_slaves'):
-                dev_info["spi_slaves"] = [{"name": s.name, "cs": s.cs, "compatible": s.compatible} for s in dev.spi_slaves]
+                slaves = []
+                for s in dev.spi_slaves:
+                    s_info = {"name": s.name, "cs": s.cs, "compatible": s.compatible}
+                    if s.compatible in discovered_plugins:
+                        s_info["ui_widget"] = discovered_plugins[s.compatible].get("ui_widget")
+                    slaves.append(s_info)
+                dev_info["spi_slaves"] = slaves
             manifest["devices"].append(dev_info)
         return json.dumps(manifest, indent=4)
 
