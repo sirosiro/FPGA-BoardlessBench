@@ -10,7 +10,7 @@ import HdmiOutput from './components/HdmiOutput';
 import SpiAdcPanel from './components/SpiAdcPanel';
 import OledDisplay from './components/OledDisplay';
 import SdCardPanel from './components/SdCardPanel';
-import DtsVisualizer from './components/DtsVisualizer';
+import DtsVisualizer from './components/DTSVisualizer';
 import GenericPeripheralPane from './components/GenericPeripheralPane';
 import MemoryErrorModal from './components/MemoryErrorModal';
 import './App.css';
@@ -18,15 +18,16 @@ import './App.css';
 
 // Components mapping for Dockview
 const components = {
-  registerMonitor: () => <RegisterMonitor />,
-  gpioPanel: () => <GpioPanel />,
-  registerTracer: () => <RegisterTracer />,
+  registerMonitor: (props) => <RegisterMonitor {...props} />,
+  gpioPanel: (props) => <GpioPanel {...props} />,
+  registerTracer: (props) => <RegisterTracer {...props} />,
   uartTerminal: (props) => <UartTerminal {...props} />,
-  hdmiOutput: () => <HdmiOutput />,
-  spiAdcPanel: () => <SpiAdcPanel />,
-  oledDisplay: () => <OledDisplay />,
-  sdCard: () => <SdCardPanel />,
-  dtsVisualizer: () => <DtsVisualizer />,
+  hdmiOutput: (props) => <HdmiOutput {...props} />,
+  spiAdcPanel: (props) => <SpiAdcPanel {...props} />,
+  oledDisplay: (props) => <OledDisplay {...props} />,
+  seg7Display: (props) => <OledDisplay {...props} type="seg7" />,
+  sdCard: (props) => <SdCardPanel {...props} />,
+  dtsVisualizer: (props) => <DtsVisualizer {...props} />,
   genericPeripheralPane: (props) => <GenericPeripheralPane {...props} />,
 };
 
@@ -157,15 +158,35 @@ function DashboardInner() {
     });
 
     // 3c. Add oledDisplay within gpioPanel group (as a tab)
-    api.addPanel({
+    const oledPanel = api.addPanel({
       id: 'oledDisplay',
       component: 'oledDisplay',
-      title: 'Virtual Peripheral View',
+      title: 'SSD1306 OLED Display (128x64)',
       position: {
         referencePanel: 'gpioPanel',
         direction: 'within',
       },
     });
+
+    // 3c2. Add seg7Display as a separate dedicated peripheral panel
+    const i2cSlaves = manifest?.devices?.flatMap(d => d.i2c_slaves || []) || [];
+    const seg7Slave = i2cSlaves.find(s => s.compatible?.includes('ht16k33'));
+    if (seg7Slave) {
+      api.addPanel({
+        id: 'seg7Display',
+        component: 'oledDisplay',
+        title: seg7Slave.ui_widget?.title || 'Adafruit 4-Digit 7-Segment LED (Red)',
+        params: {
+          type: 'seg7',
+          pluginId: 'adafruit_ht16k33',
+          manifest: seg7Slave
+        },
+        position: {
+          referencePanel: 'oledDisplay',
+          direction: 'within', // Added as a tab or side-by-side
+        },
+      });
+    }
 
     // 3d. Add sdCard within gpioPanel group (as a tab)
     api.addPanel({
@@ -287,6 +308,79 @@ function DashboardInner() {
     }
   };
 
+  // DTSに定義されているアドイン・ペリフェラルの動的抽出
+  const i2cSlaves = manifest?.devices?.flatMap(d => d.i2c_slaves || []) || [];
+  const spiSlaves = manifest?.devices?.flatMap(d => d.spi_slaves || []) || [];
+
+  const hasOled = i2cSlaves.some(s => s.compatible?.includes('ssd1306'));
+  const hasSeg7 = i2cSlaves.some(s => s.compatible?.includes('ht16k33'));
+  const hasSpiAdc = spiSlaves.some(s => s.compatible?.includes('mcp3208'));
+  const hasSdCard = Boolean(manifest?.sd_card_path) || manifest?.devices?.some(d => d.name?.includes('sd') || d.compatible?.includes('sd'));
+  const hasHdmi = Boolean(manifest?.hdmi_output_path) || manifest?.devices?.some(d => d.name?.includes('hdmi') || d.compatible?.includes('hdmi'));
+
+  const peripheralItems = [];
+
+  if (hasOled) {
+    const oledTitle = i2cSlaves.find(s => s.compatible?.includes('ssd1306'))?.ui_widget?.title || 'SSD1306 OLED Display (128x64)';
+    peripheralItems.push({
+      id: 'oledDisplay',
+      component: 'oledDisplay',
+      title: oledTitle,
+      icon: Monitor,
+      params: { type: 'oled' }
+    });
+  }
+
+  if (hasSeg7) {
+    const seg7Title = i2cSlaves.find(s => s.compatible?.includes('ht16k33'))?.ui_widget?.title || 'Adafruit 4-Digit 7-Segment LED (Red)';
+    peripheralItems.push({
+      id: 'seg7Display',
+      component: 'oledDisplay',
+      title: seg7Title,
+      icon: Monitor,
+      params: { type: 'seg7', pluginId: 'adafruit_ht16k33' }
+    });
+  }
+
+  if (hasSpiAdc) {
+    peripheralItems.push({
+      id: 'spiAdcPanel',
+      component: 'spiAdcPanel',
+      title: 'SPI ADC (12-bit)',
+      icon: Activity
+    });
+  }
+
+  if (hasSdCard) {
+    peripheralItems.push({
+      id: 'sdCard',
+      component: 'sdCard',
+      title: 'Virtual SD Card',
+      icon: HardDrive
+    });
+  }
+
+  if (hasHdmi) {
+    peripheralItems.push({
+      id: 'hdmiOutput',
+      component: 'hdmiOutput',
+      title: 'HDMI Output Preview',
+      icon: Tv
+    });
+  }
+
+  // もしDTSにディスプレイ/センサー等のアドインペリフェラルが含まれない場合、
+  // デフォルトの「Virtual Peripheral View」(スタンドバイ画面) を1つだけ表示
+  if (peripheralItems.length === 0) {
+    peripheralItems.push({
+      id: 'oledDisplay',
+      component: 'oledDisplay',
+      title: 'Virtual Peripheral View',
+      icon: Monitor,
+      params: { type: 'standby' }
+    });
+  }
+
   // 利用可能な標準ペインの一覧
   const standardPaneCategories = [
     {
@@ -300,12 +394,7 @@ function DashboardInner() {
     },
     {
       category: 'Peripherals & I/O',
-      items: [
-        { id: 'oledDisplay', component: 'oledDisplay', title: 'Virtual Peripheral View', icon: Monitor },
-        { id: 'spiAdcPanel', component: 'spiAdcPanel', title: 'SPI ADC (12-bit)', icon: Activity },
-        { id: 'sdCard', component: 'sdCard', title: 'Virtual SD Card', icon: HardDrive },
-        { id: 'hdmiOutput', component: 'hdmiOutput', title: 'HDMI Output Preview', icon: Tv },
-      ]
+      items: peripheralItems
     }
   ];
 

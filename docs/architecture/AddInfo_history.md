@@ -332,5 +332,18 @@
         1. リアルタイム DMA オフロードの学習価値提供: 重厚な Linux OS の CPU 負荷をかけずに Mコアへ DMA 転送処理をオフロードする組み込みヘテロジニアスシステムのベストプラクティスを学べる環境を提供するため。
         2. アーキテクチャの統一性と安定性維持: 単一の情報源 (Single Source of Truth) の原則に従い、コアエミュレーションエンジンの設計・ロジックを変更することなく単一の CDMA 仕様を Aコア/Mコア双方向から安全に共有可能にするため。
 
+- **2026-08-09: PPA 2.0 Adafruit HT16K33 7セグメントLED プラグイン、多重 I2C シナリオ 02e、およびマルチ UART ポート連動修正の統合 (Adafruit HT16K33 7-Segment LED Plugin & Multi-UART Dynamic Port Assignment)**
+  - **Decision:**
+        1. Adafruit 0.56" 4-Digit 7-Segment HT16K33 I2C Display (Holtek HT16K33 コントローラ内蔵) の公式 PPA 2.0 プラグイン (`adafruit_ht16k33`) を `src/peripherals/official_plugins/adafruit_ht16k33/` に新設し、1:1 実基板ベクター画像 (`board.svg`)、表示RAMパース (`ht16k33.cpp`)、および `ht16k33.dtsi` を統合。
+        2. `src/peripherals/CMakeLists.txt` に Zero-Touch PPA 2.0 動的自動発見エンジンを統合し、`official_plugins/<vendor_model>/` 配下の `fbb-plugin.json` および `.cpp` をコンパイル時に自動検知・ターゲットビルド。
+        3. `generator_rtl.py` および `vlogic_controller.py` に正規表現ベースのマルチ `compatible` 検索ロジック (`find_plugin_for_compat`) を導入し、`"adafruit,ht16k33-red", "holtek,ht16k33"` のようなカンマ区切り DTS 表記を自動マッチング。
+        4. `generator_rtl.py` におけるマルチ UART デバイスの `port` プロパティ未指定時のフォールバック計算を `2000 + idx` へ修正し、同一ポート重複衝突を構造的に防止。
+        5. Web ダッシュボードの 7 セグメント LED レンダラー (`OledDisplay.jsx` / `GenericPeripheralPane.jsx`) を改修し、六角形セグメント G トポロジー、順傾斜 -6deg イタリックコロン、表示カラー動的連動 (`ledColor`: Red, Green, Yellow, Blue, White)、および Dockview 独立ペイン分割を完全実装。
+        6. 専用テストシナリオ [`02e_ht16k33_7seg_i2c`](../../tests/scenarios/02e_ht16k33_7seg_i2c/README.md) を新設し、単一 I2C バス上での SSD1306 OLED ディスプレイと HT16K33 7 セグメント LED の並列リアルタイム制御および一括回帰テストを統合。
+  - **Rationale:**
+        1. リアルな表示器デバッグ体験の提供: 従来のグラフィック OLED に加え、数値・Hex 診断コード表示で汎用的に用いられる 7 セグメント LED モジュールを標準サポートし、1:1 ベクター基板と連動した実機同様の UI 体験を提供するため。
+        2. アーキテクチャの統一性と拡張性確保: 特定のデバイスやポート番号のハードコードを排除し、DTS 駆動の型安全なマルチデバイス・マルチ UART 連動機構を単一の情報源 (Single Source of Truth) の下で実現するため。
+
+
 
 

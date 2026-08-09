@@ -357,6 +357,55 @@ function DtsVisualizer() {
                               </div>
                             </div>
                           )}
+
+                          {/* Attached Bus Slaves (Included from DTSI files) */}
+                          {((devObj.i2c_slaves && devObj.i2c_slaves.length > 0) || (devObj.spi_slaves && devObj.spi_slaves.length > 0)) && (
+                            <div style={{ borderTop: '1px dashed #262626', paddingTop: '6px', marginTop: '6px' }}>
+                              <div style={{ color: '#58a6ff', fontSize: '0.7rem', marginBottom: '4px', fontWeight: 600 }}>
+                                Attached Bus Peripherals (DTSI Included):
+                              </div>
+                              <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                                {(devObj.i2c_slaves || []).map((slave, sIdx) => (
+                                  <div 
+                                    key={`i2c-slave-${sIdx}`}
+                                    style={{
+                                      background: '#161b22',
+                                      border: '1px solid #30363d',
+                                      borderRadius: '4px',
+                                      padding: '4px 8px',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between',
+                                      fontSize: '0.72rem',
+                                      fontFamily: 'monospace'
+                                    }}
+                                  >
+                                    <span style={{ color: '#ce9178' }}>"{slave.compatible}"</span>
+                                    <span style={{ color: '#b5ce28', fontWeight: 'bold' }}>I2C @ 0x{slave.addr.toString(16).toUpperCase()}</span>
+                                  </div>
+                                ))}
+                                {(devObj.spi_slaves || []).map((slave, sIdx) => (
+                                  <div 
+                                    key={`spi-slave-${sIdx}`}
+                                    style={{
+                                      background: '#161b22',
+                                      border: '1px solid #30363d',
+                                      borderRadius: '4px',
+                                      padding: '4px 8px',
+                                      display: 'flex',
+                                      alignItems: 'center',
+                                      justifyContent: 'space-between',
+                                      fontSize: '0.72rem',
+                                      fontFamily: 'monospace'
+                                    }}
+                                  >
+                                    <span style={{ color: '#ce9178' }}>"{slave.compatible}"</span>
+                                    <span style={{ color: '#b5ce28', fontWeight: 'bold' }}>SPI CS {slave.cs}</span>
+                                  </div>
+                                ))}
+                              </div>
+                            </div>
+                          )}
                         </div>
                       )}
                     </div>

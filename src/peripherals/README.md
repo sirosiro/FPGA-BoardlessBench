@@ -97,8 +97,8 @@ C++ オブジェクト指向およびプラグインマニフェスト（`fbb-pl
    * **`<emulator>.cpp`**: `I2cSlave`, `UartDevice`, `SpiSlave` などの基底クラスを継承したC++エミュレータソースコードを同ディレクトリ内に配置します。
 3. **イベントハンドラの実装**:
    * `I2cSlave` なら `onWrite`/`onRead`、`UartDevice` なら `onReceive` の中で、デバイス固有のレジスタ挙動や応答データ生成論理を実装します。
-4. **CMake への登録**:
-   * [CMakeLists.txt](file:///workspaces/FPGA-BoardlessBench/src/peripherals/CMakeLists.txt) に `add_executable` としてターゲットを追加し、`official_plugins/<vendor_model>/<emulator>.cpp` と共通基底クラス (`common/i2c_slave.cpp` 等) をリンクします。
+4. **CMake への登録 (自動発見対応)**:
+   * [CMakeLists.txt](file:///workspaces/FPGA-BoardlessBench/src/peripherals/CMakeLists.txt) に PPA 2.0 動的自動発見エンジンが統合されているため、`official_plugins/<vendor_model>/` ディレクトリ内に `fbb-plugin.json` と `.cpp` ファイルを配置するだけで、CMake がターゲットバイナリと基底クラス (`common/i2c_slave.cpp` 等) を自動検知・リンクしてビルドします。（手動での CMakeLists.txt 追記は不要です）。
 
 ---
 

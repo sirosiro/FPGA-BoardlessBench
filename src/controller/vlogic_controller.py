@@ -518,14 +518,29 @@ def main():
     if discovered_plugins:
         print(f"[Python] Discovered {len(discovered_plugins)} PPA plugin(s): {', '.join(discovered_plugins.keys())}")
 
+    def find_plugin_for_compat(compat_str):
+        import re
+        if not compat_str or not discovered_plugins:
+            return None
+        if compat_str in discovered_plugins:
+            return discovered_plugins[compat_str]
+        items = re.findall(r'[a-zA-Z0-9_-]+,[a-zA-Z0-9_-]+', compat_str)
+        for item in items:
+            if item in discovered_plugins:
+                return discovered_plugins[item]
+        for item in re.findall(r'[a-zA-Z0-9_-]+', compat_str):
+            if item in discovered_plugins:
+                return discovered_plugins[item]
+        return None
+
     peripheral_processes = []
     for p in peripherals:
         p_type = p.get('type')
         compat = p.get('compatible') if p_type != 'uart' else p.get('peripheral_type')
         
         # 1. Try PPA Discovered Plugin
-        if compat in discovered_plugins:
-            plugin_info = discovered_plugins[compat]
+        plugin_info = find_plugin_for_compat(compat)
+        if plugin_info:
             bin_rel = plugin_info['binary']
             bin_path = os.path.join(plugin_info['plugin_dir'], bin_rel) if not os.path.isabs(bin_rel) else bin_rel
             if not os.path.exists(bin_path):

@@ -357,6 +357,7 @@ F-BB環境には、基本的なペリフェラル操作から高度なマルチ�
 | [02b_multi_spi](tests/scenarios/02b_multi_spi/) | 同一 SPI バス上に NOR Flash と ADC を混在させたマルチデバイス検証。ダッシュボードからのスライダー操作と仮想 FPGA レジスタへの自動流し込みによる Register State Tracer 連携。 | SPI バスエミュレーション, 全二重 `ioctl`, マルチスレーブ, UIOレジスタマップ, Register State Tracer 連動 |
 | [02c_pl_spi](tests/scenarios/02c_pl_spi/) | PL側（RTL）に実装された SPI マスタコントローラピンをシミュレータ経由で仮想 ADC とブリッジ同期させ、ダッシュボードの GPIO (LED) と連動する検証。 | PL-side SPI エミュレーション, UNIXドメインソケット物理ピン変換, GPIO/Pin Array リアルタイム連動 |
 | [02d_oled_i2c](tests/scenarios/02d_oled_i2c/) | I2C バス経由での SSD1306 仮想 OLED ディスプレイ（128x64ドット）の追加、および自作の物理基板風 UI とお天気ダッシュボードパターンによる検証。 | I2C バスエミュレーション, `ioctl`, 仮想 OLED (SSD1306), スケーラブル UI, 簡易ビットマップフォントレンダラー |
+| [02e_ht16k33_7seg_i2c](tests/scenarios/02e_ht16k33_7seg_i2c/) | 同一 I2C バス上に SSD1306 OLED と Adafruit HT16K33 0.56" 4桁7セグメントLEDを混在配置し、独立 Dockview ペイン・実基板ベクター基板での並列リアルタイム制御および LED 表示カラー切り替え（Red/Green/Yellow/Blue/White）の検証。 | 多重 I2C ペリフェラル, PPA 2.0 独立 Dockview ペイン, 7セグメント LED (HT16K33), イタリック傾斜コロン, 動的カラーマッチング |
 | [03_uart_console](tests/scenarios/03_uart_console/) | `/dev/ttyPS1` を用いた対話型シリアル通信とエコーバック | UART PTY リダイレクト, termios |
 | [04_dev_mem_legacy](tests/scenarios/04_dev_mem_legacy/) | レガシーな `/dev/mem` とマクロ/ポインタを用いた物理メモリ直接アクセス | `/dev/mem` エミュレーション, レガシーコード互換 |
 | [04b_dev_mem_violation_legacy](tests/scenarios/04b_dev_mem_violation_legacy/) | レガシーな物理メモリ直叩きにおける境界外アクセスのトラップ（ガードページ/AddressSanitizer）および対話型UARTメニュー選択機能の検証 | /dev/mem エミュレーション, C-Shim ガードページ (PROT_NONE), AddressSanitizer, UART PTY ブリッジ |
@@ -458,20 +459,22 @@ F-BBは、ハードウェア記述言語（RTL）から、低レイヤーのシ�
 
 | 言語分類 | 拡張子 | ファイル数 | 総行数 | 主な構成要素と役割 |
 | :--- | :---: | :---: | :---: | :--- |
-| **C/C++** | `.cpp` / `.hpp` / `.c` / `.h` / `.template` | 56 | **9,215行** | システムコール横取り（C Shimテンプレート含む）のランタイム、周辺デバイス抽象クラス・エミュレータ、およびファームウェアテストコード |
-| **Python** | `.py` | 12 | **1,995行** | DTSパース・コード自動生成エンジン（`vfpga` パッケージ）、PPAプラグイン動的発見エンジン、ノードラベル保持・重複自動解消、およびバックエンド制御スクリプト |
-| **JavaScript / React** | `.jsx` / `.js` / `.css` / `.html` | 20 | **3,906行** | Webダッシュボードサーバー（Express）、Vite + React 19 のフロントエンド UI（Dockview レイアウト、Recharts グラフ描画、DTS Visualizer メモリマップ、汎用ペイン規格 `GenericPeripheralPane`） |
-| **Verilog** | `.v` | 20 | **1,112行** | シミュレーション対象の FPGA ハードウェア記述（RTLモックやシナリオ固有のロジック） |
-| **Device Tree (DTS)** | `.dts` / `.dtsi` | 32 | **775行** | 仮想デバイス仕様の定義（アドレスマップ、レジスタ名、メーカー提供 `.dtsi` 定義、ペリフェラル構成） |
-| **JSON / Manifest** | `.json` | 23 | **5,859行** | PPAペリフェラルマニフェスト (`fbb-plugin.json`)、ボード構造メタデータ、UARTマッピング設定 |
-| **Shell Script** | `.sh` | 30 | **1,133行** | テスト一括実行ランナー（`run_tests.sh`）、およびラボ起動ランナー（`start_lab.sh`） |
+| **C/C++** | `.cpp` / `.hpp` / `.c` / `.h` / `.template` | 59 | **8,876行** | システムコール横取り（C Shimテンプレート含む）のランタイム、周辺デバイス抽象クラス・エミュレータ、およびファームウェアテストコード |
+| **Python** | `.py` | 12 | **2,057行** | DTSパース・コード自動生成エンジン（`vfpga` パッケージ）、PPAプラグイン動的発見エンジン、ノードラベル保持・重複自動解消、およびバックエンド制御スクリプト |
+| **JavaScript / React** | `.jsx` / `.js` / `.css` / `.html` | 20 | **4,389行** | Webダッシュボードサーバー（Express）、Vite + React 19 のフロントエンド UI（Dockview レイアウト、Recharts グラフ描画、DTS Visualizer メモリマップ、汎用ペイン規格 `GenericPeripheralPane`） |
+| **Verilog** | `.v` | 21 | **1,163行** | シミュレーション対象の FPGA ハードウェア記述（RTLモックやシナリオ固有のロジック） |
+| **Device Tree (DTS)** | `.dts` / `.dtsi` | 35 | **857行** | 仮想デバイス仕様の定義（アドレスマップ、レジスタ名、メーカー提供 `.dtsi` 定義、ペリフェラル構成） |
+| **JSON / Manifest** | `.json` | 28 | **6,259行** | PPAペリフェラルマニフェスト (`fbb-plugin.json`)、ボード構造メタデータ、UARTマッピング設定 |
+| **Shell Script** | `.sh` | 32 | **1,158行** | テスト一括実行ランナー（`run_tests.sh`）、およびラボ起動ランナー（`start_lab.sh`） |
 | **Rust** | `.rs` | 6 | **222行** | Mコア用ベアメタル・リアルタイムOSファームウェア（Rust対応シナリオ、※自動生成される `fbb_pac.rs` は除く） |
-| **合計 (Total)** | **-** | **200** | **24,217行** | **F-BB プラットフォーム全体の静的ソースコード総数** |
+| **合計 (Total)** | **-** | **213** | **24,981行** | **F-BB プラットフォーム全体の静的ソースコード総数** |
 
-> **前回からの比較と増減 (シナリオ20b AMP Mコア AXI CDMA オフロード & リアルタイム DMA エミュレーションの統合)**
-> Scenario 20b ([`20b_mcore_cdma`](tests/scenarios/20b_mcore_cdma/README.md)) による AMP Mコアからの AXI CDMA 直接制御・オフロード検証環境の開発、Aコア/Mコア間の remoteproc 連携およびドキュメント体系の完全同期に伴い、プラットフォーム全域の静的ソースコード統計は **200ファイル / 24,217行** に拡大しました：
-> - **Scenario 20b (`20b_mcore_cdma`)**: +6ファイル（`config.dts`, `fbb_layout.json`, `main.c`, `mcore_cdma.c`, `run.sh`, `README.md`）
-> - **ドキュメント完全同期**: ルートおよび各サブディレクトリの `README.md` / `ARCHITECTURE_MANIFEST.md` / `AddInfo` 完全修正
+> **前回からの比較と増減 (PPA 2.0 Adafruit HT16K33 7セグメントLED プラグイン、多重 I2C シナリオ 02e、およびマルチ UART ポート連動修正)**
+> PPA 2.0 公式プラグイン `adafruit_ht16k33` ([`src/peripherals/official_plugins/adafruit_ht16k33/`](src/peripherals/official_plugins/adafruit_ht16k33/))、多重 I2C シナリオ 02e ([`02e_ht16k33_7seg_i2c`](tests/scenarios/02e_ht16k33_7seg_i2c/README.md)) の追加、並びに CMake 自動発見、Dockview 独立ペイン分割、およびマルチ UART ポート番号連動修正に伴い、プラットフォーム全域の静的ソースコード統計は **213ファイル / 24,981行** に拡大しました：
+> - **公式プラグイン `adafruit_ht16k33`**: +4ファイル（`fbb-plugin.json`, `board.svg`, `ht16k33.dtsi`, `ht16k33.cpp`）
+> - **Scenario 02e (`02e_ht16k33_7seg_i2c`)**: +5ファイル（`config.dts`, `vfpga_top.v`, `main.cpp`, `fbb_layout.json`, `README.md`）
+> - **PPA 2.0 SVG 基板アセット**: SSD1306 OLED 用 `board.svg` ベクター画像アセットの追加
+> - **マルチ UART ＆ 7セグ UI 改修**: `generator_rtl.py` のポート自動連番修正、`UartTerminal.jsx` 接続ステータス向上、`OledDisplay.jsx` / `GenericPeripheralPane.jsx` 7セグメント LED 六角形セグメント描画・傾斜コロン・表示カラー連動 (`ledColor`)、およびドキュメント体系の完全更新
 
 > **コード生成エンジンによる動的コード**
 > F-BBの設計上、上記の静的コードに加えて、DTSを読み込んだ際に Python スクリプトが、外部テンプレート `libfpgashim.c.template` を基にして **C言語 Shim (`libfpgashim.c` / 約680行)** を生成するほか、**C++ シミュレーションラッパー (`sim_main.cpp` / 約100行)**、**Verilog スケルトン (`vfpga_top.v` / 約40行)**、**Rust PAC (`fbb_pac.rs` / 約80行)** などをビルド時に自動生成します。

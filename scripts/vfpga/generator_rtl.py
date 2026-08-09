@@ -382,7 +382,7 @@ class ManifestGenerator(BaseGenerator):
             "scenario_dir": getattr(model, "scenario_dir", ""),
             "hdmi_output_path": "/tmp/hdmi_output.bmp",
             "devices": [],
-            "uarts": [{"name": d.name, "port": int(d.extra_props.get("port", 2000))} for d in model.get_uart_devices()]
+            "uarts": [{"name": d.name, "port": int(d.extra_props.get("port", 2000 + idx))} for idx, d in enumerate(model.get_uart_devices())]
         }
         # Discover PPA plugin UI widgets (ADR #005)
         sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../src/controller")))
@@ -391,6 +391,21 @@ class ManifestGenerator(BaseGenerator):
             discovered_plugins = discover_plugins(getattr(model, "scenario_dir", ""))
         except Exception:
             discovered_plugins = {}
+
+        def find_plugin_for_compat(compat_str):
+            import re
+            if not compat_str or not discovered_plugins:
+                return None
+            if compat_str in discovered_plugins:
+                return discovered_plugins[compat_str]
+            items = re.findall(r'[a-zA-Z0-9_-]+,[a-zA-Z0-9_-]+', compat_str)
+            for item in items:
+                if item in discovered_plugins:
+                    return discovered_plugins[item]
+            for item in re.findall(r'[a-zA-Z0-9_-]+', compat_str):
+                if item in discovered_plugins:
+                    return discovered_plugins[item]
+            return None
 
         for dev in model.devices:
             dev_info = {
@@ -406,16 +421,18 @@ class ManifestGenerator(BaseGenerator):
                 slaves = []
                 for s in dev.i2c_slaves:
                     s_info = {"name": s.name, "addr": s.addr, "compatible": s.compatible}
-                    if s.compatible in discovered_plugins:
-                        s_info["ui_widget"] = discovered_plugins[s.compatible].get("ui_widget")
+                    plugin_info = find_plugin_for_compat(s.compatible)
+                    if plugin_info:
+                        s_info["ui_widget"] = plugin_info.get("ui_widget")
                     slaves.append(s_info)
                 dev_info["i2c_slaves"] = slaves
             if dev.type == 'spi' and hasattr(dev, 'spi_slaves'):
                 slaves = []
                 for s in dev.spi_slaves:
                     s_info = {"name": s.name, "cs": s.cs, "compatible": s.compatible}
-                    if s.compatible in discovered_plugins:
-                        s_info["ui_widget"] = discovered_plugins[s.compatible].get("ui_widget")
+                    plugin_info = find_plugin_for_compat(s.compatible)
+                    if plugin_info:
+                        s_info["ui_widget"] = plugin_info.get("ui_widget")
                     slaves.append(s_info)
                 dev_info["spi_slaves"] = slaves
             manifest["devices"].append(dev_info)

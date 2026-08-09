@@ -1,0 +1,17 @@
+/dts-v1/;
+
+#include "src/peripherals/official_plugins/solomon_ssd1306/ssd1306.dtsi"
+#include "src/peripherals/official_plugins/adafruit_ht16k33/ht16k33.dtsi"
+
+/ {
+    /* 
+     * 【マルチペリフェラル I2Cバス0 の定義】
+     * 1つの I2C バス (/dev/i2c-0) 上に SSD1306 OLED (0x3C) と HT16K33 7セグLED (0x70) を混在マウント
+     */
+    i2c1: i2c@e0004000 {
+        compatible = "cdns,i2c-r1p10";
+        reg = <0xe0004000 0x1000>;
+        bus_id = <0>;
+        label = "/dev/i2c-0";
+    };
+};

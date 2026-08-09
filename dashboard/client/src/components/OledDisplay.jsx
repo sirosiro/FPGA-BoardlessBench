@@ -2,50 +2,117 @@ import { useEffect, useRef, useState } from 'react';
 import { Monitor, ZoomIn, ZoomOut, RotateCcw, Layers } from 'lucide-react';
 import { useDashboard } from './DashboardContext';
 
-function OledDisplay() {
-  const { displayFrame, manifest } = useDashboard();
+function extractSvgInnerHtml(svgStr) {
+  if (!svgStr) return '';
+  const match = svgStr.match(/<svg[^>]*>([\s\S]*)<\/svg>/i);
+  return match ? match[1] : svgStr;
+}
+
+function SevenSegDigit({ x, y, byte, color = '#ff0033' }) {
+  const segA = (byte & 0x01) !== 0;
+  const segB = (byte & 0x02) !== 0;
+  const segC = (byte & 0x04) !== 0;
+  const segD = (byte & 0x08) !== 0;
+  const segE = (byte & 0x10) !== 0;
+  const segF = (byte & 0x20) !== 0;
+  const segG = (byte & 0x40) !== 0;
+  const segDP = (byte & 0x80) !== 0;
+
+  const onColor = color === 'red' ? '#ff0033' : color;
+  const strokeColor = color === 'red' ? '#ffb3c1' : (color === '#20ff40' ? '#b3ffc1' : '#ffffff');
+  const offColor = 'rgba(75, 12, 18, 0.35)';
+  const glowFilter = `drop-shadow(0px 0px 4px #ffffff) drop-shadow(0px 0px 10px ${onColor}) drop-shadow(0px 0px 22px ${onColor})`;
+
+  return (
+    <g transform={`translate(${x}, ${y}) scale(2.65) skewX(-6)`}>
+      {/* Seg A - Top */}
+      <polygon points="4,2 26,2 21,7 9,7" fill={segA ? onColor : offColor} stroke={segA ? strokeColor : 'none'} strokeWidth="0.5" style={{ filter: segA ? glowFilter : 'none' }} />
+      {/* Seg B - Top Right */}
+      <polygon points="27,3 27,23.5 22,21 22,8" fill={segB ? onColor : offColor} stroke={segB ? strokeColor : 'none'} strokeWidth="0.5" style={{ filter: segB ? glowFilter : 'none' }} />
+      {/* Seg C - Bottom Right */}
+      <polygon points="27,26.5 27,47 22,42 22,29" fill={segC ? onColor : offColor} stroke={segC ? strokeColor : 'none'} strokeWidth="0.5" style={{ filter: segC ? glowFilter : 'none' }} />
+      {/* Seg D - Bottom */}
+      <polygon points="4,48 26,48 21,43 9,43" fill={segD ? onColor : offColor} stroke={segD ? strokeColor : 'none'} strokeWidth="0.5" style={{ filter: segD ? glowFilter : 'none' }} />
+      {/* Seg E - Bottom Left */}
+      <polygon points="3,26.5 3,47 8,42 8,29" fill={segE ? onColor : offColor} stroke={segE ? strokeColor : 'none'} strokeWidth="0.5" style={{ filter: segE ? glowFilter : 'none' }} />
+      {/* Seg F - Top Left */}
+      <polygon points="3,3 3,23.5 8,21 8,8" fill={segF ? onColor : offColor} stroke={segF ? strokeColor : 'none'} strokeWidth="0.5" style={{ filter: segF ? glowFilter : 'none' }} />
+      {/* Seg G - Middle Hexagon */}
+      <polygon points="4,25 8,22.5 22,22.5 26,25 22,27.5 8,27.5" fill={segG ? onColor : offColor} stroke={segG ? strokeColor : 'none'} strokeWidth="0.5" style={{ filter: segG ? glowFilter : 'none' }} />
+      {/* Seg DP - Decimal Point */}
+      <circle cx="32" cy="46" r="2.8" fill={segDP ? onColor : offColor} stroke={segDP ? strokeColor : 'none'} strokeWidth="0.4" style={{ filter: segDP ? glowFilter : 'none' }} />
+    </g>
+  );
+}
+
+function SevenSegColon({ x, y, on, color = '#ff0033' }) {
+  const onColor = color === 'red' ? '#ff0033' : color;
+  const strokeColor = color === 'red' ? '#ffb3c1' : (color === '#20ff40' ? '#b3ffc1' : '#ffffff');
+  const offColor = 'rgba(75, 12, 18, 0.35)';
+  const glowFilter = `drop-shadow(0px 0px 4px #ffffff) drop-shadow(0px 0px 10px ${onColor}) drop-shadow(0px 0px 22px ${onColor})`;
+  return (
+    <g transform={`translate(${x}, ${y}) scale(2.65) skewX(-6)`}>
+      <circle cx="5" cy="15" r="3.2" fill={on ? onColor : offColor} stroke={on ? strokeColor : 'none'} strokeWidth="0.4" style={{ filter: on ? glowFilter : 'none' }} />
+      <circle cx="5" cy="35" r="3.2" fill={on ? onColor : offColor} stroke={on ? strokeColor : 'none'} strokeWidth="0.4" style={{ filter: on ? glowFilter : 'none' }} />
+    </g>
+  );
+}
+
+function OledDisplay(props) {
+  const { displayFrame, display7SegFrame, peripheralFrames, manifest } = useDashboard();
   const canvasRef = useRef(null);
-  const [zoom, setZoom] = useState(250); // デフォルト拡大率: 250%
+  const [zoom, setZoom] = useState(250);
 
-  const handleZoomChange = (e) => {
-    setZoom(Number(e.target.value));
-  };
+  const handleZoomChange = (e) => setZoom(Number(e.target.value));
+  const resetZoom = () => setZoom(250);
 
-  const resetZoom = () => {
-    setZoom(250);
-  };
+  const i2cSlaves = manifest?.devices?.flatMap(d => d.i2c_slaves || []) || [];
+  const oledSlave = i2cSlaves.find(s => s.compatible === 'solomon,ssd1306');
+  const seg7Slave = i2cSlaves.find(s => s.compatible?.includes('ht16k33'));
 
-  const oledSlave = manifest?.devices
-    ?.flatMap(d => d.i2c_slaves || [])
-    ?.find(s => s.compatible === 'solomon,ssd1306');
-  const boardSvgContent = oledSlave?.ui_widget?.board_svg_content;
+  const params = props?.params || {};
+  const panelId = String(props?.api?.id || props?.id || '');
+  const panelTitle = String(props?.api?.title || props?.title || params?.title || '');
+  
+  const isSeg7Pane = props?.type === 'seg7' ||
+                     params?.type === 'seg7' || 
+                     panelId.includes('seg7') ||
+                     Boolean(params?.manifest?.compatible?.includes('ht16k33')) ||
+                     Boolean(params?.pluginId?.includes('ht16k33')) ||
+                     panelTitle.includes('7-Segment') ||
+                     panelTitle.includes('ht16k33') ||
+                     panelTitle.includes('7Seg');
 
-  // DTS内にSSD1306が存在するか、またはPPAプラグインが存在するか判定
-  const hasActivePeripheral = Boolean(oledSlave || boardSvgContent);
+  const activeType = isSeg7Pane ? 'seg7' : 'oled';
+  const currentSlave = isSeg7Pane ? (seg7Slave || params?.manifest) : (oledSlave || params?.manifest);
+  const paneTitle = currentSlave?.ui_widget?.title || 
+                    (activeType === 'seg7' ? 'Adafruit 4-Digit 7-Segment LED (Red)' : 'SSD1306 OLED Display (128x64)');
+
+  const hasActivePeripheral = Boolean(currentSlave || (isSeg7Pane ? seg7Slave : oledSlave));
+
+  const colorMap = { red: '#ff0033', green: '#20ff40', blue: '#20a0ff', yellow: '#ffb000', white: '#f0f0f0' };
+  const ctrlColor = currentSlave?.ui_widget?.controls?.[0]?.color;
+  const ledColor = colorMap[ctrlColor] || ctrlColor || (currentSlave?.compatible?.includes('green') ? '#20ff40' : '#ff0033');
 
   useEffect(() => {
-    if (!hasActivePeripheral) return;
+    if (!hasActivePeripheral || activeType !== 'oled') return;
 
     const canvas = canvasRef.current;
     if (!canvas) return;
-
     const ctx = canvas.getContext('2d');
     if (!ctx) return;
 
     const width = 128;
     const height = 64;
-
     if (canvas.width !== width) canvas.width = width;
     if (canvas.height !== height) canvas.height = height;
 
     const imgData = ctx.createImageData(width, height);
-
-    // デフォルトの背景色 (消灯時の暗緑色)
     for (let i = 0; i < imgData.data.length; i += 4) {
-      imgData.data[i] = 12;     // R
-      imgData.data[i + 1] = 24; // G
-      imgData.data[i + 2] = 12; // B
-      imgData.data[i + 3] = 255;// A
+      imgData.data[i] = 12;
+      imgData.data[i + 1] = 24;
+      imgData.data[i + 2] = 12;
+      imgData.data[i + 3] = 255;
     }
 
     if (displayFrame) {
@@ -63,17 +130,14 @@ function OledDisplay() {
 
             const byte = buffer[byteIdx];
             for (let bit = 0; bit < 8; bit++) {
-              const pixelOn = (byte & (1 << bit)) !== 0;
-              const x = col;
-              const y = page * 8 + bit;
-              const pixelIdx = (y * width + x) * 4;
-
-              if (pixelOn) {
-                // 点灯時のピクセルカラー (明るい黄緑色)
-                imgData.data[pixelIdx] = 0;       // R
-                imgData.data[pixelIdx + 1] = 255; // G
-                imgData.data[pixelIdx + 2] = 80;  // B
-                imgData.data[pixelIdx + 3] = 255; // A
+              if ((byte & (1 << bit)) !== 0) {
+                const x = col;
+                const y = page * 8 + bit;
+                const pixelIdx = (y * width + x) * 4;
+                imgData.data[pixelIdx] = 0;
+                imgData.data[pixelIdx + 1] = 255;
+                imgData.data[pixelIdx + 2] = 80;
+                imgData.data[pixelIdx + 3] = 255;
               }
             }
           }
@@ -82,35 +146,27 @@ function OledDisplay() {
         console.error("[OledDisplay] Error decoding frame:", e);
       }
     }
-
     ctx.putImageData(imgData, 0, 0);
-  }, [displayFrame, hasActivePeripheral]);
+  }, [displayFrame, hasActivePeripheral, activeType]);
 
-  // CSS ネジ穴・金属パッドのスタイル定義
-  const screwPadStyle = (top = 'auto', left = 'auto', right = 'auto', bottom = 'auto') => ({
-    position: 'absolute',
-    top,
-    left,
-    right,
-    bottom,
-    width: '26px',
-    height: '26px',
-    borderRadius: '50%',
-    background: 'radial-gradient(circle, #d0d0d0 40%, #888888 85%)',
-    border: '1.2px solid #555',
-    boxShadow: '0 1.5px 3px rgba(0,0,0,0.5), inset 0 1px 1px rgba(255,255,255,0.6)',
-    display: 'flex',
-    alignItems: 'center',
-    justifyContent: 'center'
-  });
-
-  const screwHoleStyle = {
-    width: '15px',
-    height: '15px',
-    borderRadius: '50%',
-    background: '#0d1117',
-    boxShadow: 'inset 0 3px 6px rgba(0,0,0,0.9), 0 1px 1px rgba(255,255,255,0.2)'
-  };
+  let seg7Bytes = [0, 0, 0, 0];
+  let seg7Colon = false;
+  const rawSeg7Frame = display7SegFrame || peripheralFrames?.['fbb_display_7seg_0'];
+  if (rawSeg7Frame) {
+    try {
+      const binaryString = atob(rawSeg7Frame);
+      const buffer = new Uint8Array(binaryString.length);
+      for (let i = 0; i < binaryString.length; i++) {
+        buffer[i] = binaryString.charCodeAt(i);
+      }
+      if (buffer.length >= 10) {
+        seg7Bytes = [buffer[0], buffer[2], buffer[6], buffer[8]];
+        seg7Colon = (buffer[4] & 0x02) !== 0;
+      }
+    } catch (e) {
+      console.error("[7SegDisplay] Error decoding frame:", e);
+    }
+  }
 
   const baseWidth = 280;
   const baseHeight = 280;
@@ -130,23 +186,25 @@ function OledDisplay() {
       <div className="panel-header" style={{
         display: 'flex',
         alignItems: 'center',
-        gap: '6px',
+        justify: 'space-between',
         padding: '0.5rem 1rem',
         borderBottom: '1px solid #30363d',
         background: '#161b22',
         fontWeight: 600,
         fontSize: '0.85rem'
       }}>
-        <Monitor size={16} /> Virtual Peripheral View
+        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          <Monitor size={16} style={{ color: '#58a6ff' }} />
+          <span>{paneTitle}</span>
+        </div>
       </div>
 
       {hasActivePeripheral ? (
         <>
-          {/* ズームコントロールパネル (フローティング) */}
           <div style={{
             position: 'absolute',
-            top: '2.5rem',
-            right: '1.5rem',
+            top: '2.8rem',
+            right: '1.2rem',
             zIndex: 10,
             background: 'rgba(22, 27, 34, 0.85)',
             backdropFilter: 'blur(8px)',
@@ -166,33 +224,13 @@ function OledDisplay() {
               step="50"
               value={zoom} 
               onChange={handleZoomChange}
-              style={{
-                width: '80px',
-                accentColor: '#58a6ff',
-                cursor: 'pointer'
-              }}
+              style={{ width: '80px', accentColor: '#58a6ff', cursor: 'pointer' }}
             />
             <ZoomIn size={14} style={{ color: '#8b949e' }} />
             <span style={{ fontSize: '0.75rem', fontWeight: 600, minWidth: '40px', textAlign: 'right' }}>
               {zoom}%
             </span>
-            <button 
-              onClick={resetZoom}
-              title="Reset Zoom"
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#8b949e',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                padding: '2px',
-                borderRadius: '4px',
-                transition: 'background 0.2s',
-              }}
-              onMouseEnter={(e) => e.currentTarget.style.background = '#21262d'}
-              onMouseLeave={(e) => e.currentTarget.style.background = 'none'}
-            >
+            <button onClick={resetZoom} title="Reset Zoom" style={{ background: 'none', border: 'none', color: '#8b949e', cursor: 'pointer', padding: '2px' }}>
               <RotateCcw size={14} />
             </button>
           </div>
@@ -207,7 +245,6 @@ function OledDisplay() {
             overflow: 'auto',
             boxShadow: 'inset 0 4px 20px rgba(0,0,0,0.7)'
           }}>
-            {/* スケーリング用のダミー枠 */}
             <div style={{
               width: `${scaledWidth}px`,
               height: `${scaledHeight}px`,
@@ -216,7 +253,6 @@ function OledDisplay() {
               justifyContent: 'center',
               transition: 'width 0.1s ease-out, height 0.1s ease-out'
             }}>
-              {/* OLED 物理モジュール自作ボード */}
               <div style={{
                 position: 'relative',
                 width: `${baseWidth}px`,
@@ -224,144 +260,71 @@ function OledDisplay() {
                 transform: `scale(${zoom / 100})`,
                 transformOrigin: 'center center',
                 transition: 'transform 0.1s ease-out',
-                userSelect: 'none',
-                background: boardSvgContent ? 'transparent' : 'linear-gradient(135deg, #104eae 0%, #082860 100%)',
-                border: boardSvgContent ? 'none' : '1.5px solid #183e78',
-                borderRadius: '12px',
-                boxShadow: boardSvgContent ? 'none' : '0 10px 30px rgba(0,0,0,0.6), inset 0 1.5px 2px rgba(255,255,255,0.25)'
+                userSelect: 'none'
               }}>
-                {/* PPA 2.0 SVG Vector Board Background Overlay */}
-                {boardSvgContent && (
-                  <div 
-                    style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 0 }}
-                    dangerouslySetInnerHTML={{ __html: boardSvgContent }} 
-                  />
-                )}
-
-                {!boardSvgContent && (
+                {/* OLED Display Active View */}
+                {activeType === 'oled' && (
                   <>
-                    {/* 四隅の取り付けネジ穴 */}
-                    <div style={screwPadStyle('8px', '8px')}><div style={screwHoleStyle} /></div>
-                    <div style={screwPadStyle('8px', 'auto', '8px')}><div style={screwHoleStyle} /></div>
-                    <div style={screwPadStyle('auto', '8px', 'auto', '8px')}><div style={screwHoleStyle} /></div>
-                    <div style={screwPadStyle('auto', 'auto', '8px', '8px')}><div style={screwHoleStyle} /></div>
-
-                    {/* 上部I2C接続ピンホール (4ピン端子) */}
+                    {oledSlave?.ui_widget?.board_svg_content && (
+                      <div 
+                        style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 0 }}
+                        dangerouslySetInnerHTML={{ __html: oledSlave.ui_widget.board_svg_content }} 
+                      />
+                    )}
                     <div style={{
                       position: 'absolute',
-                      top: '6px',
-                      left: '50%',
-                      transform: 'translateX(-50%)',
-                      display: 'flex',
-                      gap: '12px',
-                      alignItems: 'center'
-                    }}>
-                      {[0, 1, 2, 3].map(i => (
-                        <div key={i} style={{
-                          width: '9px',
-                          height: '9px',
-                          borderRadius: '50%',
-                          background: 'radial-gradient(circle, #ffd040 30%, #a27500 80%)',
-                          border: '1px solid #1a1a1a',
-                          boxShadow: 'inset 0 1px 1px rgba(255,255,255,0.6)'
-                        }} />
-                      ))}
-                    </div>
-
-                    {/* シルク印刷ピン名文字 */}
-                    <div style={{
-                      position: 'absolute',
-                      top: '18px',
-                      left: '50%',
-                      transform: 'translateX(-50%)',
-                      color: '#ffffff',
-                      fontFamily: 'monospace, "Courier New", sans-serif',
-                      fontSize: '7.5px',
-                      fontWeight: 'bold',
-                      letterSpacing: '1px',
-                      opacity: 0.9,
-                      whiteSpace: 'nowrap',
-                      textShadow: '0 1px 0 rgba(0,0,0,0.5)'
-                    }}>
-                      GND &nbsp;VCC &nbsp;SCL &nbsp;SDA
-                    </div>
-
-                    {/* 下部FPCコネクタ接続部（OLEDモジュールのリアリティ再現） */}
-                    <div style={{
-                      position: 'absolute',
-                      bottom: '16px',
-                      left: '50%',
-                      transform: 'translateX(-50%)',
-                      width: '60px',
-                      height: '24px',
-                      background: '#111622',
-                      border: '1px solid #232e42',
-                      borderRadius: '3px',
-                      boxShadow: '0 4px 8px rgba(0,0,0,0.6)',
+                      top: '36px',
+                      left: '12px',
+                      width: '252px',
+                      height: '144px',
+                      background: '#14171a',
+                      border: '2px solid #07080a',
+                      borderRadius: '4px',
                       display: 'flex',
                       alignItems: 'center',
-                      justifyContent: 'center'
+                      justifyContent: 'center',
+                      overflow: 'hidden',
+                      zIndex: 1
                     }}>
                       <div style={{
-                        width: '78%',
-                        height: '55%',
-                        background: 'linear-gradient(to right, #d99b00, #f5b700, #d99b00)',
-                        borderRadius: '1px',
-                        border: '1px solid #a37400'
-                      }} />
+                        width: '92%',
+                        height: '76%',
+                        backgroundColor: '#040604',
+                        border: '1.2px solid #111',
+                        borderRadius: '2px',
+                        display: 'flex',
+                        alignItems: 'center',
+                        justifyContent: 'center'
+                      }}>
+                        <canvas 
+                          ref={canvasRef} 
+                          style={{ display: 'block', width: '100%', height: '100%', imageRendering: 'pixelated' }} 
+                        />
+                      </div>
                     </div>
                   </>
                 )}
 
-                {/* ディスプレイのガラス窓枠 */}
-                <div style={{
-                  position: 'absolute',
-                  top: '36px',
-                  left: '12px',
-                  width: '252px',
-                  height: '144px',
-                  background: '#14171a',
-                  border: '2px solid #07080a',
-                  borderRadius: '4px',
-                  boxShadow: '0 6px 15px rgba(0,0,0,0.8), inset 0 2px 4px rgba(255,255,255,0.1)',
-                  display: 'flex',
-                  alignItems: 'center',
-                  justifyContent: 'center',
-                  overflow: 'hidden',
-                  zIndex: 1
-                }}>
-                  {/* 実表示領域 (Canvas) を 2:1 アスペクト比で完璧にフィット */}
-                  <div style={{
-                    width: '92%',
-                    height: '76%',
-                    backgroundColor: '#040604',
-                    border: '1.2px solid #111',
-                    borderRadius: '2px',
-                    boxShadow: 'inset 0 0 15px rgba(0,0,0,0.95)',
-                    display: 'flex',
-                    alignItems: 'center',
-                    justifyContent: 'center',
-                    overflow: 'hidden'
-                  }}>
-                    <canvas 
-                      ref={canvasRef} 
-                      style={{ 
-                        display: 'block',
-                        width: '100%', 
-                        height: '100%',
-                        imageRendering: 'pixelated', 
-                        filter: 'drop-shadow(0 0 2px rgba(0, 255, 80, 0.3))'
-                      }} 
-                    />
+                {/* 7-Segment LED Active View (Full-Cutout Scale Vector SVG ViewBox) */}
+                {activeType === 'seg7' && (
+                  <div style={{ position: 'absolute', top: 0, left: 0, width: '100%', height: '100%', zIndex: 1 }}>
+                    <svg viewBox="0 0 500 270" width="100%" height="100%">
+                      <g dangerouslySetInnerHTML={{ __html: extractSvgInnerHtml(seg7Slave?.ui_widget?.board_svg_content) }} />
+                      <g transform="translate(55, 52)">
+                        <SevenSegDigit x={0} y={0} byte={seg7Bytes[0]} color={ledColor} />
+                        <SevenSegDigit x={90} y={0} byte={seg7Bytes[1]} color={ledColor} />
+                        <SevenSegColon x={183} y={0} on={seg7Colon} color={ledColor} />
+                        <SevenSegDigit x={215} y={0} byte={seg7Bytes[2]} color={ledColor} />
+                        <SevenSegDigit x={305} y={0} byte={seg7Bytes[3]} color={ledColor} />
+                      </g>
+                    </svg>
                   </div>
-                </div>
-
+                )}
               </div>
             </div>
           </div>
         </>
       ) : (
-        /* Standby Viewport when no active peripheral is connected */
         <div style={{ 
           flex: 1, 
           display: 'flex', 
@@ -369,21 +332,18 @@ function OledDisplay() {
           justifyContent: 'center', 
           alignItems: 'center', 
           backgroundColor: '#050705',
-          padding: '2rem',
-          boxShadow: 'inset 0 4px 20px rgba(0,0,0,0.7)'
+          padding: '2rem'
         }}>
           <div style={{
             display: 'flex',
             flexDirection: 'column',
             alignItems: 'center',
-            justifyContent: 'center',
             gap: '16px',
             color: '#8b949e',
             background: '#161b22',
             border: '1px solid #30363d',
             borderRadius: '12px',
             padding: '2.5rem 3rem',
-            boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
             textAlign: 'center',
             maxWidth: '460px'
           }}>
@@ -395,8 +355,7 @@ function OledDisplay() {
               border: '1px solid rgba(88, 166, 255, 0.2)',
               display: 'flex',
               alignItems: 'center',
-              justifyContent: 'center',
-              boxShadow: '0 0 20px rgba(88, 166, 255, 0.15)'
+              justifyContent: 'center'
             }}>
               <Layers size={32} style={{ color: '#58a6ff' }} />
             </div>
@@ -408,20 +367,6 @@ function OledDisplay() {
                 Waiting for DTS PPA peripheral device specification<br />
                 (e.g., SSD1306 OLED, 7-Segment LED, SPI Sensors).
               </p>
-            </div>
-            <div style={{
-              display: 'inline-flex',
-              alignItems: 'center',
-              gap: '6px',
-              padding: '4px 10px',
-              borderRadius: '12px',
-              background: '#21262d',
-              border: '1px solid #30363d',
-              fontSize: '0.75rem',
-              color: '#8b949e'
-            }}>
-              <span style={{ width: '8px', height: '8px', borderRadius: '50%', background: '#8b949e', display: 'inline-block' }} />
-              STANDBY / DISCONNECTED
             </div>
           </div>
         </div>

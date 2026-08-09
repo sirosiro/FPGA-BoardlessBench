@@ -54,7 +54,7 @@ def main():
         
         stdout, stderr = "", ""
         is_passed = False
-        is_infinite = s in ("02d_oled_i2c", "S01_cpp_lfsr_sequencer")
+        is_infinite = s in ("02d_oled_i2c", "02e_ht16k33_7seg_i2c", "S01_cpp_lfsr_sequencer")
         is_violation_test = s == "04b_dev_mem_violation_legacy"
         try:
             if is_infinite:

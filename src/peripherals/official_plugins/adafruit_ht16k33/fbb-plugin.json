@@ -1,0 +1,98 @@
+{
+  "name": "fbb-plugin-adafruit-ht16k33",
+  "vendor": "Adafruit / Holtek",
+  "version": "1.0.0",
+  "description": "F-BB Virtual Peripheral Emulator for Adafruit 0.56\" 4-Digit 7-Segment HT16K33 I2C Display",
+  "peripherals": [
+    {
+      "bus": "i2c",
+      "compatible": "adafruit,ht16k33-red",
+      "binary": "fbb_i2c_ht16k33",
+      "default_args": [
+        "--socket", "{socket_path}"
+      ],
+      "ui_widget": {
+        "title": "Adafruit 4-Digit 7-Segment LED (Red)",
+        "board_svg": "board.svg",
+        "controls": [
+          { "type": "7seg_display", "name": "display_7seg", "digits": 4, "has_colon": true, "color": "red" }
+        ]
+      }
+    },
+    {
+      "bus": "i2c",
+      "compatible": "adafruit,ht16k33-green",
+      "binary": "fbb_i2c_ht16k33",
+      "default_args": [
+        "--socket", "{socket_path}"
+      ],
+      "ui_widget": {
+        "title": "Adafruit 4-Digit 7-Segment LED (Green)",
+        "board_svg": "board.svg",
+        "controls": [
+          { "type": "7seg_display", "name": "display_7seg", "digits": 4, "has_colon": true, "color": "green" }
+        ]
+      }
+    },
+    {
+      "bus": "i2c",
+      "compatible": "adafruit,ht16k33-yellow",
+      "binary": "fbb_i2c_ht16k33",
+      "default_args": [
+        "--socket", "{socket_path}"
+      ],
+      "ui_widget": {
+        "title": "Adafruit 4-Digit 7-Segment LED (Yellow)",
+        "board_svg": "board.svg",
+        "controls": [
+          { "type": "7seg_display", "name": "display_7seg", "digits": 4, "has_colon": true, "color": "yellow" }
+        ]
+      }
+    },
+    {
+      "bus": "i2c",
+      "compatible": "adafruit,ht16k33-blue",
+      "binary": "fbb_i2c_ht16k33",
+      "default_args": [
+        "--socket", "{socket_path}"
+      ],
+      "ui_widget": {
+        "title": "Adafruit 4-Digit 7-Segment LED (Blue)",
+        "board_svg": "board.svg",
+        "controls": [
+          { "type": "7seg_display", "name": "display_7seg", "digits": 4, "has_colon": true, "color": "blue" }
+        ]
+      }
+    },
+    {
+      "bus": "i2c",
+      "compatible": "adafruit,ht16k33-white",
+      "binary": "fbb_i2c_ht16k33",
+      "default_args": [
+        "--socket", "{socket_path}"
+      ],
+      "ui_widget": {
+        "title": "Adafruit 4-Digit 7-Segment LED (White)",
+        "board_svg": "board.svg",
+        "controls": [
+          { "type": "7seg_display", "name": "display_7seg", "digits": 4, "has_colon": true, "color": "white" }
+        ]
+      }
+    },
+    {
+      "bus": "i2c",
+      "compatible": "holtek,ht16k33",
+      "binary": "fbb_i2c_ht16k33",
+      "default_args": [
+        "--socket", "{socket_path}"
+      ],
+      "ui_widget": {
+        "title": "Adafruit 4-Digit 7-Segment LED",
+        "board_svg": "board.svg",
+        "controls": [
+          { "type": "7seg_display", "name": "display_7seg", "digits": 4, "has_colon": true, "color": "red" }
+        ]
+      }
+    }
+  ]
+}

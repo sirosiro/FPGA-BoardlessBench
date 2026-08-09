@@ -454,20 +454,32 @@ io.on('connection', (socket) => {
     });
 });
 
-let lastDisplayBuffer = null;
-function updateDisplayShm() {
-    const displayShmPath = '/dev/shm/fbb_display_0';
+const lastShmBuffers = {};
+function updatePeripheralShm() {
     try {
-        if (fs.existsSync(displayShmPath)) {
-            const buffer = fs.readFileSync(displayShmPath);
-            if (!lastDisplayBuffer || !lastDisplayBuffer.equals(buffer)) {
-                lastDisplayBuffer = buffer;
-                io.emit('display-frame', buffer.toString('base64'));
-            }
-        }
-    } catch (e) {
-        // Ignore read sharing violations or temp unlinks
-    }
+        if (!fs.existsSync('/dev/shm')) return;
+        const files = fs.readdirSync('/dev/shm').filter(f => f.startsWith('fbb_'));
+        files.forEach(file => {
+            const filePath = path.join('/dev/shm', file);
+            try {
+                const buffer = fs.readFileSync(filePath);
+                if (!lastShmBuffers[file] || !lastShmBuffers[file].equals(buffer)) {
+                    lastShmBuffers[file] = buffer;
+                    io.emit('peripheral:frame', {
+                        name: file,
+                        data: buffer.toString('base64')
+                    });
+                    // Legacy backwards compatibility for ssd1306 and ht16k33 7-seg
+                    if (file === 'fbb_display_0') {
+                        io.emit('display-frame', buffer.toString('base64'));
+                    }
+                    if (file === 'fbb_display_7seg_0') {
+                        io.emit('display-7seg-frame', buffer.toString('base64'));
+                    }
+                }
+            } catch (e) {}
+        });
+    } catch (e) {}
 }
 
 setInterval(() => {
@@ -477,8 +489,10 @@ setInterval(() => {
 }, 200);
 
 setInterval(() => {
-    updateDisplayShm();
+    updatePeripheralShm();
 }, 33); // ~30 FPS
+
+
 
 // GET /api/layout - Load fbb_layout.json from the active scenario folder
 // @intent:rationale 指定されたテストシナリオフォルダ配下の fbb_layout.json を読み込み、クライアントに返します。存在しない場合は 404 を返します。

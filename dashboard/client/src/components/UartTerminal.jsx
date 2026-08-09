@@ -146,7 +146,13 @@ function UartTerminal(props) {
 
       <div className="terminal-viewport" ref={terminalViewportRef} style={{ flex: 1, overflowY: 'auto', padding: '1.5rem' }}>
         <pre className="terminal-output" style={{ margin: 0, fontFamily: "'JetBrains Mono', monospace", fontSize: '0.9rem', lineHeight: 1.5, whiteSpace: 'pre-wrap' }}>
-          {currentLog ? parseAnsi(currentLog) : 'Waiting for connection...'}
+          {currentLog && currentLog.length > 0 ? (
+            parseAnsi(currentLog)
+          ) : uartLogs[deviceName] !== undefined ? (
+            <span style={{ color: '#484f58', fontStyle: 'italic' }}>Terminal connected. Waiting for output...</span>
+          ) : (
+            'Waiting for connection...'
+          )}
         </pre>
       </div>
 

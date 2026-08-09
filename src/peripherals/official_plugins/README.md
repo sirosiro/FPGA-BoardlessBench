@@ -13,6 +13,11 @@ src/peripherals/official_plugins/
 ├── generic_uart_loopback/
 │   ├── fbb-plugin.json
 │   └── uart_loopback.cpp
+├── adafruit_ht16k33/
+│   ├── fbb-plugin.json
+│   ├── board.svg
+│   ├── ht16k33.dtsi
+│   └── ht16k33.cpp
 ├── microchip_at24c02c/
 │   ├── fbb-plugin.json
 │   ├── at24c02c.dtsi
@@ -23,6 +28,7 @@ src/peripherals/official_plugins/
 │   └── spi_adc.cpp
 ├── solomon_ssd1306/
 │   ├── fbb-plugin.json
+│   ├── board.svg
 │   ├── ssd1306.dtsi
 │   └── ssd1306.cpp
 └── winbond_w25q128/
@@ -38,6 +44,7 @@ src/peripherals/official_plugins/
 | ファイル名 | 役割 |
 | :--- | :--- |
 | **`fbb-plugin.json`** | プラグインメタデータ定義ファイル（ベンダー情報、`compatible` 名、起動バイナリ名、パラメータテンプレート、ダッシュボード用UIウィジェット構成）。 |
+| **`board.svg`** | ペリフェラル基板外形・ネジ穴・シルク印刷等の 1:1 ベクターグラフィック。ダッシュボードに自動オーバーレイ描画されます。 |
 | **`*.dtsi`** | デバイスツリー・インクルードファイル（テストシナリオの `config.dts` から `#include` して使用）。 |
 | **`*.cpp`** | C++17 で実装された仮想ペリフェラルデーモンのソースコード。基底クラス（`I2cSlave`, `SpiSlave`, `UartDevice`）を継承。 |
 
@@ -45,8 +52,9 @@ src/peripherals/official_plugins/
 
 ## 3. 公式プラグイン一覧
 
-1. **`generic_uart_loopback`**: Generic UART ループバック・デバイス
-2. **`microchip_at24c02c`**: Microchip 24C02C 256B I2C EEPROM
-3. **`microchip_mcp3208`**: Microchip MCP3208 12-bit 8-Ch SPI ADC
-4. **`solomon_ssd1306`**: Solomon Systech SSD1306 128x64 I2C/SPI OLED Display
-5. **`winbond_w25q128`**: Winbond W25Q128 16MB SPI NOR Flash
+1. **`adafruit_ht16k33`**: Adafruit 0.56" 4-Digit 7-Segment HT16K33 I2C Display (Red/Green/Yellow/Blue/White)
+2. **`generic_uart_loopback`**: Generic UART ループバック・デバイス
+3. **`microchip_at24c02c`**: Microchip 24C02C 256B I2C EEPROM
+4. **`microchip_mcp3208`**: Microchip MCP3208 12-bit 8-Ch SPI ADC
+5. **`solomon_ssd1306`**: Solomon Systech SSD1306 128x64 I2C/SPI OLED Display
+6. **`winbond_w25q128`**: Winbond W25Q128 16MB SPI NOR Flash

@@ -15,6 +15,8 @@ export const DashboardProvider = ({ children }) => {
   const [traceHistory, setTraceHistory] = useState([]);
   const [hdmiFrame, setHdmiFrame] = useState(null);
   const [displayFrame, setDisplayFrame] = useState(null);
+  const [display7SegFrame, setDisplay7SegFrame] = useState(null);
+  const [peripheralFrames, setPeripheralFrames] = useState({});
   const [hiddenTraceKeys, setHiddenTraceKeys] = useState({});
   const [memoryError, setMemoryError] = useState(null);
 
@@ -45,6 +47,10 @@ export const DashboardProvider = ({ children }) => {
     });
     socket.on('hdmi-frame', (data) => setHdmiFrame(data));
     socket.on('display-frame', (data) => setDisplayFrame(data));
+    socket.on('display-7seg-frame', (data) => setDisplay7SegFrame(data));
+    socket.on('peripheral:frame', ({ name, data }) => {
+      setPeripheralFrames(prev => ({ ...prev, [name]: data }));
+    });
 
 
     fetch('/api/manifest').then(res => res.json()).then(setManifest);
@@ -61,6 +67,8 @@ export const DashboardProvider = ({ children }) => {
       socket.off('trace-history-update');
       socket.off('hdmi-frame');
       socket.off('display-frame');
+      socket.off('display-7seg-frame');
+      socket.off('peripheral:frame');
     };
   }, []);
 
@@ -109,6 +117,8 @@ export const DashboardProvider = ({ children }) => {
         handleClearTrace,
         hdmiFrame,
         displayFrame,
+        display7SegFrame,
+        peripheralFrames,
         hiddenTraceKeys,
         toggleTraceKey,
         memoryError,

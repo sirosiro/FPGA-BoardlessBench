@@ -1,0 +1,83 @@
+{
+    "grid": {
+        "root": {
+            "type": "branch",
+            "data": [
+                {
+                    "type": "branch",
+                    "data": [
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "dtsVisualizer"
+                                ],
+                                "activeView": "dtsVisualizer",
+                                "id": "3"
+                            },
+                            "size": 509
+                        },
+                        {
+                            "type": "branch",
+                            "data": [
+                                {
+                                    "type": "leaf",
+                                    "data": {
+                                        "views": [
+                                            "seg7Display"
+                                        ],
+                                        "activeView": "seg7Display",
+                                        "id": "1"
+                                    },
+                                    "size": 410
+                                },
+                                {
+                                    "type": "leaf",
+                                    "data": {
+                                        "views": [
+                                            "oledDisplay"
+                                        ],
+                                        "activeView": "oledDisplay",
+                                        "id": "7"
+                                    },
+                                    "size": 657
+                                }
+                            ],
+                            "size": 1076
+                        }
+                    ],
+                    "size": 1067
+                }
+            ],
+            "size": 1585
+        },
+        "width": 1585,
+        "height": 1067,
+        "orientation": "VERTICAL"
+    },
+    "panels": {
+        "dtsVisualizer": {
+            "id": "dtsVisualizer",
+            "contentComponent": "dtsVisualizer",
+            "title": "DTS Visualizer & AI"
+        },
+        "seg7Display": {
+            "id": "seg7Display",
+            "contentComponent": "oledDisplay",
+            "params": {
+                "type": "seg7",
+                "pluginId": "adafruit_ht16k33"
+            },
+            "title": "Adafruit 4-Digit 7-Segment LED (Red)"
+        },
+        "oledDisplay": {
+            "id": "oledDisplay",
+            "contentComponent": "oledDisplay",
+            "params": {
+                "type": "oled"
+            },
+            "title": "SSD1306 OLED Display (128x64)"
+        }
+    },
+    "activeGroup": "1"
+}
