@@ -9,6 +9,16 @@ FPGA-BoardlessBench (F-BB)は、FPGAを搭載した実機や評価ボードが�
 しかし、**「よく分からないが、これでFW開発が劇的に楽になりそうだ」** と直感した方は、ぜひこの先もお読みください。本プロジェクトが、あなたのFPGA/FW開発を強力に支える武器になるかもしれません。
 
 ---
+[Scenario S01: C++ LFSR シーケンサー・ショーケース](tests/scenarios/S01_cpp_lfsr_sequencer/)
+![FPGA-BoardlessBench Demo](docs/assets/s01.gif)
+
+[P01_frdmIMX: i.MX95 / i.MX 8M Plus HAL シナリオ](tests/scenarios/P01_frdmIMX/)
+![FPGA-BoardlessBench Demo](docs/assets/p01.gif)
+
+[シナリオ 02e: 多重 I2C ペリフェラル制御 (SSD1306 OLED & Adafruit HT16K33 7セグメントLED)](tests/scenarios/02e_ht16k33_7seg_i2c/)
+![FPGA-BoardlessBench Demo](docs/assets/02e.gif)
+
+---
 
 ## **The "DTS-Driven" Shift: ハードとソフトの『言語の壁』を破壊する**
 
