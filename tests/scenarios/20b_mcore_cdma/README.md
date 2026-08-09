@@ -2,7 +2,7 @@
 
 本シナリオは、Zynq SoC 標準の **Xilinx AXI CDMA IP (`xlnx,axi-cdma-1.00.a`)** を用いた **AMP (非対称マルチプロセッシング) リアルタイム DMA オフロード機能** の動作検証および対話型デバッグを目的としたテストシナリオです。
 
-![FPGA-BoardlessBench (F-BB) AroundView Dashboard](assets/dashboard.png)
+![FPGA-BoardlessBench (F-BB) AroundView Dashboard](assets/dashboard.gif)
 
 ---
 

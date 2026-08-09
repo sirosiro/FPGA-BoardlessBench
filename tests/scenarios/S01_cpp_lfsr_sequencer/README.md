@@ -2,6 +2,8 @@
 
 このシナリオは、FPGA-BoardlessBench (F-BB)の主要なエミュレーション機能（レジスタI/O、UART通信、GPIO操作、およびRTL統合シミュレーション）を組み合わせた「システム統合ショーケース」です。標準的なペリフェラルに加え、独自に設計された「カスタムRTLモジュール」をC++アプリケーションから統合的に制御する、実機さながらのシステム開発を体験します。
 
+![FPGA-BoardlessBench (F-BB) AroundView Dashboard](assets/dashboard.gif)
+
 ## システムアーキテクチャ概念図
 
 ```mermaid

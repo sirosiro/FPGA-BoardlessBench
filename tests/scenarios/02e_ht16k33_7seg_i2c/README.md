@@ -2,7 +2,7 @@
 
 本シナリオでは、実世界の IoT 組込み端末（スマートステーション）を模し、同一 I2C バス（`/dev/i2c-0`）上に **モノクロ OLED ディスプレイ (SSD1306)** と **4桁 7セグメントLEDモジュール (Adafruit HT16K33 Backpack)** の 2 つのペリフェラルを混在マウントして並列制御・動作検証します。
 
-![FPGA-BoardlessBench (F-BB) AroundView Dashboard](assets/dashboard.png)
+![FPGA-BoardlessBench (F-BB) AroundView Dashboard](assets/dashboard.gif)
 
 ---
 

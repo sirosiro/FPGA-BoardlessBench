@@ -2,7 +2,7 @@
 
 本シナリオでは、実業界の組込みシステムやIoTでデファクトスタンダードとして使用される **モノクロ OLED ディスプレイ（SSD1306 コントローラ内蔵）** を、仮想 I2C バス経由でエミュレート・動作検証します。
 
-![FPGA-BoardlessBench (F-BB) AroundView Dashboard](assets/dashboard.png)
+![FPGA-BoardlessBench (F-BB) AroundView Dashboard](assets/dashboard.gif)
 
 ---
 

@@ -5,7 +5,7 @@
 
 実機でのブロックデバイス `/dev/mmcblk0p1` に対する `mount` および `umount` 操作をインターセプトし、ホスト側のローカルディレクトリ（`sd_card/`）へのシンボリックリンク操作に透過的にマッピングします。
 
-![FPGA-BoardlessBench (F-BB) AroundView Dashboard](assets/dashboard.png)
+![FPGA-BoardlessBench (F-BB) AroundView Dashboard](assets/dashboard.gif)
 
 ## システム構成と検証フロー
 1. **仮想マウント**:

@@ -2,7 +2,7 @@
 
 このシナリオでは、ファームウェア（C言語）から複数の仮想UARTポート（`/dev/ttyPS0` と `/dev/ttyPS1`）を同時にオープンし、双方向でシリアル通信を行うマルチUARTの制御とデバッグ手法を学習します。
 
-![FPGA-BoardlessBench (F-BB) AroundView Dashboard](assets/dashboard.png)
+![FPGA-BoardlessBench (F-BB) AroundView Dashboard](assets/dashboard.gif)
 
 ## アーキテクチャ概念図
 
