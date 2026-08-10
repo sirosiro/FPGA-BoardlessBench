@@ -4,7 +4,7 @@
 
 特にレガシーなC言語コードで直接レジスタ操作を行う組み込み開発エンジニア向けに、実機やシミュレータ側を変更することなく安全にメモリ安全性を担保するデバッグアプローチを明示します。
 
-![Fpga-BoardlessBench (F-BB) AroundView Dashboard](assets/dashboard.png)
+![Fpga-BoardlessBench (F-BB) AroundView Dashboard](assets/dashboard.gif)
 
 ---
 

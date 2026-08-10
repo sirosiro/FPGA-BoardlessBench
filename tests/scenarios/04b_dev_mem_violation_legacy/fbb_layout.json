@@ -18,7 +18,7 @@
                                         "activeView": "registerMonitor",
                                         "id": "2"
                                     },
-                                    "size": 270
+                                    "size": 410
                                 },
                                 {
                                     "type": "leaf",
@@ -29,10 +29,10 @@
                                         "activeView": "registerTracer",
                                         "id": "4"
                                     },
-                                    "size": 432
+                                    "size": 657
                                 }
                             ],
-                            "size": 400
+                            "size": 369
                         },
                         {
                             "type": "leaf",
@@ -43,27 +43,30 @@
                                 "activeView": "uartTerminal_vfpga_uart_1",
                                 "id": "1"
                             },
-                            "size": 739
+                            "size": 753
+                        },
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "dtsVisualizer"
+                                ],
+                                "activeView": "dtsVisualizer",
+                                "id": "3"
+                            },
+                            "size": 463
                         }
                     ],
-                    "size": 702
+                    "size": 1067
                 }
             ],
-            "size": 1139
+            "size": 1585
         },
-        "width": 1139,
-        "height": 702,
+        "width": 1585,
+        "height": 1067,
         "orientation": "VERTICAL"
     },
     "panels": {
-        "uartTerminal_vfpga_uart_1": {
-            "id": "uartTerminal_vfpga_uart_1",
-            "contentComponent": "uartTerminal",
-            "params": {
-                "deviceName": "vfpga_uart_1"
-            },
-            "title": "UART: vfpga_uart_1"
-        },
         "registerMonitor": {
             "id": "registerMonitor",
             "contentComponent": "registerMonitor",
@@ -73,7 +76,20 @@
             "id": "registerTracer",
             "contentComponent": "registerTracer",
             "title": "Tracer"
+        },
+        "uartTerminal_vfpga_uart_1": {
+            "id": "uartTerminal_vfpga_uart_1",
+            "contentComponent": "uartTerminal",
+            "params": {
+                "deviceName": "vfpga_uart_1"
+            },
+            "title": "UART: vfpga_uart_1"
+        },
+        "dtsVisualizer": {
+            "id": "dtsVisualizer",
+            "contentComponent": "dtsVisualizer",
+            "title": "DTS Visualizer & AI"
         }
     },
-    "activeGroup": "1"
+    "activeGroup": "3"
 }
