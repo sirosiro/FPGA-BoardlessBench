@@ -2,7 +2,11 @@
  * Microchip MCP3208 12-Bit SPI ADC Device Tree Include
  * Vendor: Microchip Technology
  */
-&spi0 {
+#ifndef FBB_SPI_BUS
+#define FBB_SPI_BUS spi0
+#endif
+
+&FBB_SPI_BUS {
     adc0: adc@1 {
         compatible = "microchip,mcp3208";
         reg = <1>;

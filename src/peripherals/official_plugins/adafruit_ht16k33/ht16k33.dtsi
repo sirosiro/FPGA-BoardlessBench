@@ -3,7 +3,11 @@
  * Vendor: Adafruit / Holtek
  * Default Slave Address: 0x70
  */
-&i2c1 {
+#ifndef FBB_I2C_BUS
+#define FBB_I2C_BUS i2c0
+#endif
+
+&FBB_I2C_BUS {
     seg7_0: seg7@70 {
         compatible = "adafruit,ht16k33-red", "holtek,ht16k33";
         reg = <0x70>;

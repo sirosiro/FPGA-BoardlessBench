@@ -80,14 +80,26 @@ export const GenericPeripheralPane = ({ pluginId, manifest: propManifest, socket
   const [controlValues, setControlValues] = useState({});
 
   const handleSliderChange = (name, value) => {
-    setControlValues((prev) => ({ ...prev, [name]: value }));
+    const numVal = parseFloat(value);
+    setControlValues((prev) => ({ ...prev, [name]: numVal }));
     if (socket && socket.emit) {
       socket.emit("peripheral:action", {
         pluginId: pId,
         action: "update_control",
         control: name,
-        value: parseFloat(value),
+        value: numVal,
       });
+
+      // Handle ADC Voltage / Channel slider mapping to /dev/shm/spi_adc
+      if (name === 'channel0' || name.startsWith('channel') || pId?.includes('mcp3208') || pId?.includes('adc')) {
+        const chIdx = parseInt(name.replace(/\D/g, ''), 10) || 0;
+        let rawAdc = numVal;
+        if (numVal <= 3.3 && numVal >= 0) {
+          rawAdc = Math.round((numVal / 3.3) * 4095);
+        }
+        rawAdc = Math.max(0, Math.min(4095, Math.round(rawAdc)));
+        socket.emit('spi-adc-inject', { channel: chIdx, value: rawAdc });
+      }
     }
   };
 
@@ -137,7 +149,8 @@ export const GenericPeripheralPane = ({ pluginId, manifest: propManifest, socket
             
             {/* Render 7-Segment LED if declared in controls */}
             {controls.filter(c => c.type === '7seg_display').map((ctrl, cIdx) => {
-              const shmFrame = display7SegFrame || peripheralFrames['fbb_display_7seg_0'] || peripheralFrames[ctrl.shm_file];
+              const targetShmFile = ctrl.shm_file || slaveData?.shm_path?.replace('/dev/shm/', '') || 'fbb_display_7seg_0';
+              const shmFrame = peripheralFrames[targetShmFile] || peripheralFrames['/dev/shm/' + targetShmFile] || display7SegFrame;
               let seg7Bytes = [0, 0, 0, 0];
               let seg7Colon = false;
               if (shmFrame) {

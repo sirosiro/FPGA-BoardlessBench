@@ -2,7 +2,11 @@
  * Winbond W25Q128 SPI Flash Device Tree Include
  * Vendor: Winbond
  */
-&spi0 {
+#ifndef FBB_SPI_BUS
+#define FBB_SPI_BUS spi0
+#endif
+
+&FBB_SPI_BUS {
     flash0: flash@0 {
         compatible = "winbond,w25q128";
         reg = <0>;

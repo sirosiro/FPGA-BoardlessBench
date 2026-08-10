@@ -294,8 +294,11 @@ function connectToUart(name, port) {
     client.connect(port, '127.0.0.1', () => {
         uartConnections[name] = client;
         getUartAliases(name).forEach(aName => {
-            uartLogs[aName] = "";
+            if (uartLogs[aName] === undefined) {
+                uartLogs[aName] = "";
+            }
         });
+        io.emit('uart-init', uartLogs);
 
         // Start proxy server for external client on port = Python port + 1000
         const extPort = parseInt(port, 10) + 1000;
@@ -447,9 +450,35 @@ io.on('connection', (socket) => {
                 buf.writeUInt16LE(value, 0);
                 fs.writeSync(fd, buf, 0, 2, channel * 2);
                 fs.closeSync(fd);
+                console.log(`[Backend] Updated /dev/shm/spi_adc channel ${channel} to ${value}`);
             }
         } catch (e) {
             console.error(`[Backend] Failed to write SPI ADC SHM: ${e.message}`);
+        }
+    });
+
+    socket.on('peripheral:action', ({ pluginId, action, control, value }) => {
+        console.log(`[Backend] peripheral:action received: pluginId=${pluginId}, action=${action}, control=${control}, value=${value}`);
+        if (control === 'channel0' || control?.startsWith('channel') || pluginId?.includes('mcp3208') || pluginId?.includes('adc')) {
+            const ADC_SHM_PATH = '/dev/shm/spi_adc';
+            try {
+                if (fs.existsSync(ADC_SHM_PATH)) {
+                    let rawVal = typeof value === 'number' ? value : parseFloat(value);
+                    if (rawVal <= 3.3 && rawVal >= 0 && !Number.isInteger(rawVal)) {
+                        rawVal = Math.round((rawVal / 3.3) * 4095);
+                    }
+                    rawVal = Math.max(0, Math.min(4095, Math.round(rawVal)));
+                    const ch = parseInt((control || '0').replace(/\D/g, ''), 10) || 0;
+                    const fd = fs.openSync(ADC_SHM_PATH, 'r+');
+                    const buf = Buffer.alloc(2);
+                    buf.writeUInt16LE(rawVal, 0);
+                    fs.writeSync(fd, buf, 0, 2, ch * 2);
+                    fs.closeSync(fd);
+                    console.log(`[Backend] Updated /dev/shm/spi_adc channel ${ch} to ${rawVal}`);
+                }
+            } catch (e) {
+                console.error(`[Backend] Failed to update /dev/shm/spi_adc via peripheral:action: ${e.message}`);
+            }
         }
     });
 });

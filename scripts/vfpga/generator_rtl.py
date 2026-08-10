@@ -422,8 +422,11 @@ class ManifestGenerator(BaseGenerator):
                 for s in dev.i2c_slaves:
                     s_info = {"name": s.name, "addr": s.addr, "compatible": s.compatible}
                     plugin_info = find_plugin_for_compat(s.compatible)
-                    if plugin_info:
-                        s_info["ui_widget"] = plugin_info.get("ui_widget")
+                    if plugin_info and plugin_info.get("ui_widget"):
+                        ui_w = dict(plugin_info.get("ui_widget"))
+                        base_title = ui_w.get("title", s.name)
+                        ui_w["title"] = f"{base_title} (0x{s.addr:02X})"
+                        s_info["ui_widget"] = ui_w
                     slaves.append(s_info)
                 dev_info["i2c_slaves"] = slaves
             if dev.type == 'spi' and hasattr(dev, 'spi_slaves'):
@@ -431,8 +434,11 @@ class ManifestGenerator(BaseGenerator):
                 for s in dev.spi_slaves:
                     s_info = {"name": s.name, "cs": s.cs, "compatible": s.compatible}
                     plugin_info = find_plugin_for_compat(s.compatible)
-                    if plugin_info:
-                        s_info["ui_widget"] = plugin_info.get("ui_widget")
+                    if plugin_info and plugin_info.get("ui_widget"):
+                        ui_w = dict(plugin_info.get("ui_widget"))
+                        base_title = ui_w.get("title", s.name)
+                        ui_w["title"] = f"{base_title} (CS{s.cs})"
+                        s_info["ui_widget"] = ui_w
                     slaves.append(s_info)
                 dev_info["spi_slaves"] = slaves
             manifest["devices"].append(dev_info)

@@ -84,21 +84,40 @@ classDiagram
 
 ---
 
-## 3. 新しいペリフェラル（公式プラグイン）を追加する手順
+## 3. 新しいペリフェラル（公式/サードパーティ・プラグイン）を追加する手順 (Zero-Touch Standard)
 
-C++ オブジェクト指向およびプラグインマニフェスト（`fbb-plugin.json`）の採用により、新しいデバイスをディレクトリ単位で完結させて追加できます。
+C++ オブジェクト指向およびプラグインマニフェスト（`fbb-plugin.json`）の採用により、サードパーティ・ベンダーは F-BB コア（`server.js`, `vlogic_controller.py`, `generator_rtl.py`, Web UI コード）を 1 行も修正することなく（Zero-Touch / 非侵襲）、ディレクトリ単位で完結させて新しい仮想デバイスを追加できます。
 
-1. **プラグインディレクトリの作成**:
-   * `src/peripherals/official_plugins/<vendor_model>/`（例：`winbond_w25q128`）を作成します。
-2. **構成ファイルの配置**:
-   * **`fbb-plugin.json`**: プラグイン名、ベンダー情報、起動バイナリ名、起動引数テンプレート、および `ui_widget` (基板 `board_svg` やコントロール定義) を定義します。
-   * **`board.svg`**: 【推奨】ペリフェラル基板外形、ネジ穴、シルク印刷のベクター画像。500% 以上の拡大でも一切劣化せずダッシュボードに自動オーバーレイ描画されます。
-   * **`<model>.dtsi`**: デバイスツリー組み込み用の標準デバイスツリーインクルードファイルを配置します。
-   * **`<emulator>.cpp`**: `I2cSlave`, `UartDevice`, `SpiSlave` などの基底クラスを継承したC++エミュレータソースコードを同ディレクトリ内に配置します。
-3. **イベントハンドラの実装**:
-   * `I2cSlave` なら `onWrite`/`onRead`、`UartDevice` なら `onReceive` の中で、デバイス固有のレジスタ挙動や応答データ生成論理を実装します。
-4. **CMake への登録 (自動発見対応)**:
-   * [CMakeLists.txt](file:///workspaces/FPGA-BoardlessBench/src/peripherals/CMakeLists.txt) に PPA 2.0 動的自動発見エンジンが統合されているため、`official_plugins/<vendor_model>/` ディレクトリ内に `fbb-plugin.json` と `.cpp` ファイルを配置するだけで、CMake がターゲットバイナリと基底クラス (`common/i2c_slave.cpp` 等) を自動検知・リンクしてビルドします。（手動での CMakeLists.txt 追記は不要です）。
+### 3.1. プラグインの標準ディレクトリ構成（準備するファイル一覧）
+
+新しいペリフェラルを作成する場合、プラグインフォルダ（例: `src/peripherals/official_plugins/adafruit_ht16k33/`）の中に以下の **4 つのファイル** を準備します：
+
+```text
+src/peripherals/official_plugins/<vendor_model>/
+├── fbb-plugin.json      # [必須] プラグイン定義、compatible名、起動コマンド、UIレイアウト・色
+├── board.svg            # [推奨] 実機同様の基板ベクター画像 (ダッシュボード背景オーバーレイ)
+├── <model>.dtsi         # [必須] バス中立な標準デバイスツリーインクルード定義
+└── <emulator>.cpp       # [必須] 基底クラス (I2cSlave / UartDevice / SpiSlave) を継承した C++ 実装
+```
+
+---
+
+### 3.2. 各構成ファイルの具体的な記述役割
+
+1. **`fbb-plugin.json` (マニフェスト定義)**:
+   * プラグイン名、ベンダー情報、対象 `compatible` 名、起動バイナリ名、起動引数テンプレート（`{socket_path}` や `{init_val}`）、および `ui_widget` (基板 `board_svg` 名、`color_map`、コントロール定義) を記述します。
+2. **`board.svg` (実基板ベクター画像 - 【推奨】)**:
+   * ペリフェラル基板外形、ネジ穴、ICチップ、シルク印刷のベクター画像。500% 以上の拡大でも一切劣化せずダッシュボード上に自動オーバーレイ描画されます。
+3. **`<model>.dtsi` (デバイスツリーインクルード定義)**:
+   * バス中立（Bus-Neutral）な定義を記述します。特定のバス名（`&i2c1` 等）をハードコードせず、`#ifndef FBB_I2C_BUS #define FBB_I2C_BUS i2c0 #endif` のようにマクロオーバーライド可能に記述することで、シナリオ側の任意のバス（`i2c0`, `i2c1`, `i2c2` 等）へ安全にアタッチできます。
+4. **`<emulator>.cpp` (C++ エミュレータソースコード)**:
+   * `I2cSlave`, `UartDevice`, `SpiSlave` などの基底クラスを継承し、`onWrite`/`onRead` や `onReceive` などのイベントハンドラ内でデバイス固有のレジスタ挙動や応答データ生成論理を実装します。
+
+---
+
+### 3.3. Zero-Touch CMake 自動発見 ＆ 画面自動連動
+
+* [CMakeLists.txt](file:///workspaces/FPGA-BoardlessBench/src/peripherals/CMakeLists.txt) に PPA 動的自動発見エンジンが統合されているため、プラグインフォルダを配置するだけで、CMake がターゲットバイナリと基底クラス (`common/i2c_slave.cpp` 等) を自動検知・ビルドし、ダッシュボード UI も宣言的スキーマに従って自動マウント・レンダリングします。（手動での CMakeLists.txt や server.js 追記は一切不要です）。
 
 ---
 

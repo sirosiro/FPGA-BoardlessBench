@@ -344,6 +344,18 @@
         1. リアルな表示器デバッグ体験の提供: 従来のグラフィック OLED に加え、数値・Hex 診断コード表示で汎用的に用いられる 7 セグメント LED モジュールを標準サポートし、1:1 ベクター基板と連動した実機同様の UI 体験を提供するため。
         2. アーキテクチャの統一性と拡張性確保: 特定のデバイスやポート番号のハードコードを排除し、DTS 駆動の型安全なマルチデバイス・マルチ UART 連動機構を単一の情報源 (Single Source of Truth) の下で実現するため。
 
+- **2026-08-10: PPA Zero-Touch サードパーティ非侵襲化 ＆ バス中立 `.dtsi` 設計規約の確立 (PPA Zero-Touch Vendor Isolation & Bus-Neutral Inclusion Standard)**
+  - **Decision:**
+        1. サードパーティ・ベンダーが新規プラグインを追加する際、F-BB 本体のコアファイル (`server.js`, `vlogic_controller.py`, `generator_rtl.py`, React UI) へのコード修正を一切不要（100% Zero-Touch）とする非侵襲設計原則を確立。
+        2. プラグイン `.dtsi` ファイル内の特定バスノード名 (`&i2c1`, `&i2c0`) のハードコードを廃止し、`#ifndef FBB_I2C_BUS #define FBB_I2C_BUS i2c0 #endif` によるマクロオーバーライドおよび `DTSParser` での標準 `#define` 自動展開ロジックを統合。シナリオ側の任意のバスノード (`i2c0`, `i2c1`, `i2c2`) へ安全に結合可能化。
+        3. `generator_rtl.py` において、同一バス上に同一ペリフェラルが複数接続された場合でも、Hex アドレス/ユニット名 (例: `(0x70)`, `(CS0)`) を `ui_widget.title` へ自動付与し、Web ダッシュボードの Dockview タブ上で一目で識別可能にするマルチインスタンスラベル自動生成ロジックを統合。
+        4. `server.js` の `/dev/shm/fbb_*` スキャンを汎用 WebSocket イベント `peripheral:frame` に完全集約し、`GenericPeripheralPane.jsx` 側の動的 SHM フレーム参照キー解決により、特定デバイス名への依存を解消。
+        5. `src/peripherals/README.md` Section 3 を更新し、サードパーティ・ベンダー向け Zero-Touch プラグイン構築規約を明記。
+  - **Rationale:**
+        1. サードパーティ生態系の拡張性確保: ベンダーや開発者が本体コードを修正することなく、独自の仮想デバイスプラグインをフォルダ単位で追加・配布可能にするため。
+        2. 完全なカプセル化と保守性の向上: シミュレーション基盤コアと周辺デバイスエミュレータの結合度を極限まで下げ、単一の責任（Single Responsibility）を徹底するため。
+
+
 
 
 

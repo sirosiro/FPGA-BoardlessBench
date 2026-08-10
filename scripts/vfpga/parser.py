@@ -62,6 +62,11 @@ class DTSParser:
         # Preprocess #include statements recursively
         content = DTSParser.preprocess_includes(raw_content, os.path.dirname(os.path.abspath(dts_path)))
 
+        # Expand #define macros (e.g. #define FBB_I2C_BUS i2c0)
+        defines = dict(re.findall(r'#define\s+([A-Za-z0-9_]+)\s+([A-Za-z0-9_]+)', content))
+        for k, v in defines.items():
+            content = re.sub(r'\b' + re.escape(k) + r'\b', v, content)
+
             
         # Extract root-level compatible and model BEFORE trimming content
         compatible_bytes = b"generic,fbb-vfpga\x00"
