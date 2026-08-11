@@ -1,0 +1,129 @@
+{
+    "grid": {
+        "root": {
+            "type": "branch",
+            "data": [
+                {
+                    "type": "branch",
+                    "data": [
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "uartTerminal_serial"
+                                ],
+                                "activeView": "uartTerminal_serial",
+                                "id": "1"
+                            },
+                            "size": 370
+                        },
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "dtsVisualizer"
+                                ],
+                                "activeView": "dtsVisualizer",
+                                "id": "2"
+                            },
+                            "size": 596
+                        }
+                    ],
+                    "size": 506
+                },
+                {
+                    "type": "branch",
+                    "data": [
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "generic_peripheral_matrix_0"
+                                ],
+                                "activeView": "generic_peripheral_matrix_0",
+                                "id": "3"
+                            },
+                            "size": 780
+                        },
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "gpioPanel"
+                                ],
+                                "activeView": "gpioPanel",
+                                "id": "4"
+                            },
+                            "size": 186
+                        }
+                    ],
+                    "size": 1075
+                }
+            ],
+            "size": 966
+        },
+        "width": 1581,
+        "height": 966,
+        "orientation": "HORIZONTAL"
+    },
+    "panels": {
+        "uartTerminal_serial": {
+            "id": "uartTerminal_serial",
+            "contentComponent": "uartTerminal",
+            "params": {
+                "deviceName": "serial"
+            },
+            "title": "UART Console"
+        },
+        "dtsVisualizer": {
+            "id": "dtsVisualizer",
+            "contentComponent": "dtsVisualizer",
+            "title": "DTS Visualizer & AI"
+        },
+        "generic_peripheral_matrix_0": {
+            "id": "generic_peripheral_matrix_0",
+            "contentComponent": "genericPeripheralPane",
+            "params": {
+                "pluginId": "generic,hub75-matrix64x64",
+                "manifest": {
+                    "name": "matrix",
+                    "compatible": "generic,hub75-matrix64x64",
+                    "shm_name": "fbb_hub75_chain0",
+                    "grid_size": [
+                        128,
+                        64
+                    ],
+                    "ui_widget": {
+                        "title": "HUB75 128x64 Dual-Panel Daisy-Chain Matrix",
+                        "controls": [
+                            {
+                                "type": "matrix_canvas",
+                                "name": "HUB75 128x64 Dual-Panel Daisy-Chain Matrix",
+                                "grid_size": [
+                                    128,
+                                    64
+                                ],
+                                "format": "rgb24",
+                                "shm_file": "fbb_hub75_chain0",
+                                "glow": true,
+                                "overlay_offset": {
+                                    "left": "27.7083%",
+                                    "top": "9.4444%",
+                                    "width": "58.6667%",
+                                    "height": "78.2222%"
+                                }
+                            }
+                        ]
+                    }
+                }
+            },
+            "title": "HUB75 128x64 Dual-Panel Daisy-Chain Matrix"
+        },
+        "gpioPanel": {
+            "id": "gpioPanel",
+            "contentComponent": "gpioPanel",
+            "title": "GPIO / Pin Array"
+        }
+    },
+    "activeGroup": "1"
+}

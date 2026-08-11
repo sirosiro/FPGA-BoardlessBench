@@ -1,4 +1,4 @@
-# F-BB 共有ペリフェラル・ライブラリのビルド定義 (PPA 2.0 開発者向け自動発見対応)
+# F-BB 共有ペリフェラル・ライブラリのビルド定義 (PPA 4.0 開発者向け自動発見対応)
 
 if(CMAKE_CROSSCOMPILING)
     return()
@@ -12,7 +12,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/bin")
 
 # ==============================================================================
-# PPA 2.0 プラグイン動的自動発見・ビルドエンジン (Zero-Touch Build Engine)
+# PPA 4.0 プラグイン動的自動発見・ビルドエンジン (Zero-Touch Build Engine)
 # ==============================================================================
 # official_plugins/ 配下の各ペリフェラルディレクトリを自動走査し、
 # fbb-plugin.json の "binary" 名と C++ ソースコードを検知してビルドターゲットを自動生成します。

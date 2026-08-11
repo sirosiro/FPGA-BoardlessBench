@@ -1,0 +1,12 @@
+/dts-v1/;
+
+/ {
+    hub75_matrix: matrix@e0005000 {
+        compatible = "generic,hub75-matrix";
+        reg = <0xe0005000 0x1000>;
+        grid_size = <64 64>;
+        shm_name = "fbb_hub75_0";
+        label = "HUB75 RGB LED Matrix Controller";
+        status = "okay";
+    };
+};

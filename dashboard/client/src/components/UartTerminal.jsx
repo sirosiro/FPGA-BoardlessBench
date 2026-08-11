@@ -92,12 +92,23 @@ function parseAnsi(text) {
 
 function UartTerminal(props) {
   const {
+    manifest,
     uartLogs,
     uartSettings,
     sendUart,
   } = useDashboard();
 
-  const deviceName = props.params?.deviceName || 'default';
+  const propDeviceName = props.params?.deviceName || 'default';
+  
+  // Resolve effective deviceName: if prop is 'default' or has no log entry, fallback to manifest's primary UART
+  let deviceName = propDeviceName;
+  if ((deviceName === 'default' || !uartLogs[deviceName]) && manifest?.uarts?.length > 0) {
+    const activeUart = manifest.uarts.find(u => uartLogs[u.name]) || manifest.uarts[0];
+    if (activeUart && activeUart.name) {
+      deviceName = activeUart.name;
+    }
+  }
+
   const [localInput, setLocalInput] = useState("");
   const terminalViewportRef = useRef(null);
 
@@ -114,8 +125,8 @@ function UartTerminal(props) {
     }
   };
 
-  const currentLog = uartLogs[deviceName];
-  const settingsStr = uartSettings[deviceName];
+  const currentLog = uartLogs[deviceName] || uartLogs[propDeviceName];
+  const settingsStr = uartSettings[deviceName] || uartSettings[propDeviceName];
   const isDefaultBaud = !settingsStr || settingsStr.includes('default');
   const displaySettings = settingsStr ? settingsStr.replace(' default', ' (default)') : '';
 

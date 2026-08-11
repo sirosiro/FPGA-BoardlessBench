@@ -1,0 +1,27 @@
+/dts-v1/;
+
+/ {
+    model = "FPGA-BoardlessBench HUB75 128x64 Dual Daisy-Chain LED Matrix Scenario";
+    compatible = "fbb,scenario-06c-hub75-daisy-chain";
+
+    #address-cells = <1>;
+    #size-cells = <1>;
+
+    uart0: serial@e0000000 {
+        compatible = "cdns,uart-r1p8";
+        reg = <0xe0000000 0x1000>;
+        status = "okay";
+        label = "/dev/ttyUL0";
+    };
+
+    hub75_daisy_chain: matrix@e0005000 {
+        compatible = "generic,hub75-matrix64x64";
+        reg = <0xe0005000 0x1000>;
+        grid_size = <128 64>;
+        panel_count = <2>;
+        chain_layout = "2x1";
+        shm_name = "fbb_hub75_chain0";
+        status = "okay";
+        label = "/dev/uio0";
+    };
+};

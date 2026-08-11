@@ -188,6 +188,33 @@ function DashboardInner() {
       });
     }
 
+    // 3c3. Add generic peripheral panes for any custom PPA 3.0/4.0 slaves
+    const spiSlavesInit = manifest?.devices?.flatMap(d => d.spi_slaves || []) || [];
+    const directDevicesInit = manifest?.devices?.filter(d => d.ui_widget || d.compatible?.includes('hub75')) || [];
+    const allSlavesInit = [...i2cSlaves, ...spiSlavesInit, ...directDevicesInit];
+    allSlavesInit.forEach((s, idx) => {
+      const isLegacyOled = s.compatible?.includes('ssd1306');
+      const isLegacySeg7 = s.compatible?.includes('ht16k33');
+      const isLegacySpiAdc = s.compatible?.includes('mcp3208');
+      if (!isLegacyOled && !isLegacySeg7 && !isLegacySpiAdc) {
+        const pTitle = s.ui_widget?.title || s.name || 'Generic Peripheral';
+        const pId = `generic_peripheral_${s.name || idx}_${idx}`;
+        api.addPanel({
+          id: pId,
+          component: 'genericPeripheralPane',
+          title: pTitle,
+          params: {
+            pluginId: s.compatible,
+            manifest: s
+          },
+          position: {
+            referencePanel: 'gpioPanel',
+            direction: 'within',
+          },
+        });
+      }
+    });
+
     // 3d. Add sdCard within gpioPanel group (as a tab)
     api.addPanel({
       id: 'sdCard',
@@ -248,7 +275,8 @@ function DashboardInner() {
     
     // Programmatic layout update via API lookup instead of object handles
     const mainPanel = api.getPanel(referenceId);
-    if (mainPanel?.api) {
+    if (mainPanel?.api && tracerPanel?.api) {
+      api.setGroupRatio(mainPanel.api.group, 0.6);
       mainPanel.api.setSize({ height: 400 });
       mainPanel.api.setConstraints({ minimumWidth: 300, minimumHeight: 150 });
     }
@@ -311,6 +339,8 @@ function DashboardInner() {
   // DTSに定義されているアドイン・ペリフェラルの動的抽出
   const i2cSlaves = manifest?.devices?.flatMap(d => d.i2c_slaves || []) || [];
   const spiSlaves = manifest?.devices?.flatMap(d => d.spi_slaves || []) || [];
+  const directDevices = manifest?.devices?.filter(d => d.ui_widget || d.compatible?.includes('hub75')) || [];
+  const allSlaves = [...i2cSlaves, ...spiSlaves, ...directDevices];
 
   const hasOled = i2cSlaves.some(s => s.compatible?.includes('ssd1306'));
   const hasSeg7 = i2cSlaves.some(s => s.compatible?.includes('ht16k33'));
@@ -350,6 +380,24 @@ function DashboardInner() {
       icon: Activity
     });
   }
+
+  // Dynamic PPA 3.0/4.0 custom peripheral items for dropdown menu
+  allSlaves.forEach((s, idx) => {
+    const isLegacyOled = s.compatible?.includes('ssd1306');
+    const isLegacySeg7 = s.compatible?.includes('ht16k33');
+    const isLegacySpiAdc = s.compatible?.includes('mcp3208');
+    if (!isLegacyOled && !isLegacySeg7 && !isLegacySpiAdc) {
+      const pTitle = s.ui_widget?.title || s.name || 'Generic Peripheral';
+      const pId = `generic_peripheral_${s.name || idx}_${idx}`;
+      peripheralItems.push({
+        id: pId,
+        component: 'genericPeripheralPane',
+        title: pTitle,
+        icon: Monitor,
+        params: { pluginId: s.compatible, manifest: s }
+      });
+    }
+  });
 
   if (hasSdCard) {
     peripheralItems.push({

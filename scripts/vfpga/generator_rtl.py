@@ -7,10 +7,11 @@ from vfpga.generator_base import BaseGenerator, SystemConfigGenerator
 class RTLGenerator(BaseGenerator):
     def generate(self, model: BoardModel):
         devs = model.get_uio_devices()
-        if not devs: return """/* verilator lint_off UNUSED */
-module vfpga_top (
+        if not devs: return """module vfpga_top (
+    /* verilator lint_off UNUSED */
     input wire clk, input wire rst_n, input wire [31:0] addr, 
     input wire [31:0] w_data, input wire w_en, output reg [31:0] r_data
+    /* verilator lint_on UNUSED */
 );
     always @(*) r_data = 32'hdeadbeef;
 endmodule"""
@@ -26,6 +27,7 @@ endmodule"""
         write_cases = "\n".join(["                32'h%08x: %s <= w_data;" % (addr, name) for name, addr in all_regs])
         read_cases = "\n".join(["            32'h%08x: r_data = %s;" % (addr, name) for name, addr in all_regs])
         return """/* Auto-generated RTL Skeleton */
+/* verilator lint_off UNUSED */
 module vfpga_top (
     input wire clk,
     input wire rst_n,
@@ -33,7 +35,6 @@ module vfpga_top (
     input wire [31:0] w_data,
     input wire w_en,
     output reg [31:0] r_data,
-    /* verilator lint_off UNUSED */
     input wire [117:0] l_pins_i,
     /* verilator lint_on UNUSED */
     output wire [117:0] l_pins_o,
@@ -398,10 +399,16 @@ class ManifestGenerator(BaseGenerator):
                 return None
             if compat_str in discovered_plugins:
                 return discovered_plugins[compat_str]
+            for k, v in discovered_plugins.items():
+                if compat_str in k or k in compat_str:
+                    return v
             items = re.findall(r'[a-zA-Z0-9_-]+,[a-zA-Z0-9_-]+', compat_str)
             for item in items:
                 if item in discovered_plugins:
                     return discovered_plugins[item]
+                for k, v in discovered_plugins.items():
+                    if item in k or k in item:
+                        return v
             for item in re.findall(r'[a-zA-Z0-9_-]+', compat_str):
                 if item in discovered_plugins:
                     return discovered_plugins[item]
@@ -417,6 +424,52 @@ class ManifestGenerator(BaseGenerator):
                 "registers": [{"name": r.name, "logical_name": r.logical_name or r.name, "offset": r.offset, "direction_mode": getattr(r, 'direction_mode', None)} for r in dev.registers],
                 "extra": dev.extra_props
             }
+            compat_str = (dev.extra_props.get("compatible") if hasattr(dev, "extra_props") and isinstance(dev.extra_props, dict) else getattr(dev, "compatible", None)) or "generic,hub75-matrix" if "matrix" in dev.name else None
+            if compat_str:
+                plugin_info = find_plugin_for_compat(compat_str)
+                if plugin_info:
+                    dev_info["compatible"] = compat_str
+                    if plugin_info.get("ui_widget"):
+                        ui_w = dict(plugin_info.get("ui_widget"))
+                        ui_w["title"] = ui_w.get("title", dev.name)
+                        # Override ui_widget properties from DTS if specified
+                        if isinstance(dev.extra_props, dict):
+                            if "grid_size" in dev.extra_props:
+                                gs = dev.extra_props["grid_size"]
+                                if isinstance(gs, str):
+                                    try:
+                                        gs = [int(x) for x in gs.split()]
+                                    except Exception:
+                                        pass
+                                dev_info["grid_size"] = gs
+                            if "shm_name" in dev.extra_props:
+                                dev_info["shm_name"] = dev.extra_props["shm_name"]
+                                dev_info["shm_path"] = f"/dev/shm/{dev.extra_props['shm_name']}"
+                            if "panel_count" in dev.extra_props:
+                                dev_info["panel_count"] = dev.extra_props["panel_count"]
+                            if "chain_layout" in dev.extra_props:
+                                dev_info["chain_layout"] = dev.extra_props["chain_layout"]
+
+                            if "controls" in ui_w and isinstance(ui_w["controls"], list):
+                                new_controls = []
+                                for ctrl in ui_w["controls"]:
+                                    ctrl_copy = dict(ctrl)
+                                    if "grid_size" in dev.extra_props:
+                                        gs = dev.extra_props["grid_size"]
+                                        if isinstance(gs, str):
+                                            try:
+                                                gs = [int(x) for x in gs.split()]
+                                            except Exception:
+                                                pass
+                                        ctrl_copy["grid_size"] = gs
+                                    if "shm_name" in dev.extra_props:
+                                        ctrl_copy["shm_file"] = dev.extra_props["shm_name"]
+                                    new_controls.append(ctrl_copy)
+                                ui_w["controls"] = new_controls
+                        dev_info["ui_widget"] = ui_w
+                    if plugin_info.get("shm_path") and "shm_path" not in dev_info:
+                        dev_info["shm_path"] = plugin_info.get("shm_path")
+
             if dev.type == 'i2c' and hasattr(dev, 'i2c_slaves'):
                 slaves = []
                 for s in dev.i2c_slaves:

@@ -99,7 +99,26 @@ export const DashboardProvider = ({ children }) => {
     }));
   };
 
-  const gpioDevices = manifest?.devices?.filter(d => d.type === 'gpio' || d.type === 'uio') || [];
+  const isGpioDev = (d) => {
+    if (!d) return false;
+    if (d.type === 'gpio') return true;
+    const name = (d.name || '').toLowerCase();
+    const compat = (d.compatible || '').toLowerCase();
+    if (name.includes('memory') || name.includes('bram') || name.includes('dma') || compat.includes('bram') || compat.includes('dma')) {
+      return false;
+    }
+    return (
+      compat.includes('gpio') || 
+      compat.includes('matrix') || 
+      compat.includes('hub75') || 
+      name.includes('gpio') || 
+      name.includes('pin') || 
+      name.includes('matrix') || 
+      name.includes('hub75')
+    );
+  };
+
+  const gpioDevices = manifest?.devices?.filter(isGpioDev) || [];
 
   return (
     <DashboardContext.Provider

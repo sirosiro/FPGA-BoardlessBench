@@ -2,7 +2,7 @@
 
 本ディレクトリは、FPGA-BoardlessBench (F-BB) が標準で提供する公式ペリフェラル・プラグインを配置するディレクトリです。
 
-各プラグインは独立したフォルダ（`<vendor>_<model>` 形式）として構成されており、マニフェスト（`fbb-plugin.json`）、デバイスツリー定義（`.dtsi`）、およびエミュレータソースコード（`.cpp`）が一箇所に集約されています。
+各プラグインは独立したフォルダ（`<vendor>_<model>` 形式）として構成されており、マニフェスト（`fbb-plugin.json`）、基板ベクター画像（`board.svg`）、デバイスツリー定義（`.dtsi`）、およびエミュレータソースコード（`.cpp`）が一箇所に集約されています。
 
 ---
 
@@ -18,6 +18,11 @@ src/peripherals/official_plugins/
 │   ├── board.svg
 │   ├── ht16k33.dtsi
 │   └── ht16k33.cpp
+├── generic_hub75_matrix64x64/
+│   ├── fbb-plugin.json
+│   ├── board.svg
+│   ├── hub75_matrix.dtsi
+│   └── hub75_matrix.cpp
 ├── microchip_at24c02c/
 │   ├── fbb-plugin.json
 │   ├── at24c02c.dtsi
@@ -53,8 +58,9 @@ src/peripherals/official_plugins/
 ## 3. 公式プラグイン一覧
 
 1. **`adafruit_ht16k33`**: Adafruit 0.56" 4-Digit 7-Segment HT16K33 I2C Display (Red/Green/Yellow/Blue/White)
-2. **`generic_uart_loopback`**: Generic UART ループバック・デバイス
-3. **`microchip_at24c02c`**: Microchip 24C02C 256B I2C EEPROM
-4. **`microchip_mcp3208`**: Microchip MCP3208 12-bit 8-Ch SPI ADC
-5. **`solomon_ssd1306`**: Solomon Systech SSD1306 128x64 I2C/SPI OLED Display
-6. **`winbond_w25q128`**: Winbond W25Q128 16MB SPI NOR Flash
+2. **`generic_hub75_matrix64x64`**: Generic HUB75 64x64 / 128x64 Dual-Panel Daisy-Chain RGB LED Matrix
+3. **`generic_uart_loopback`**: Generic UART ループバック・デバイス
+4. **`microchip_at24c02c`**: Microchip 24C02C 256B I2C EEPROM
+5. **`microchip_mcp3208`**: Microchip MCP3208 12-bit 8-Ch SPI ADC
+6. **`solomon_ssd1306`**: Solomon Systech SSD1306 128x64 I2C/SPI OLED Display
+7. **`winbond_w25q128`**: Winbond W25Q128 16MB SPI NOR Flash

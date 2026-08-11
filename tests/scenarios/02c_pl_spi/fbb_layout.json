@@ -15,7 +15,7 @@
                                 "activeView": "registerMonitor",
                                 "id": "2"
                             },
-                            "size": 430
+                            "size": 567
                         },
                         {
                             "type": "leaf",
@@ -26,10 +26,10 @@
                                 "activeView": "gpioPanel",
                                 "id": "3"
                             },
-                            "size": 302
+                            "size": 399
                         }
                     ],
-                    "size": 425
+                    "size": 406.1176515817642
                 },
                 {
                     "type": "branch",
@@ -43,7 +43,7 @@
                                 "activeView": "registerTracer",
                                 "id": "4"
                             },
-                            "size": 457
+                            "size": 603
                         },
                         {
                             "type": "leaf",
@@ -54,10 +54,10 @@
                                 "activeView": "uartTerminal_vfpga_uart_1",
                                 "id": "1"
                             },
-                            "size": 275
+                            "size": 363
                         }
                     ],
-                    "size": 602
+                    "size": 758.8823484182358
                 },
                 {
                     "type": "leaf",
@@ -68,13 +68,13 @@
                         "activeView": "spiAdcPanel",
                         "id": "6"
                     },
-                    "size": 367
+                    "size": 416
                 }
             ],
-            "size": 732
+            "size": 966
         },
-        "width": 1394,
-        "height": 732,
+        "width": 1581,
+        "height": 966,
         "orientation": "HORIZONTAL"
     },
     "panels": {

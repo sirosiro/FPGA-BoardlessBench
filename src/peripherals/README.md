@@ -1,6 +1,6 @@
 # F-BB 共有ペリフェラル・ライブラリ (F-BB Peripheral Library)
 
-本ディレクトリは、FPGA-BoardlessBench (F-BB) において、仮想システム（Aコア/Mコアなど）と連動する仮想周辺デバイス（I2CスレーブデバイスやUART対向デバイス等）のエミュレーションプログラムを配置する共通ディレクトリです。
+本ディレクトリは、FPGA-BoardlessBench (F-BB) において、仮想システム（Aコア/Mコアなど）と連動する仮想周辺デバイス（I2Cスレーブデバイス、SPIスレーブデバイス、HUB75マトリクスLED、UART対向デバイス等）のエミュレーションプログラムを配置する共通ディレクトリです。
 
 C++17 オブジェクト指向による抽象設計を導入し、ボイラープレートな通信コードを基底クラスに隠蔽することで、新しい仮想デバイスの追加やメンテナンスが容易に行えるようになっています。
 
@@ -23,6 +23,16 @@ classDiagram
         #onWrite(data) void*
         #onRead(length) vector*
     }
+    class SpiSlave {
+        <<Abstract>>
+        -cs_ : uint8_t
+        -server_fd_ : int
+        -socket_path_ : string
+        -running_ : atomic~bool~
+        +start(socket_path) bool
+        +stop() void
+        #onTransfer(tx_data) vector*
+    }
     class UartDevice {
         <<Abstract>>
         -pty_fd_ : int
@@ -39,11 +49,21 @@ classDiagram
         #onWrite(data) void
         #onRead(length) vector~uint8_t~
     }
+    class SpiAdc {
+        #onTransfer(tx_data) vector~uint8_t~
+    }
+    class Hub75Matrix {
+        -grid_width_ : int
+        -grid_height_ : int
+        #onTransfer(tx_data) vector~uint8_t~
+    }
     class UartLoopback {
         #onReceive(data) void
     }
 
     I2cSlave <|-- I2cEeprom : Inheritance
+    SpiSlave <|-- SpiAdc : Inheritance
+    SpiSlave <|-- Hub75Matrix : Inheritance
     UartDevice <|-- UartLoopback : Inheritance
 ```
 
@@ -53,7 +73,12 @@ classDiagram
   * `virtual void onWrite(const std::vector<uint8_t>& data) = 0`
   * `virtual std::vector<uint8_t> onRead(size_t length) = 0`
 
-### 1.2. `UartDevice` クラス
+### 1.2. `SpiSlave` クラス
+* **役割**: UNIXドメインソケットを介した全二重 SPI トランザクション（マスターからの `tx_data` 受信と同時にスレーブからの `rx_data` 返送）の同期中継を行います。
+* **抽象インターフェース**:
+  * `virtual std::vector<uint8_t> onTransfer(const std::vector<uint8_t>& tx_data) = 0`
+
+### 1.3. `UartDevice` クラス
 * **役割**: コントローラが生成した PTY スレーブパスのポーリング読み出し、オープン、およびブロッキングデータ受信ループと、`transmit` によるデータ送信を行います。
 * **抽象インターフェース**:
   * `virtual void onReceive(const std::vector<uint8_t>& data) = 0`
@@ -63,24 +88,69 @@ classDiagram
 
 ## 2. コマンドライン引数仕様
 
-各エミュレータデーモンのコマンドライン起動引数は以下の通りです。
+各公式エミュレータデーモンのコマンドライン起動引数は以下の通りです。
 
 ### 2.1. 仮想I2C EEPROMエミュレータ (`fbb_i2c_eeprom`)
 
-* **実機エミュレーション仕様**:
-  本エミュレータは、実在する代表的な I2C EEPROM デバイスである **[Microchip AT24C02C](https://www.microchip.com/en-us/product/AT24C02C)** の仕様（スレーブアドレス `0x50`、容量 256 バイト、アドレスポインタ指定、およびオートインクリメントによる読み書きシーケンスなど）をベースに実装されています。
+* **実機エミュレーション仕様**: **[Microchip AT24C02C](https://www.microchip.com/en-us/product/AT24C02C)** (スレーブアドレス `0x50`、容量 256 バイト、不揮発性ファイル永続化対応)
 
 | 引数オプション | 必須 / 任意 | 既定値 | 説明 |
 | :--- | :--- | :--- | :--- |
-| `--socket <path>` | **必須** | - | 中継ソケットをバインドする UNIX ドメインソケットパス（例：`/tmp/fbb_i2c_b1_a50`） |
-| `--file <path>` | 任意 | - | EEPROMメモリの状態を永続化する不揮発ファイルのパス（起動時にロードされ、書き込み発生時に自動保存されます） |
-| `--init-val <val>` | 任意 | `0x10` | ファイルが存在しない場合の、メモリセル全体の初期既定値（10進数、または `0x` から始まる16進数） |
+| `--socket <path>` | **必須** | - | 中継ソケットパス（例：`/tmp/fbb_i2c_b1_a50`） |
+| `--file <path>` | 任意 | - | メモリ状態の永続化ファイルパス |
+| `--init-val <val>` | 任意 | `0x10` | ファイル不在時の全セル初期値 |
 
-### 2.2. 仮想UARTループバックエミュレータ (`fbb_uart_loopback`)
+### 2.2. 仮想SSD1306 OLEDディスプレイエミュレータ (`fbb_i2c_oled`)
+
+* **実機エミュレーション仕様**: **[Solomon Systech SSD1306](https://www.solomon-systech.com/product/ssd1306/)** (128x64 モノクロ OLED、I2C/SPI メモリマップ・共有メモリ `/dev/shm` 描画)
 
 | 引数オプション | 必須 / 任意 | 既定値 | 説明 |
 | :--- | :--- | :--- | :--- |
-| `--pts-file <path>` | **必須** | - | コントローラが作成した PTY スレーブデバイスのパス（`/dev/pts/X`）が記載されている一時ファイルのパス |
+| `--socket <path>` | **必須** | - | 中継ソケットパス |
+| `--shm <name>` | 任意 | `fbb_oled_0` | フレームバッファ共有メモリ名 |
+
+### 2.3. 仮想HT16K33 7セグメントLEDエミュレータ (`fbb_i2c_ht16k33`)
+
+* **実機エミュレーション仕様**: **[Adafruit / Holtek HT16K33](https://www.holtek.com/productdetail/-/vg/HT16K33)** (4桁 7セグメント LED ディスプレイコントローラ)
+
+| 引数オプション | 必須 / 任意 | 既定値 | 説明 |
+| :--- | :--- | :--- | :--- |
+| `--socket <path>` | **必須** | - | 中継ソケットパス |
+| `--shm <name>` | 任意 | `fbb_display_7seg_0` | 7セグメントレジスタ共有メモリ名 |
+
+### 2.4. 仮想MCP3208 12-bit SPI ADCエミュレータ (`fbb_spi_adc`)
+
+* **実機エミュレーション仕様**: **[Microchip MCP3208](https://www.microchip.com/en-us/product/MCP3208)** (8チャンネル 12-bit SPI ADC)
+
+| 引数オプション | 必須 / 任意 | 既定値 | 説明 |
+| :--- | :--- | :--- | :--- |
+| `--socket <path>` | **必須** | - | 中継ソケットパス |
+| `--cs <num>` | 任意 | `0` | チップセレクト番号 |
+
+### 2.5. 仮想W25Q128 SPI NOR Flashエミュレータ (`fbb_spi_flash`)
+
+* **実機エミュレーション仕様**: **[Winbond W25Q128](https://www.winbond.com/hq/product/code-storage-flash-memory/serial-nor-flash/?__locale=en&line=/product/code-storage-flash-memory/serial-nor-flash/index.html)** (16MB SPI NOR Flash)
+
+| 引数オプション | 必須 / 任意 | 既定値 | 説明 |
+| :--- | :--- | :--- | :--- |
+| `--socket <path>` | **必須** | - | 中継ソケットパス |
+| `--file <path>` | 任意 | - | Flash メモリ状態の永続化ファイルパス |
+
+### 2.6. 仮想HUB75 RGB LEDマトリクスエミュレータ (`fbb_hub75_matrix`)
+
+* **実機エミュレーション仕様**: **汎用 HUB75 64x64 / 128x64(デイジーチェーン) RGB LED パネル** (24-bit RGB カラー)
+
+| 引数オプション | 必須 / 任意 | 既定値 | 説明 |
+| :--- | :--- | :--- | :--- |
+| `--socket <path>` | **必須** | - | 中継ソケットパス |
+| `--shm <name>` | 任意 | `fbb_hub75_0` | RGB24 フレームバッファ共有メモリ名 |
+| `--grid <width> <height>` | 任意 | `64 64` | LED マトリクス格子解像度（例: `128 64`） |
+
+### 2.7. 仮想UARTループバックエミュレータ (`fbb_uart_loopback`)
+
+| 引数オプション | 必須 / 任意 | 既定値 | 説明 |
+| :--- | :--- | :--- | :--- |
+| `--pts-file <path>` | **必須** | - | PTY スレーブデバイスパス記載ファイルのパス |
 
 ---
 
@@ -111,13 +181,13 @@ src/peripherals/official_plugins/<vendor_model>/
 3. **`<model>.dtsi` (デバイスツリーインクルード定義)**:
    * バス中立（Bus-Neutral）な定義を記述します。特定のバス名（`&i2c1` 等）をハードコードせず、`#ifndef FBB_I2C_BUS #define FBB_I2C_BUS i2c0 #endif` のようにマクロオーバーライド可能に記述することで、シナリオ側の任意のバス（`i2c0`, `i2c1`, `i2c2` 等）へ安全にアタッチできます。
 4. **`<emulator>.cpp` (C++ エミュレータソースコード)**:
-   * `I2cSlave`, `UartDevice`, `SpiSlave` などの基底クラスを継承し、`onWrite`/`onRead` や `onReceive` などのイベントハンドラ内でデバイス固有のレジスタ挙動や応答データ生成論理を実装します。
+   * `I2cSlave`, `UartDevice`, `SpiSlave` などの基底クラスを継承し、`onWrite`/`onRead`, `onTransfer`, `onReceive` などのイベントハンドラ内でデバイス固有のレジスタ挙動や応答データ生成論理を実装します。
 
 ---
 
 ### 3.3. Zero-Touch CMake 自動発見 ＆ 画面自動連動
 
-* [CMakeLists.txt](file:///workspaces/FPGA-BoardlessBench/src/peripherals/CMakeLists.txt) に PPA 動的自動発見エンジンが統合されているため、プラグインフォルダを配置するだけで、CMake がターゲットバイナリと基底クラス (`common/i2c_slave.cpp` 等) を自動検知・ビルドし、ダッシュボード UI も宣言的スキーマに従って自動マウント・レンダリングします。（手動での CMakeLists.txt や server.js 追記は一切不要です）。
+* [CMakeLists.txt](file:///workspaces/FPGA-BoardlessBench/src/peripherals/CMakeLists.txt) に PPA 4.0 動的自動発見エンジンが統合されているため、プラグインフォルダを配置するだけで、CMake がターゲットバイナリと基底クラス (`common/i2c_slave.cpp`, `common/spi_slave.cpp` 等) を自動検知・ビルドし、ダッシュボード UI も宣言的スキーマに従って自動マウント・レンダリングします。（手動での CMakeLists.txt や server.js 追記は一切不要です）。
 
 ---
 
@@ -148,6 +218,4 @@ F-BB コントローラは起動時、DTS 内の `compatible` 名に一致する
 | **2. プロジェクトローカル** | `<project_root>/.fbb/plugins/`<br>`src/peripherals/official_plugins/` | **チーム/プロジェクト公式共有**: Gitリポジトリで管理し、プロジェクトメンバー全員で共有・実行する公式およびプロジェクト共通ペリフェラルプラグインの置き場。 |
 | **3. ユーザーホーム** | `~/.fbb/plugins/` | **個人開発環境での汎用再利用**: 各開発者の PC 上でダウンロード・ビルドしたメーカー製プラグインを、複数プロジェクト横断で使い回すための開発者個人の標準ライブラリ置き場。 |
 | **4. システム共通** | `/usr/local/share/fbb/plugins/` | **OS全体のシステムワイド導入**: Docker コンテナイメージ内やシステム全体にパッケージ（Debian / RPM パッケージ等）として標準インストールされる公式プラグインの置き場。 |
-| **5. 環境変数** | `$FBB_PLUGIN_PATH` | **CI/CD環境やカスタムパスの柔軟指定**: 自動テスト（CI/CD パイプライン）や任意の外部ディレクトリに配置されたサードパーティ製プラグインを柔軟に読み込ませるためのエスケープハッチ。 | |
-
-
+| **5. 環境変数** | `$FBB_PLUGIN_PATH` | **CI/CD環境やカスタムパスの柔軟指定**: 自動テスト（CI/CD パイプライン）や任意の外部ディレクトリに配置されたサードパーティ製プラグインを柔軟に読み込ませるためのエスケープハッチ。 |

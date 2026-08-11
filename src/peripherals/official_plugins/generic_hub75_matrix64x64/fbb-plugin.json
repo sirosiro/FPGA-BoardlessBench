@@ -1,0 +1,30 @@
+{
+  "name": "fbb-plugin-generic-hub75-matrix64x64",
+  "vendor": "Generic / Open-Source Hardware",
+  "version": "1.0.0",
+  "description": "HUB75 / HUB75E 64x64 RGB LED Matrix Panel Emulator (1/32 Duty Multiplexed 4096 RGB LEDs)",
+  "peripherals": [
+    {
+      "bus": "i2c",
+      "compatible": "generic,hub75-matrix64x64",
+      "binary": "fbb_hub75_matrix",
+      "default_args": [
+        "{socket_path}"
+      ],
+      "ui_widget": {
+        "title": "HUB75 64x64 RGB LED Matrix Panel",
+        "board_svg": "board.svg",
+        "controls": [
+          {
+            "type": "matrix_canvas",
+            "name": "HUB75 64x64 RGB LED Panel",
+            "grid_size": [64, 64],
+            "format": "rgb24",
+            "shm_file": "fbb_hub75_0",
+            "glow": true
+          }
+        ]
+      }
+    }
+  ]
+}

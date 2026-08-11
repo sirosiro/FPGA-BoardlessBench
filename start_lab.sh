@@ -178,13 +178,6 @@ unset FBB_ACTIVE
 unset LD_PRELOAD
 unset LD_BIND_NOW
 
-# アプリ終了後もバックエンドの状態を監視し続ける
-while true; do
-    if ! kill -0 ${CONTROLLER_PID} 2>/dev/null || \
-       ! kill -0 ${SIM_PID} 2>/dev/null || \
-       ! kill -0 ${DASHBOARD_PID} 2>/dev/null; then
-        echo "[Warning] One of the processes has stopped."
-        cleanup
-    fi
-    sleep 1
-done
+# アプリ終了後にバックエンドプロセスを自動クリーンアップして復帰
+echo "[Lab] Firmware process exited. Stopping background servers..."
+cleanup

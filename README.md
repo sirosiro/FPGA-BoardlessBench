@@ -18,6 +18,9 @@ FPGA-BoardlessBench (F-BB)は、FPGAを搭載した実機や評価ボードが�
 [シナリオ 02e: 多重 I2C ペリフェラル制御 (SSD1306 OLED & Adafruit HT16K33 7セグメントLED)](tests/scenarios/02e_ht16k33_7seg_i2c/)
 ![FPGA-BoardlessBench Demo](tests/scenarios/02e_ht16k33_7seg_i2c/assets/dashboard.gif)
 
+[シナリオ 06c: HUB75 128x64 Dual-Panel デイジーチェーン RGB LED マトリクス](tests/scenarios/06c_hub75_matrix_daisy_chain/)
+![FPGA-BoardlessBench Demo](tests/scenarios/06c_hub75_matrix_daisy_chain/assets/dashboard.gif)
+
 ---
 
 ## **The "DTS-Driven" Shift: ハードとソフトの『言語の壁』を破壊する**
@@ -373,6 +376,8 @@ F-BB環境には、基本的なペリフェラル操作から高度なマルチ�
 | [04b_dev_mem_violation_legacy](tests/scenarios/04b_dev_mem_violation_legacy/) | レガシーな物理メモリ直叩きにおける境界外アクセスのトラップ（ガードページ/AddressSanitizer）および対話型UARTメニュー選択機能の検証 | /dev/mem エミュレーション, C-Shim ガードページ (PROT_NONE), AddressSanitizer, UART PTY ブリッジ |
 | [05_multi_v_files](tests/scenarios/05_multi_v_files/) | 複数ファイルの Verilog モジュールを結合した回路シミュレーション | 複数 Verilog リンク, サブモジュール同期 |
 | [06_gpio](tests/scenarios/06_gpio/) | AXI GPIO 互換レジスタによる多チャンネル・双方向の入出力制御 | GPIO エミュレーション, チャンネル切替 |
+| [06b_hub75_matrix_64x64](tests/scenarios/06b_hub75_matrix_64x64/) | HUB75E インターフェース経由での 64x64 RGB LED マトリクスパネル（24-bit 12,288バイト共有メモリ）制御、並びに PPA 4.0 独立ペイン・アスペクト比固定全画面 / 基板一体化表示切替の検証。 | HUB75 インターフェース, PPA 4.0 独立ペイン, 64x64 RGB LED Matrix, 24-bit カラー, シームレスレスポンシブ画面 |
+| [06c_hub75_matrix_daisy_chain](tests/scenarios/06c_hub75_matrix_daisy_chain/) | 2枚の HUB75 パネルを横方向に数珠繋ぎ（デイジーチェーン 128x64 解像度・24,576バイト）接続し、パネル間跨ぎのクロスバウンド物理シミュレーションやウルトラワイド横スクロールテキストの検証。 | HUB75 デイジーチェーン, 128x64 ウルトラワイド LED ビジョン, クロスパネル描画, トポロジー配線表示 |
 | [07_minimum_template](tests/scenarios/07_minimum_template/) | 波形ファイル（vfpga.vcd）出力確認用の最小構成テンプレート | 最軽量シミュレータ設定, VCD 出力 |
 | [08_multi_uart](tests/scenarios/08_multi_uart/) | 同時に複数UARTポートを開く `select()` 制御の対話型デモ | 多重 I/O, UART PTY ブリッジ |
 | [09_remoteproc_amp](tests/scenarios/09_remoteproc_amp/) | Aコア（Linux）からMコアの起動/停止と FW 動的ロード（ホットスワップ） | `remoteproc`, ホットスワップ, 状態同期 |
@@ -469,22 +474,25 @@ F-BBは、ハードウェア記述言語（RTL）から、低レイヤーのシ�
 
 | 言語分類 | 拡張子 | ファイル数 | 総行数 | 主な構成要素と役割 |
 | :--- | :---: | :---: | :---: | :--- |
-| **C/C++** | `.cpp` / `.hpp` / `.c` / `.h` / `.template` | 59 | **8,876行** | システムコール横取り（C Shimテンプレート含む）のランタイム、周辺デバイス抽象クラス・エミュレータ、およびファームウェアテストコード |
-| **Python** | `.py` | 12 | **2,057行** | DTSパース・コード自動生成エンジン（`vfpga` パッケージ）、PPAプラグイン動的発見エンジン、ノードラベル保持・重複自動解消、およびバックエンド制御スクリプト |
-| **JavaScript / React** | `.jsx` / `.js` / `.css` / `.html` | 20 | **4,389行** | Webダッシュボードサーバー（Express）、Vite + React 19 のフロントエンド UI（Dockview レイアウト、Recharts グラフ描画、DTS Visualizer メモリマップ、汎用ペイン規格 `GenericPeripheralPane`） |
-| **Verilog** | `.v` | 21 | **1,163行** | シミュレーション対象の FPGA ハードウェア記述（RTLモックやシナリオ固有のロジック） |
-| **Device Tree (DTS)** | `.dts` / `.dtsi` | 35 | **857行** | 仮想デバイス仕様の定義（アドレスマップ、レジスタ名、メーカー提供 `.dtsi` 定義、ペリフェラル構成） |
-| **JSON / Manifest** | `.json` | 28 | **6,259行** | PPAペリフェラルマニフェスト (`fbb-plugin.json`)、ボード構造メタデータ、UARTマッピング設定 |
-| **Shell Script** | `.sh` | 32 | **1,158行** | テスト一括実行ランナー（`run_tests.sh`）、およびラボ起動ランナー（`start_lab.sh`） |
-| **Rust** | `.rs` | 6 | **222行** | Mコア用ベアメタル・リアルタイムOSファームウェア（Rust対応シナリオ、※自動生成される `fbb_pac.rs` は除く） |
-| **合計 (Total)** | **-** | **213** | **24,981行** | **F-BB プラットフォーム全体の静的ソースコード総数** |
+| 言語分類 | 拡張子 | ファイル数 | 総行数 | 主な構成要素と役割 |
+| :--- | :---: | :---: | :---: | :--- |
+| **C/C++** | `.cpp` / `.hpp` / `.c` / `.h` / `.template` | 94 | **14,208行** | システムコール横取り（C Shimテンプレート含む）のランタイム、周辺デバイス抽象クラス・エミュレータ、およびファームウェアテストコード |
+| **Python** | `.py` | 12 | **2,123行** | DTSパース・コード自動生成エンジン（`vfpga` パッケージ）、PPAプラグイン動的発見エンジン、ノードラベル保持・重複自動解消、およびバックエンド制御スクリプト |
+| **JavaScript / React** | `.jsx` / `.js` / `.css` / `.html` | 20 | **4,818行** | Webダッシュボードサーバー（Express）、Vite + React 19 のフロントエンド UI（Dockview レイアウト、Recharts グラフ描画、DTS Visualizer メモリマップ、汎用ペイン規格 `GenericPeripheralPane`） |
+| **Verilog** | `.v` | 21 | **1,147行** | シミュレーション対象の FPGA ハードウェア記述（RTLモックやシナリオ固有のロジック） |
+| **Device Tree (DTS)** | `.dts` / `.dtsi` | 38 | **943行** | 仮想デバイス仕様の定義（アドレスマップ、レジスタ名、メーカー提供 `.dtsi` 定義、ペリフェラル構成） |
+| **JSON / Manifest** | `.json` | 28 | **6,527行** | PPAペリフェラルマニフェスト (`fbb-plugin.json`)、ボード構造メタデータ、UARTマッピング設定 |
+| **Shell Script** | `.sh` | 34 | **1,213行** | テスト一括実行ランナー（`run_tests.sh`）、およびラボ起動ランナー（`start_lab.sh`） |
+| **Rust** | `.rs` | 9 | **417行** | Mコア用ベアメタル・リアルタイムOSファームウェア（Rust対応シナリオ、※自動生成される `fbb_pac.rs` は除く） |
+| **合計 (Total)** | **-** | **256** | **31,396行** | **F-BB プラットフォーム全体の静的ソースコード総数** |
 
-> **前回からの比較と増減 (PPA 2.0 Adafruit HT16K33 7セグメントLED プラグイン、多重 I2C シナリオ 02e、およびマルチ UART ポート連動修正)**
-> PPA 2.0 公式プラグイン `adafruit_ht16k33` ([`src/peripherals/official_plugins/adafruit_ht16k33/`](src/peripherals/official_plugins/adafruit_ht16k33/))、多重 I2C シナリオ 02e ([`02e_ht16k33_7seg_i2c`](tests/scenarios/02e_ht16k33_7seg_i2c/README.md)) の追加、並びに CMake 自動発見、Dockview 独立ペイン分割、およびマルチ UART ポート番号連動修正に伴い、プラットフォーム全域の静的ソースコード統計は **213ファイル / 24,981行** に拡大しました：
-> - **公式プラグイン `adafruit_ht16k33`**: +4ファイル（`fbb-plugin.json`, `board.svg`, `ht16k33.dtsi`, `ht16k33.cpp`）
-> - **Scenario 02e (`02e_ht16k33_7seg_i2c`)**: +5ファイル（`config.dts`, `vfpga_top.v`, `main.cpp`, `fbb_layout.json`, `README.md`）
-> - **PPA 2.0 SVG 基板アセット**: SSD1306 OLED 用 `board.svg` ベクター画像アセットの追加
-> - **マルチ UART ＆ 7セグ UI 改修**: `generator_rtl.py` のポート自動連番修正、`UartTerminal.jsx` 接続ステータス向上、`OledDisplay.jsx` / `GenericPeripheralPane.jsx` 7セグメント LED 六角形セグメント描画・傾斜コロン・表示カラー連動 (`ledColor`)、およびドキュメント体系の完全更新
+> **前回からの比較と増減 (PPA 4.0 HUB75 64x64 / 128x64 デイジーチェーン RGB LED マトリクス・プラグイン、シナリオ 06b / 06c、および自立型オーバーレイオフセット設計の確立)**
+> PPA 4.0 公式プラグイン `generic_hub75_matrix64x64` ([`src/peripherals/official_plugins/generic_hub75_matrix64x64/`](src/peripherals/official_plugins/generic_hub75_matrix64x64/))、64x64 単体マトリクスシナリオ 06b ([`06b_hub75_matrix_64x64`](tests/scenarios/06b_hub75_matrix_64x64/README.md))、128x64 デイジーチェーンシナリオ 06c ([`06c_hub75_matrix_daisy_chain`](tests/scenarios/06c_hub75_matrix_daisy_chain/README.md)) の追加、並びに自立型オーバーレイオフセット設計、`parseGrid` 型安全化、基板 SVG `viewBox` パース化、および非 GPIO UIO 排除フィルタ `isGpioDev` の導入に伴い、プラットフォーム全域の静的ソースコード統計は **256ファイル / 31,396行** に拡大しました：
+> - **公式プラグイン `generic_hub75_matrix64x64`**: +4ファイル（`fbb-plugin.json`, `board.svg`, `hub75_matrix.dtsi`, `hub75_matrix.cpp`）
+> - **Scenario 06b (`06b_hub75_matrix_64x64`)**: +5ファイル（`config.dts`, `vfpga_top.v`, `main.cpp`, `fbb_layout.json`, `README.md`）
+> - **Scenario 06c (`06c_hub75_matrix_daisy_chain`)**: +5ファイル（`config.dts`, `vfpga_top.v`, `main.cpp`, `fbb_layout.json`, `README.md`）
+> - **PPA 4.0 デイジーチェーン / マトリクスエンジン＆基板アセット**: 128x64 RGB24 フレームバッファパース、ウルトラワイドフォント描画、および `board.svg` ベクターアセットの追加
+> - **ダッシュボード UI ＆ 型安全化改修**: `GenericPeripheralPane.jsx` 自立型 `overlay_offset` ・ `viewBox` パース化、`DashboardContext.jsx` / `GpioPanel.jsx` の `isGpioDev` フィルタ追加、および `server.js` SDカード絶対パス結合バグ修正
 
 > **コード生成エンジンによる動的コード**
 > F-BBの設計上、上記の静的コードに加えて、DTSを読み込んだ際に Python スクリプトが、外部テンプレート `libfpgashim.c.template` を基にして **C言語 Shim (`libfpgashim.c` / 約680行)** を生成するほか、**C++ シミュレーションラッパー (`sim_main.cpp` / 約100行)**、**Verilog スケルトン (`vfpga_top.v` / 約40行)**、**Rust PAC (`fbb_pac.rs` / 約80行)** などをビルド時に自動生成します。

@@ -1,0 +1,131 @@
+{
+    "grid": {
+        "root": {
+            "type": "branch",
+            "data": [
+                {
+                    "type": "branch",
+                    "data": [
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "uartTerminal_serial"
+                                ],
+                                "activeView": "uartTerminal_serial",
+                                "id": "2"
+                            },
+                            "size": 369
+                        },
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "dtsVisualizer"
+                                ],
+                                "activeView": "dtsVisualizer",
+                                "id": "3"
+                            },
+                            "size": 597
+                        }
+                    ],
+                    "size": 531
+                },
+                {
+                    "type": "branch",
+                    "data": [
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "generic_peripheral_matrix_0"
+                                ],
+                                "activeView": "generic_peripheral_matrix_0",
+                                "id": "1"
+                            },
+                            "size": 784
+                        },
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "gpioPanel"
+                                ],
+                                "activeView": "gpioPanel",
+                                "id": "4"
+                            },
+                            "size": 182
+                        }
+                    ],
+                    "size": 1050
+                }
+            ],
+            "size": 966
+        },
+        "width": 1581,
+        "height": 966,
+        "orientation": "HORIZONTAL"
+    },
+    "panels": {
+        "uartTerminal_serial": {
+            "id": "uartTerminal_serial",
+            "contentComponent": "uartTerminal",
+            "params": {
+                "deviceName": "serial"
+            },
+            "title": "UART: serial"
+        },
+        "dtsVisualizer": {
+            "id": "dtsVisualizer",
+            "contentComponent": "dtsVisualizer",
+            "title": "DTS Visualizer & AI"
+        },
+        "generic_peripheral_matrix_0": {
+            "id": "generic_peripheral_matrix_0",
+            "contentComponent": "genericPeripheralPane",
+            "params": {
+                "pluginId": "generic,hub75-matrix64x64",
+                "manifest": {
+                    "name": "matrix",
+                    "type": "uio",
+                    "path": "/dev/uio0",
+                    "base_addr": 3758116864,
+                    "base_reg": "0xe0005000 0x1000",
+                    "registers": [],
+                    "extra": {
+                        "compatible": "generic,hub75-matrix64x64",
+                        "grid_size": "64 64",
+                        "shm_name": "fbb_hub75_0",
+                        "status": "okay"
+                    },
+                    "compatible": "generic,hub75-matrix64x64",
+                    "ui_widget": {
+                        "title": "HUB75 64x64 RGB LED Matrix Panel",
+                        "board_svg": "board.svg",
+                        "controls": [
+                            {
+                                "type": "matrix_canvas",
+                                "name": "HUB75 64x64 RGB LED Panel",
+                                "grid_size": [
+                                    64,
+                                    64
+                                ],
+                                "format": "rgb24",
+                                "shm_file": "fbb_hub75_0",
+                                "glow": true
+                            }
+                        ],
+                        "board_svg_content": "<svg xmlns=\"http://www.w3.org/2000/svg\" viewBox=\"0 0 450 350\" width=\"450\" height=\"350\">\n  <!-- Main Dark PCB Board Base -->\n  <rect width=\"450\" height=\"350\" rx=\"12\" fill=\"#070b12\" stroke=\"#1e293b\" stroke-width=\"3\"/>\n  \n  <!-- PCB Corner Mounting Holes -->\n  <circle cx=\"15\" cy=\"15\" r=\"5\" fill=\"none\" stroke=\"#64748b\" stroke-width=\"1.5\"/>\n  <circle cx=\"435\" cy=\"15\" r=\"5\" fill=\"none\" stroke=\"#64748b\" stroke-width=\"1.5\"/>\n  <circle cx=\"15\" cy=\"335\" r=\"5\" fill=\"none\" stroke=\"#64748b\" stroke-width=\"1.5\"/>\n  <circle cx=\"435\" cy=\"335\" r=\"5\" fill=\"none\" stroke=\"#64748b\" stroke-width=\"1.5\"/>\n\n  <!-- Power Terminal (5V / GND) -->\n  <rect x=\"16\" y=\"25\" width=\"55\" height=\"32\" fill=\"#0f172a\" stroke=\"#475569\" stroke-width=\"1.5\" rx=\"3\"/>\n  <text x=\"43\" y=\"18\" fill=\"#ef4444\" font-size=\"8\" font-family=\"monospace\" text-anchor=\"middle\" font-weight=\"bold\">+5V GND</text>\n  <circle cx=\"30\" cy=\"41\" r=\"5\" fill=\"#f59e0b\" stroke=\"#78350f\" stroke-width=\"1\"/>\n  <circle cx=\"55\" cy=\"41\" r=\"5\" fill=\"#64748b\" stroke=\"#334155\" stroke-width=\"1\"/>\n\n  <!-- HUB75 Connector Pin Header (16-pin) -->\n  <rect x=\"16\" y=\"125\" width=\"30\" height=\"95\" fill=\"#0f172a\" stroke=\"#475569\" stroke-width=\"1.5\" rx=\"3\"/>\n  <text x=\"31\" y=\"114\" fill=\"#94a3b8\" font-size=\"8\" font-family=\"sans-serif\" text-anchor=\"middle\" font-weight=\"bold\">HUB75E</text>\n  <!-- Pins 1..16 -->\n  <circle cx=\"23\" cy=\"136\" r=\"2\" fill=\"#f59e0b\"/><circle cx=\"39\" cy=\"136\" r=\"2\" fill=\"#f59e0b\"/>\n  <circle cx=\"23\" cy=\"148\" r=\"2\" fill=\"#f59e0b\"/><circle cx=\"39\" cy=\"148\" r=\"2\" fill=\"#f59e0b\"/>\n  <circle cx=\"23\" cy=\"160\" r=\"2\" fill=\"#f59e0b\"/><circle cx=\"39\" cy=\"160\" r=\"2\" fill=\"#f59e0b\"/>\n  <circle cx=\"23\" cy=\"172\" r=\"2\" fill=\"#f59e0b\"/><circle cx=\"39\" cy=\"172\" r=\"2\" fill=\"#f59e0b\"/>\n  <circle cx=\"23\" cy=\"184\" r=\"2\" fill=\"#f59e0b\"/><circle cx=\"39\" cy=\"184\" r=\"2\" fill=\"#f59e0b\"/>\n  <circle cx=\"23\" cy=\"196\" r=\"2\" fill=\"#f59e0b\"/><circle cx=\"39\" cy=\"196\" r=\"2\" fill=\"#f59e0b\"/>\n  <circle cx=\"23\" cy=\"208\" r=\"2\" fill=\"#f59e0b\"/><circle cx=\"39\" cy=\"208\" r=\"2\" fill=\"#f59e0b\"/>\n\n  <!-- IC Shift Register Chips (SMD) -->\n  <rect x=\"60\" y=\"75\" width=\"18\" height=\"38\" fill=\"#1e293b\" stroke=\"#334155\" stroke-width=\"1\" rx=\"1.5\"/>\n  <text x=\"69\" y=\"96\" fill=\"#64748b\" font-size=\"5\" font-family=\"monospace\" text-anchor=\"middle\">74HC595</text>\n\n  <rect x=\"60\" y=\"240\" width=\"18\" height=\"38\" fill=\"#1e293b\" stroke=\"#334155\" stroke-width=\"1\" rx=\"1.5\"/>\n  <text x=\"69\" y=\"261\" fill=\"#64748b\" font-size=\"5\" font-family=\"monospace\" text-anchor=\"middle\">FM6124</text>\n\n  <!-- 1:1 Square Display Screen Outer Frame (300x300 centered with generous margins) -->\n  <rect x=\"110\" y=\"25\" width=\"300\" height=\"300\" fill=\"#020408\" stroke=\"#334155\" stroke-width=\"2\" rx=\"4\"/>\n</svg>\n"
+                    }
+                }
+            },
+            "title": "HUB75 64x64 RGB LED Matrix Panel"
+        },
+        "gpioPanel": {
+            "id": "gpioPanel",
+            "contentComponent": "gpioPanel",
+            "title": "GPIO / Pin Array"
+        }
+    },
+    "activeGroup": "1"
+}

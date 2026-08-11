@@ -355,6 +355,20 @@
         1. サードパーティ生態系の拡張性確保: ベンダーや開発者が本体コードを修正することなく、独自の仮想デバイスプラグインをフォルダ単位で追加・配布可能にするため。
         2. 完全なカプセル化と保守性の向上: シミュレーション基盤コアと周辺デバイスエミュレータの結合度を極限まで下げ、単一の責任（Single Responsibility）を徹底するため。
 
+- **2026-08-11: PPA 4.0 汎用 HUB75 64x64 / 128x64 デイジーチェーン RGB LED マトリクス・プラグインの導入と自立型オーバーレイオフセット設計の確立 (PPA 4.0 HUB75 Dual-Panel Daisy-Chain & Decoupled PCB Overlay Offset Architecture)**
+  - **Decision:**
+        1. 汎用 HUB75 64x64 および 128x64 Dual-Panel デイジーチェーン RGB LED マトリクスパネルの公式 PPA 4.0 プラグイン (`generic_hub75_matrix64x64`) を `src/peripherals/official_plugins/generic_hub75_matrix64x64/` に新設。
+        2. シナリオ `06b_hub75_matrix_64x64`（単体64x64）および `06c_hub75_matrix_daisy_chain`（128x64 ウルトラワイド・デイジーチェーン接続）を追加。128x64 ウルトラワイドフォント（5x7 ASCII）横スクロールアニメーションおよびパネル間横断バウンスボール物理シミュレーションを実装。
+        3. `GenericPeripheralPane.jsx` 側の固定オフセット数値を完全廃止し、標準基板切欠窓 (`left: 24.1667%, top: 5.5556%, width: 66.6667%, height: 88.8889%` / `x=116, y=20, width=320, height=320`) をデフォルト基準値としつつ、各デバイス/コントロール側が個別の `overlay_offset` を自立保持・指定可能なアタッチ構造へ改修。
+        4. DTS 由来の `grid_size`（例: `"64 64"` 文字列）が JavaScript インデックス評価で `'6'`（列数=6）および `'4'`（行数=4）に化ける現象を型安全な `parseGrid` 関数および `generator_rtl.py` の数値キャストにより解決。
+        5. 基板 SVG の `<svg viewBox="...">` およびアスペクト比を動的に抽出してコンテナに適用する `viewBox` パース化を導入。
+        6. `dashboard/server.js` の `getSdCardDir()` における絶対パス結合バグおよび起動時 `fs.existsSync` 依存によるフォールバック不整合を `path.isAbsolute()` により完全修正。
+        7. `DashboardContext.jsx` および `GpioPanel.jsx` の GPIO 判定フィルタに `isGpioDev` を導入し、UIO 登録された BRAM や DMA メモリ空間の誤表示を完全に除外。
+        8. `main.cpp` の POSIX `signal_handler` にて `SIGINT` を `SIG_DFL` に復元後に `raise(sig)` する修正を全シナリオに適用し、Ctrl+C 中断時にターミナルが確実に復帰するライフサイクルを確立。
+  - **Rationale:**
+        1. 高解像度および複数パネル接続のエミュレーション実証: 単一 SoC コントローラから 2 枚の HUB75 パネルを高速シフトレジスタで数珠繋ぎ（デイジーチェーン）制御する先進的なディスプレイ壁構成を、実機透過 100% で検証可能にするため。
+        2. コンポーネント位置決定の完全な自律化とカプセル化: ダッシュボードコア側に特定デバイスの座標をハードコードする密結合を完全に破棄し、標準画面窓基準 + デバイス自立オフセットの設計原則を徹底するため。
+
 
 
 

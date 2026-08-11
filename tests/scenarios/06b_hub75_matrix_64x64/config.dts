@@ -1,0 +1,25 @@
+/dts-v1/;
+
+/ {
+    model = "FPGA-BoardlessBench HUB75 64x64 RGB LED Matrix Scenario";
+    compatible = "fbb,scenario-06b-hub75-matrix";
+
+    #address-cells = <1>;
+    #size-cells = <1>;
+
+    uart0: serial@e0000000 {
+        compatible = "cdns,uart-r1p8";
+        reg = <0xe0000000 0x1000>;
+        status = "okay";
+        label = "/dev/ttyUL0";
+    };
+
+    hub75_matrix: matrix@e0005000 {
+        compatible = "generic,hub75-matrix64x64";
+        reg = <0xe0005000 0x1000>;
+        grid_size = <64 64>;
+        shm_name = "fbb_hub75_0";
+        status = "okay";
+        label = "/dev/uio0";
+    };
+};

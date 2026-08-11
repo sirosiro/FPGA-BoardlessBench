@@ -397,6 +397,22 @@ io.on('connection', (socket) => {
     }
 
 
+    // Send initial peripheral frames if exist
+    Object.keys(lastShmBuffers).forEach(file => {
+        if (lastShmBuffers[file]) {
+            socket.emit('peripheral:frame', {
+                name: file,
+                data: lastShmBuffers[file].toString('base64')
+            });
+            if (file === 'fbb_display_0') {
+                socket.emit('display-frame', lastShmBuffers[file].toString('base64'));
+            }
+            if (file === 'fbb_display_7seg_0') {
+                socket.emit('display-7seg-frame', lastShmBuffers[file].toString('base64'));
+            }
+        }
+    });
+
     socket.on('trace-history-clear', () => {
         traceHistory = [];
         traceIndex = 0;
@@ -526,10 +542,9 @@ setInterval(() => {
 // GET /api/layout - Load fbb_layout.json from the active scenario folder
 // @intent:rationale 指定されたテストシナリオフォルダ配下の fbb_layout.json を読み込み、クライアントに返します。存在しない場合は 404 を返します。
 app.get('/api/layout', (req, res) => {
-    if (!manifest.scenario_dir || !manifest.project_root) {
-        return res.status(404).json({ error: 'Scenario not loaded yet' });
-    }
-    const layoutPath = path.join(manifest.project_root, manifest.scenario_dir, 'fbb_layout.json');
+    const projRoot = manifest.project_root || path.join(__dirname, '..');
+    const scnDir = manifest.scenario_dir || '.';
+    const layoutPath = path.isAbsolute(scnDir) ? path.join(scnDir, 'fbb_layout.json') : path.join(projRoot, scnDir, 'fbb_layout.json');
     try {
         if (fs.existsSync(layoutPath)) {
             const data = fs.readFileSync(layoutPath, 'utf8');
@@ -546,14 +561,17 @@ app.get('/api/layout', (req, res) => {
 // POST /api/layout - Save fbb_layout.json to the active scenario folder
 // @intent:rationale 現在のペイン配置（レイアウト）データを、指定されたテストシナリオフォルダ配下に fbb_layout.json として永続化保存します。
 app.post('/api/layout', (req, res) => {
-    if (!manifest.scenario_dir || !manifest.project_root) {
-        return res.status(400).json({ error: 'Scenario not loaded yet' });
-    }
-    const layoutPath = path.join(manifest.project_root, manifest.scenario_dir, 'fbb_layout.json');
+    const projRoot = manifest.project_root || path.join(__dirname, '..');
+    const scnDir = manifest.scenario_dir || '.';
+    const layoutPath = path.isAbsolute(scnDir) ? path.join(scnDir, 'fbb_layout.json') : path.join(projRoot, scnDir, 'fbb_layout.json');
     try {
+        const dir = path.dirname(layoutPath);
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
         fs.writeFileSync(layoutPath, JSON.stringify(req.body, null, 4), 'utf8');
         console.log(`[Backend] Layout saved successfully to ${layoutPath}`);
-        return res.json({ success: true });
+        return res.json({ success: true, path: layoutPath });
     } catch (e) {
         console.error(`[Backend] Failed to save layout: ${e.message}`);
         return res.status(500).json({ error: e.message });
@@ -565,11 +583,10 @@ const getSdCardDir = () => {
     if (process.env.FBB_SD_DIR) {
         return process.env.FBB_SD_DIR;
     }
-    if (manifest.project_root && manifest.scenario_dir) {
-        const scenarioSdDir = path.join(manifest.project_root, manifest.scenario_dir, 'sd_card');
-        if (fs.existsSync(scenarioSdDir)) {
-            return scenarioSdDir;
-        }
+    if (manifest.scenario_dir) {
+        return path.isAbsolute(manifest.scenario_dir)
+            ? path.join(manifest.scenario_dir, 'sd_card')
+            : path.join(manifest.project_root || '', manifest.scenario_dir, 'sd_card');
     }
     return manifest.project_root ? path.join(manifest.project_root, 'sandbox/sd_card') : path.join(__dirname, '../sandbox/sd_card');
 };

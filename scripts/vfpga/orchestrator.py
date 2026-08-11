@@ -22,6 +22,8 @@ class GeneratorOrchestrator:
 
     def generate_all(self):
         dts_dir = os.path.dirname(os.path.abspath(self.dts_path)) if self.dts_path else None
+        if dts_dir:
+            self.model.scenario_dir = dts_dir
         
         for rel_path, gen in self.generators.items():
             content = gen.generate(self.model)

@@ -40,7 +40,8 @@ target_compile_definitions(fpgashim PRIVATE PROJECT_ROOT="${PROJECT_SOURCE_DIR}"
 
 # Post-build: copy libfpgashim.so to PROJECT_SOURCE_DIR for compatibility
 add_custom_command(TARGET fpgashim POST_BUILD
-    COMMAND ${CMAKE_COMMAND} -E copy $<TARGET_FILE:fpgashim> "${PROJECT_SOURCE_DIR}/"
+    COMMAND ${CMAKE_COMMAND} -E copy_if_different $<TARGET_FILE:fpgashim> "${PROJECT_SOURCE_DIR}/libfpgashim.so.tmp"
+    COMMAND ${CMAKE_COMMAND} -E rename "${PROJECT_SOURCE_DIR}/libfpgashim.so.tmp" "${PROJECT_SOURCE_DIR}/libfpgashim.so"
 )
 
 # 2. Build the Simulator (vfpga_sim)
