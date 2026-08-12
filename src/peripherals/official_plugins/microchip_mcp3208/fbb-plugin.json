@@ -15,7 +15,14 @@
       "ui_widget": {
         "title": "MCP3208 12-Bit SPI ADC",
         "controls": [
-          { "type": "slider", "name": "channel0", "label": "CH0 Input Voltage (V)", "min": 0, "max": 3.3, "default": 1.65 }
+          { "type": "slider", "name": "channel0", "label": "CH0 Analog Input (V)", "min": 0, "max": 3.3, "default": 1.65, "unit": "V", "shm_file": "spi_adc", "shm_offset": 0, "format": "uint16_le", "raw_min": 0, "raw_max": 4095 },
+          { "type": "slider", "name": "channel1", "label": "CH1 Analog Input (V)", "min": 0, "max": 3.3, "default": 1.65, "unit": "V", "shm_file": "spi_adc", "shm_offset": 2, "format": "uint16_le", "raw_min": 0, "raw_max": 4095 },
+          { "type": "slider", "name": "channel2", "label": "CH2 Analog Input (V)", "min": 0, "max": 3.3, "default": 1.65, "unit": "V", "shm_file": "spi_adc", "shm_offset": 4, "format": "uint16_le", "raw_min": 0, "raw_max": 4095 },
+          { "type": "slider", "name": "channel3", "label": "CH3 Analog Input (V)", "min": 0, "max": 3.3, "default": 1.65, "unit": "V", "shm_file": "spi_adc", "shm_offset": 6, "format": "uint16_le", "raw_min": 0, "raw_max": 4095 },
+          { "type": "slider", "name": "channel4", "label": "CH4 Analog Input (V)", "min": 0, "max": 3.3, "default": 1.65, "unit": "V", "shm_file": "spi_adc", "shm_offset": 8, "format": "uint16_le", "raw_min": 0, "raw_max": 4095 },
+          { "type": "slider", "name": "channel5", "label": "CH5 Analog Input (V)", "min": 0, "max": 3.3, "default": 1.65, "unit": "V", "shm_file": "spi_adc", "shm_offset": 10, "format": "uint16_le", "raw_min": 0, "raw_max": 4095 },
+          { "type": "slider", "name": "channel6", "label": "CH6 Analog Input (V)", "min": 0, "max": 3.3, "default": 1.65, "unit": "V", "shm_file": "spi_adc", "shm_offset": 12, "format": "uint16_le", "raw_min": 0, "raw_max": 4095 },
+          { "type": "slider", "name": "channel7", "label": "CH7 Analog Input (V)", "min": 0, "max": 3.3, "default": 1.65, "unit": "V", "shm_file": "spi_adc", "shm_offset": 14, "format": "uint16_le", "raw_min": 0, "raw_max": 4095 }
         ]
       }
     }

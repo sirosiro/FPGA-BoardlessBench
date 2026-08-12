@@ -15,7 +15,7 @@
                                 "activeView": "dtsVisualizer",
                                 "id": "3"
                             },
-                            "size": 509
+                            "size": 508
                         },
                         {
                             "type": "branch",
@@ -29,7 +29,7 @@
                                         "activeView": "seg7Display",
                                         "id": "1"
                                     },
-                                    "size": 410
+                                    "size": 371
                                 },
                                 {
                                     "type": "leaf",
@@ -40,19 +40,19 @@
                                         "activeView": "oledDisplay",
                                         "id": "7"
                                     },
-                                    "size": 657
+                                    "size": 595
                                 }
                             ],
-                            "size": 1076
+                            "size": 1073
                         }
                     ],
-                    "size": 1067
+                    "size": 966
                 }
             ],
-            "size": 1585
+            "size": 1581
         },
-        "width": 1585,
-        "height": 1067,
+        "width": 1581,
+        "height": 966,
         "orientation": "VERTICAL"
     },
     "panels": {
@@ -78,5 +78,5 @@
             "title": "SSD1306 OLED Display (128x64)"
         }
     },
-    "activeGroup": "1"
+    "activeGroup": "7"
 }

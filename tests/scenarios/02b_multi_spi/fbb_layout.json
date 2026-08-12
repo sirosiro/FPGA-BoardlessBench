@@ -81,8 +81,11 @@
         },
         "spiAdcPanel": {
             "id": "spiAdcPanel",
-            "contentComponent": "spiAdcPanel",
-            "title": "SPI ADC (12-bit)"
+            "contentComponent": "genericPeripheralPane",
+            "params": {
+                "pluginId": "microchip,mcp3208"
+            },
+            "title": "Microchip MCP3208 8-Ch SPI ADC (12-bit)"
         }
     },
     "activeGroup": "6"

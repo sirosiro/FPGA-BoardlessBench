@@ -441,7 +441,7 @@ graph TD
 - **実物理アドレスの強制マッピング（Mコア/MAP_FIXED_NOREPLACE）**: ベアメタルやRTOSファームウェアで用いられる直接のポインタ操作（物理アドレス直書き）に対し、`libfpgashim.so` の起動コンストラクタが `mmap(MAP_FIXED_NOREPLACE)`（および `MAP_FIXED` への自動フォールバック）を実行することで、ホストLinuxのプロセス仮想空間上に実機と同じアドレスマップを安全に構築し、セグメンテーション違反や他マッピングの意図しない上書きを防止しつつ仮想FPGAへルーティングします。
 - **マルチデバイス・マルチバス対応**: 複数のI2Cバスの個別識別や、UART通信のPTYリダイレクト（TCPブリッジ経由でのコンソール対話）、SoC規模（最大118チャネル）の双方向GPIOエミュレーションをサポートします。
 - **RTL統合シミュレーション**: [Verilator](./docs/architecture/AddInfo_verilator.md) を用いた高速なRTLシミュレーションをサポートし、共有メモリ経由でレジスタ値を同期します。
-- **Webダッシュボード**: Webベースのインターフェース（ポート 8080）を介して、レジスタやGPIOの入出力状態をリアルタイムで監視・操作できます。VS Codeライクなドッキングレイアウト（Dockview）を採用し、閉じたペインを個別復元できる **`+ Add Pane` プルダウンメニュー** や、ペリフェラル未接続時の **`Virtual Peripheral View` スタンバイ画面**、レジスタの変化履歴を可視化する **Register State Tracer** を備えています。
+- **Webダッシュボード**: Webベースのインターフェース（ポート 8080）を介して、レジスタやGPIOの入出力状態をリアルタイムで監視・操作できます。VS Codeライクなドッキングレイアウト（Dockview）を採用し、閉じたペインを個別復元できる **`+ Add Pane` プルダウンメニュー** や、ペリフェラル未接続時の **`Virtual Peripheral View` スタンバイ画面**、レジスタの変化履歴を可視化する **Register State Tracer**、および `fbb-plugin.json` / `board.svg` に基づく **汎用ペリフェラルビュー (`GenericPeripheralPane`)** を備えています。デフォルトで 1:1 実基板ベクター画像 (`[PCB Board]`) を表示し、50%〜400% のズーム操作時にマウスのクリック＆ドラッグによる自由な視点移動（パンニング）に対応しています。
   * **標準レジスタ/GPIO監視画面 (例: `S01_cpp_lfsr_sequencer` シナリオ)**
     ![FPGA-BoardlessBench (F-BB) Dashboard](docs/assets/dashboard.png)
 - **HDMI プレビュー出力エミュレーション**: DRM/KMS 経由での物理モニターへの出力と、ダンプファイル（`/tmp/hdmi_output.bmp`）を介したダッシュボード上へのリアルタイムプレビューに対応しています。ホスト環境と実機評価ボード環境を同一コードで透過的にサポートし、ダッシュボード上でピクセル等倍〜1600%のズーム・スクロール操作が可能です。
@@ -474,25 +474,20 @@ F-BBは、ハードウェア記述言語（RTL）から、低レイヤーのシ�
 
 | 言語分類 | 拡張子 | ファイル数 | 総行数 | 主な構成要素と役割 |
 | :--- | :---: | :---: | :---: | :--- |
-| 言語分類 | 拡張子 | ファイル数 | 総行数 | 主な構成要素と役割 |
-| :--- | :---: | :---: | :---: | :--- |
-| **C/C++** | `.cpp` / `.hpp` / `.c` / `.h` / `.template` | 94 | **14,208行** | システムコール横取り（C Shimテンプレート含む）のランタイム、周辺デバイス抽象クラス・エミュレータ、およびファームウェアテストコード |
+| **C/C++** | `.cpp` / `.hpp` / `.c` / `.h` / `.template` | 106 | **31,934行** | システムコール横取り（C Shimテンプレート含む）のランタイム、周辺デバイス抽象クラス・エミュレータ、およびファームウェアテストコード |
 | **Python** | `.py` | 12 | **2,123行** | DTSパース・コード自動生成エンジン（`vfpga` パッケージ）、PPAプラグイン動的発見エンジン、ノードラベル保持・重複自動解消、およびバックエンド制御スクリプト |
-| **JavaScript / React** | `.jsx` / `.js` / `.css` / `.html` | 19 | **4,410行** | Webダッシュボードサーバー（Express）、Vite + React 19 のフロントエンド UI（Dockview レイアウト、Recharts グラフ描画、DTS Visualizer メモリマップ、汎用ペイン規格 `GenericPeripheralPane`） |
+| **JavaScript / React** | `.jsx` / `.js` / `.css` / `.html` | 18 | **4,404行** | Webダッシュボードサーバー（Express）、Vite + React 19 のフロントエンド UI（Dockview レイアウト、Recharts グラフ描画、DTS Visualizer メモリマップ、汎用ペイン規格 `GenericPeripheralPane`） |
 | **Verilog** | `.v` | 21 | **1,147行** | シミュレーション対象の FPGA ハードウェア記述（RTLモックやシナリオ固有のロジック） |
 | **Device Tree (DTS)** | `.dts` / `.dtsi` | 38 | **943行** | 仮想デバイス仕様の定義（アドレスマップ、レジスタ名、メーカー提供 `.dtsi` 定義、ペリフェラル構成） |
-| **JSON / Manifest** | `.json` | 28 | **6,527行** | PPAペリフェラルマニフェスト (`fbb-plugin.json`)、ボード構造メタデータ、UARTマッピング設定 |
+| **JSON / Manifest** | `.json` | 30 | **6,639行** | PPAペリフェラルマニフェスト (`fbb-plugin.json`)、ボード構造メタデータ、UARTマッピング設定 |
 | **Shell Script** | `.sh` | 34 | **1,213行** | テスト一括実行ランナー（`run_tests.sh`）、およびラボ起動ランナー（`start_lab.sh`） |
 | **Rust** | `.rs` | 9 | **417行** | Mコア用ベアメタル・リアルタイムOSファームウェア（Rust対応シナリオ、※自動生成される `fbb_pac.rs` は除く） |
-| **合計 (Total)** | **-** | **255** | **30,988行** | **F-BB プラットフォーム全体の静的ソースコード総数** |
+| **合計 (Total)** | **-** | **268** | **48,820行** | **F-BB プラットフォーム全体の静的ソースコード総数** |
 
-> **前回からの比較と増減 (PPA 4.0 HUB75 64x64 / 128x64 デイジーチェーン RGB LED マトリクス・プラグイン、シナリオ 06b / 06c、および自立型オーバーレイオフセット設計の確立)**
-> PPA 4.0 公式プラグイン `generic_hub75_matrix64x64` ([`src/peripherals/official_plugins/generic_hub75_matrix64x64/`](src/peripherals/official_plugins/generic_hub75_matrix64x64/))、64x64 単体マトリクスシナリオ 06b ([`06b_hub75_matrix_64x64`](tests/scenarios/06b_hub75_matrix_64x64/README.md))、128x64 デイジーチェーンシナリオ 06c ([`06c_hub75_matrix_daisy_chain`](tests/scenarios/06c_hub75_matrix_daisy_chain/README.md)) の追加、並びに自立型オーバーレイオフセット設計、`parseGrid` 型安全化、基板 SVG `viewBox` パース化、および非 GPIO UIO 排除フィルタ `isGpioDev` の導入に伴い、プラットフォーム全域の静的ソースコード統計は **256ファイル / 31,396行** に拡大しました：
-> - **公式プラグイン `generic_hub75_matrix64x64`**: +4ファイル（`fbb-plugin.json`, `board.svg`, `hub75_matrix.dtsi`, `hub75_matrix.cpp`）
-> - **Scenario 06b (`06b_hub75_matrix_64x64`)**: +5ファイル（`config.dts`, `vfpga_top.v`, `main.cpp`, `fbb_layout.json`, `README.md`）
-> - **Scenario 06c (`06c_hub75_matrix_daisy_chain`)**: +5ファイル（`config.dts`, `vfpga_top.v`, `main.cpp`, `fbb_layout.json`, `README.md`）
-> - **PPA 4.0 デイジーチェーン / マトリクスエンジン＆基板アセット**: 128x64 RGB24 フレームバッファパース、ウルトラワイドフォント描画、および `board.svg` ベクターアセットの追加
-> - **ダッシュボード UI ＆ 型安全化改修**: `GenericPeripheralPane.jsx` 自立型 `overlay_offset` ・ `viewBox` パース化、`DashboardContext.jsx` / `GpioPanel.jsx` の `isGpioDev` フィルタ追加、および `server.js` SDカード絶対パス結合バグ修正
+> **前回からの比較と増減 (PPA 5.0 データ駆動インターフェース改修、デフォルト PCB View 化、ズーム時マウスドラッグパンニング、およびプロバイダ通信適正化)**
+> PPA 5.0 仕様に基づく汎用ペリフェラルビュー (`GenericPeripheralPane.jsx`) のデフォルト `[PCB Board]` 表示化、50%〜400% 拡大時のマウスドラッグパンニング（自由視点移動）の実装、`DashboardContext.jsx` での Socket.IO オブジェクトエクスポート適正化、および `libfpgashim.c` の SPI デバイス判定 (`is_spi_device`) フック正常化に伴い、プラットフォーム全域の静的ソースコード統計は **268ファイル / 48,820行** に整理更新されました：
+> - **ダッシュボード UI ＆ 通信層改修**: `GenericPeripheralPane.jsx` の `[PCB Board]` デフォルト表示化、ズーム時マウスドラッグパンニング実装、`DashboardContext.jsx` の `socket` エクスポート正常化
+> - **C++ Shim / 共有メモリ基盤改修**: `libfpgashim.c` の `/dev/spidevX.Y` パスフック（`is_spi_device`）正規化、`server.js` の共有メモリ動的作成・サイズ拡張および `broadcastRegisters(true)` 連動
 
 > **コード生成エンジンによる動的コード**
 > F-BBの設計上、上記の静的コードに加えて、DTSを読み込んだ際に Python スクリプトが、外部テンプレート `libfpgashim.c.template` を基にして **C言語 Shim (`libfpgashim.c` / 約680行)** を生成するほか、**C++ シミュレーションラッパー (`sim_main.cpp` / 約100行)**、**Verilog スケルトン (`vfpga_top.v` / 約40行)**、**Rust PAC (`fbb_pac.rs` / 約80行)** などをビルド時に自動生成します。

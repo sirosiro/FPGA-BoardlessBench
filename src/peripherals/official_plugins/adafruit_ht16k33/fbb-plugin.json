@@ -15,7 +15,7 @@
         "title": "Adafruit 4-Digit 7-Segment LED (Red)",
         "board_svg": "board.svg",
         "controls": [
-          { "type": "7seg_display", "name": "display_7seg", "digits": 4, "has_colon": true, "color": "red" }
+          { "type": "segment_array", "name": "display_7seg", "digit_count": 4, "has_colon": true, "color": "red" }
         ]
       }
     },
@@ -90,7 +90,7 @@
         "title": "Adafruit 4-Digit 7-Segment LED",
         "board_svg": "board.svg",
         "controls": [
-          { "type": "7seg_display", "name": "display_7seg", "digits": 4, "has_colon": true, "color": "red" }
+          { "type": "segment_array", "name": "display_7seg", "digit_count": 4, "has_colon": true, "color": "red" }
         ]
       }
     }

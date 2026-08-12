@@ -14,12 +14,19 @@
       "ui_widget": {
         "title": "HUB75 64x64 RGB LED Matrix Panel",
         "board_svg": "board.svg",
+        "overlay_offset": {
+          "left": "25.833%",
+          "top": "7.778%",
+          "width": "63.333%",
+          "height": "84.444%"
+        },
         "controls": [
           {
-            "type": "matrix_canvas",
+            "type": "framebuffer",
             "name": "HUB75 64x64 RGB LED Panel",
             "grid_size": [64, 64],
             "format": "rgb24",
+            "render_mode": "led_matrix",
             "shm_file": "fbb_hub75_0",
             "glow": true
           }

@@ -179,6 +179,9 @@ int main() {
                         uint16_t val = ((rx_loop[1] & 0x0F) << 8) | rx_loop[2];
                         if (last_vals[ch] == 9999) {
                             last_vals[ch] = val;
+                            if (uio_regs != nullptr) {
+                                uio_regs[ch] = val;
+                            }
                         } else if (val != last_vals[ch]) {
                             double voltage = (val / 4095.0) * 3.3;
                             char log_buf[128];

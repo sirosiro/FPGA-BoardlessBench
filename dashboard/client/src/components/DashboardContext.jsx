@@ -25,7 +25,6 @@ export const DashboardProvider = ({ children }) => {
     socket.on('connect', () => setConnected(true));
     socket.on('disconnect', () => setConnected(false));
     socket.on('registers', (data) => {
-      console.log("[Client Debug] Received registers:", data);
       setRegisters(data);
     });
     socket.on('uart-init', (data) => {
@@ -123,6 +122,7 @@ export const DashboardProvider = ({ children }) => {
   return (
     <DashboardContext.Provider
       value={{
+        socket,
         registers,
         connected,
         manifest,

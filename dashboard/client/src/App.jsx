@@ -7,7 +7,6 @@ import GpioPanel from './components/GpioPanel';
 import UartTerminal from './components/UartTerminal';
 import RegisterTracer from './components/RegisterTracer';
 import HdmiOutput from './components/HdmiOutput';
-import SpiAdcPanel from './components/SpiAdcPanel';
 import SdCardPanel from './components/SdCardPanel';
 import DtsVisualizer from './components/DTSVisualizer';
 import GenericPeripheralPane from './components/GenericPeripheralPane';
@@ -22,7 +21,7 @@ const components = {
   registerTracer: (props) => <RegisterTracer {...props} />,
   uartTerminal: (props) => <UartTerminal {...props} />,
   hdmiOutput: (props) => <HdmiOutput {...props} />,
-  spiAdcPanel: (props) => <SpiAdcPanel {...props} />,
+  spiAdcPanel: (props) => <GenericPeripheralPane {...props} />,
   oledDisplay: (props) => <GenericPeripheralPane {...props} />,
   seg7Display: (props) => <GenericPeripheralPane {...props} />,
   sdCard: (props) => <SdCardPanel {...props} />,
@@ -148,41 +147,27 @@ function DashboardInner() {
       },
     });
 
-    // 3b. Add spiAdcPanel within gpioPanel group (as a tab)
-    api.addPanel({
-      id: 'spiAdcPanel',
-      component: 'spiAdcPanel',
-      title: 'SPI ADC (12-bit)',
-      position: {
-        referencePanel: 'gpioPanel',
-        direction: 'within',
-      },
-    });
-
-    // 3c. Add generic peripheral panes for all PPA 3.0/4.0 slaves
+    // 3c. Add generic peripheral panes for all PPA slaves
     const i2cSlaves = manifest?.devices?.flatMap(d => d.i2c_slaves || []) || [];
     const spiSlavesInit = manifest?.devices?.flatMap(d => d.spi_slaves || []) || [];
     const directDevicesInit = manifest?.devices?.filter(d => d.ui_widget || d.compatible?.includes('hub75')) || [];
     const allSlavesInit = [...i2cSlaves, ...spiSlavesInit, ...directDevicesInit];
     allSlavesInit.forEach((s, idx) => {
-      const isLegacySpiAdc = s.compatible?.includes('mcp3208');
-      if (!isLegacySpiAdc) {
-        const pTitle = s.ui_widget?.title || s.name || 'Generic Peripheral';
-        const pId = `generic_peripheral_${s.name || idx}_${idx}`;
-        api.addPanel({
-          id: pId,
-          component: 'genericPeripheralPane',
-          title: pTitle,
-          params: {
-            pluginId: s.compatible,
-            manifest: s
-          },
-          position: {
-            referencePanel: 'gpioPanel',
-            direction: 'within',
-          },
-        });
-      }
+      const pTitle = s.ui_widget?.title || s.name || 'Generic Peripheral';
+      const pId = `generic_peripheral_${s.name || idx}_${idx}`;
+      api.addPanel({
+        id: pId,
+        component: 'genericPeripheralPane',
+        title: pTitle,
+        params: {
+          pluginId: s.compatible,
+          manifest: s
+        },
+        position: {
+          referencePanel: 'gpioPanel',
+          direction: 'within',
+        },
+      });
     });
 
     // 3d. Add sdCard within gpioPanel group (as a tab)

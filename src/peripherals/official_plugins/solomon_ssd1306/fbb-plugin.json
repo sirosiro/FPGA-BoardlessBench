@@ -15,13 +15,20 @@
         "title": "SSD1306 OLED Display (128x64)",
         "board_svg": "board.svg",
         "overlay_offset": {
-          "left": "8.214%",
-          "top": "16.786%",
-          "width": "83.571%",
-          "height": "43.571%"
+          "left": "13.25%",
+          "top": "20.0%",
+          "width": "73.5%",
+          "height": "36.75%"
         },
         "controls": [
-          { "type": "canvas_stream", "name": "display", "width": 128, "height": 64, "format": "mono_raw" }
+          { 
+            "type": "framebuffer", 
+            "name": "display", 
+            "width": 128, 
+            "height": 64, 
+            "format": "mono_page_8",
+            "palette": { "bg": "#040604", "fg": "#00ff50" }
+          }
         ]
       }
     }
