@@ -33,8 +33,8 @@
   - 観測対象レジスタの変化履歴を Recharts で可視化した時系列ラインチャート。凡例クリックによる表示トグルをサポート。
 - **`components/HdmiOutput.jsx`**: 
   - 仮想ビデオディスプレイ/HDMIコントローラから出力されるピクセルデータを画面にリアルタイム描画するパネル。
-- **`components/OledDisplay.jsx`**: 
-  - I2C OLEDディスプレイ（SSD1306など）のエミュレーション画面を表示するパネル。
+- **`components/GenericPeripheralPane.jsx`**: 
+  - PPA 4.0 共通ペリフェラルパネル。OLED, 7セグメント, HUB75 RGB LEDマトリクス, 1:1 実基板ベクター SVG オーバーレイ表示を宣言型マニフェストから自動レンダリング。
 - **`components/SdCardPanel.jsx`**: 
   - 仮想SDカードの挿入ステータス監視、ファイル一覧の表示、ファイルのダウンロード・アップロードなどのファイル管理操作を提供するパネル。
 - **`components/SpiAdcPanel.jsx`**: 

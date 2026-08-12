@@ -478,13 +478,13 @@ F-BBは、ハードウェア記述言語（RTL）から、低レイヤーのシ�
 | :--- | :---: | :---: | :---: | :--- |
 | **C/C++** | `.cpp` / `.hpp` / `.c` / `.h` / `.template` | 94 | **14,208行** | システムコール横取り（C Shimテンプレート含む）のランタイム、周辺デバイス抽象クラス・エミュレータ、およびファームウェアテストコード |
 | **Python** | `.py` | 12 | **2,123行** | DTSパース・コード自動生成エンジン（`vfpga` パッケージ）、PPAプラグイン動的発見エンジン、ノードラベル保持・重複自動解消、およびバックエンド制御スクリプト |
-| **JavaScript / React** | `.jsx` / `.js` / `.css` / `.html` | 20 | **4,818行** | Webダッシュボードサーバー（Express）、Vite + React 19 のフロントエンド UI（Dockview レイアウト、Recharts グラフ描画、DTS Visualizer メモリマップ、汎用ペイン規格 `GenericPeripheralPane`） |
+| **JavaScript / React** | `.jsx` / `.js` / `.css` / `.html` | 19 | **4,410行** | Webダッシュボードサーバー（Express）、Vite + React 19 のフロントエンド UI（Dockview レイアウト、Recharts グラフ描画、DTS Visualizer メモリマップ、汎用ペイン規格 `GenericPeripheralPane`） |
 | **Verilog** | `.v` | 21 | **1,147行** | シミュレーション対象の FPGA ハードウェア記述（RTLモックやシナリオ固有のロジック） |
 | **Device Tree (DTS)** | `.dts` / `.dtsi` | 38 | **943行** | 仮想デバイス仕様の定義（アドレスマップ、レジスタ名、メーカー提供 `.dtsi` 定義、ペリフェラル構成） |
 | **JSON / Manifest** | `.json` | 28 | **6,527行** | PPAペリフェラルマニフェスト (`fbb-plugin.json`)、ボード構造メタデータ、UARTマッピング設定 |
 | **Shell Script** | `.sh` | 34 | **1,213行** | テスト一括実行ランナー（`run_tests.sh`）、およびラボ起動ランナー（`start_lab.sh`） |
 | **Rust** | `.rs` | 9 | **417行** | Mコア用ベアメタル・リアルタイムOSファームウェア（Rust対応シナリオ、※自動生成される `fbb_pac.rs` は除く） |
-| **合計 (Total)** | **-** | **256** | **31,396行** | **F-BB プラットフォーム全体の静的ソースコード総数** |
+| **合計 (Total)** | **-** | **255** | **30,988行** | **F-BB プラットフォーム全体の静的ソースコード総数** |
 
 > **前回からの比較と増減 (PPA 4.0 HUB75 64x64 / 128x64 デイジーチェーン RGB LED マトリクス・プラグイン、シナリオ 06b / 06c、および自立型オーバーレイオフセット設計の確立)**
 > PPA 4.0 公式プラグイン `generic_hub75_matrix64x64` ([`src/peripherals/official_plugins/generic_hub75_matrix64x64/`](src/peripherals/official_plugins/generic_hub75_matrix64x64/))、64x64 単体マトリクスシナリオ 06b ([`06b_hub75_matrix_64x64`](tests/scenarios/06b_hub75_matrix_64x64/README.md))、128x64 デイジーチェーンシナリオ 06c ([`06c_hub75_matrix_daisy_chain`](tests/scenarios/06c_hub75_matrix_daisy_chain/README.md)) の追加、並びに自立型オーバーレイオフセット設計、`parseGrid` 型安全化、基板 SVG `viewBox` パース化、および非 GPIO UIO 排除フィルタ `isGpioDev` の導入に伴い、プラットフォーム全域の静的ソースコード統計は **256ファイル / 31,396行** に拡大しました：

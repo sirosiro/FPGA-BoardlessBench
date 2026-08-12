@@ -181,9 +181,125 @@ function MatrixCanvas({ ctrl, frameData, slaveData, fullHeight = false, fitInsid
   );
 }
 
+function OledCanvas({ frameData, fullHeight = false, fitInside = false }) {
+  const canvasRef = React.useRef(null);
+
+  React.useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) return;
+
+    const width = 128;
+    const height = 64;
+    if (canvas.width !== width) canvas.width = width;
+    if (canvas.height !== height) canvas.height = height;
+
+    const imgData = ctx.createImageData(width, height);
+    for (let i = 0; i < imgData.data.length; i += 4) {
+      imgData.data[i] = 12;
+      imgData.data[i + 1] = 24;
+      imgData.data[i + 2] = 12;
+      imgData.data[i + 3] = 255;
+    }
+
+    if (frameData) {
+      try {
+        const binaryString = atob(frameData);
+        const buffer = new Uint8Array(binaryString.length);
+        for (let i = 0; i < binaryString.length; i++) {
+          buffer[i] = binaryString.charCodeAt(i);
+        }
+
+        for (let page = 0; page < 8; page++) {
+          for (let col = 0; col < 128; col++) {
+            const byteIdx = page * 128 + col;
+            if (byteIdx >= buffer.length) break;
+
+            const byte = buffer[byteIdx];
+            for (let bit = 0; bit < 8; bit++) {
+              if ((byte & (1 << bit)) !== 0) {
+                const x = col;
+                const y = page * 8 + bit;
+                const pixelIdx = (y * width + x) * 4;
+                imgData.data[pixelIdx] = 0;
+                imgData.data[pixelIdx + 1] = 255;
+                imgData.data[pixelIdx + 2] = 80;
+                imgData.data[pixelIdx + 3] = 255;
+              }
+            }
+          }
+        }
+      } catch (e) {}
+    }
+
+    ctx.putImageData(imgData, 0, 0);
+  }, [frameData]);
+
+  if (fitInside) {
+    return (
+      <canvas
+        ref={canvasRef}
+        width={128}
+        height={64}
+        style={{
+          width: '100%',
+          height: '100%',
+          aspectRatio: '128 / 64',
+          objectFit: 'fill',
+          borderRadius: '2px',
+          backgroundColor: '#040604',
+          boxSizing: 'border-box',
+          display: 'block',
+          imageRendering: 'pixelated'
+        }}
+      />
+    );
+  }
+
+  return (
+    <div style={{
+      display: 'flex',
+      flexDirection: 'column',
+      alignItems: 'center',
+      justifyContent: 'center',
+      height: fullHeight ? '100%' : 'auto',
+      flex: fullHeight ? 1 : 'none',
+      backgroundColor: '#090d16',
+      padding: '12px',
+      borderRadius: '6px',
+      border: '1px solid #1e293b',
+      boxSizing: 'border-box',
+      overflow: 'hidden'
+    }}>
+      <div style={{ width: '100%', fontSize: '11px', color: '#94a3b8', marginBottom: '8px', display: 'flex', justifyContent: 'space-between' }}>
+        <span>SSD1306 OLED Display</span>
+        <span style={{ fontFamily: 'monospace', color: '#38bdf8' }}>128x64 Mono</span>
+      </div>
+      <canvas
+        ref={canvasRef}
+        width={128}
+        height={64}
+        style={{
+          maxHeight: fullHeight ? 'calc(100% - 30px)' : '320px',
+          maxWidth: '100%',
+          width: fullHeight ? 'auto' : '100%',
+          height: fullHeight ? '100%' : 'auto',
+          aspectRatio: '128 / 64',
+          objectFit: 'contain',
+          borderRadius: '4px',
+          backgroundColor: '#040604',
+          border: '1px solid #1e293b',
+          imageRendering: 'pixelated'
+        }}
+      />
+    </div>
+  );
+}
+
 function GenericPeripheralPane(props) {
   const { pluginId, params, manifest: propManifest } = props;
-  const { manifest: globalManifest, peripheralFrames, display7SegFrame } = useDashboard();
+  const { manifest: globalManifest, peripheralFrames, display7SegFrame, displayFrame } = useDashboard();
 
   const topDevices = globalManifest?.devices?.filter(d => d.ui_widget || d.compatible) || [];
   const i2cSlaves = globalManifest?.devices?.flatMap(d => d.i2c_slaves || []) || [];
@@ -221,11 +337,15 @@ function GenericPeripheralPane(props) {
 
   const hasMatrix = controls.some(c => c.type === 'matrix_canvas' || c.type === 'matrix');
   const matrixCtrl = controls.find(c => c.type === 'matrix_canvas' || c.type === 'matrix');
+  const hasOled = controls.some(c => c.type === 'canvas_stream' || c.type === 'oled') || Boolean(slaveData?.compatible?.includes('ssd1306'));
+  const oledCtrl = controls.find(c => c.type === 'canvas_stream' || c.type === 'oled');
+
   const shmNameFromSlave = slaveData?.shm_name || slaveData?.extra_props?.shm_name || slaveData?.shm_path?.replace('/dev/shm/', '');
   const targetShmFile = shmNameFromSlave || matrixCtrl?.shm_file || 'fbb_hub75_0';
   const shmFrame = peripheralFrames[targetShmFile] || peripheralFrames['/dev/shm/' + targetShmFile] || peripheralFrames[matrixCtrl?.shm_file] || peripheralFrames['fbb_hub75_0'];
+  const oledFrame = displayFrame || peripheralFrames['fbb_oled_0'] || peripheralFrames['/dev/shm/fbb_oled_0'] || peripheralFrames['fbb_i2c_oled'] || shmFrame;
 
-  const [viewMode, setViewMode] = useState(hasMatrix ? 'display' : 'board');
+  const [viewMode, setViewMode] = useState((hasMatrix || hasOled) ? 'display' : 'board');
   const [zoom, setZoom] = useState(100);
   const [controlValues, setControlValues] = useState({});
 
@@ -313,7 +433,7 @@ function GenericPeripheralPane(props) {
             </button>
           </div>
 
-          {slaveData?.ui_widget?.board_svg_content && hasMatrix && (
+          {slaveData?.ui_widget?.board_svg_content && (hasMatrix || hasOled) && (
             <div style={{ display: 'flex', background: '#0f172a', padding: '2px', borderRadius: '4px', border: '1px solid #334155' }}>
               <button
                 onClick={() => setViewMode('display')}
@@ -381,7 +501,7 @@ function GenericPeripheralPane(props) {
                 display: 'flex', 
                 justifyContent: 'center',
                 backgroundColor: '#090d16',
-                padding: '8px',
+                padding: '0px',
                 border: '1px solid #1e293b',
                 width: '100%',
                 maxWidth: '520px',
@@ -447,6 +567,30 @@ function GenericPeripheralPane(props) {
                 </div>
               );
             })()}
+
+            {/* Embedded OledCanvas overlay inside PCB Board Screen window */}
+            {hasOled && (() => {
+              const defaultOledOffset = { left: '8.214%', top: '16.786%', width: '83.571%', height: '43.571%' };
+              const offset = oledCtrl?.overlay_offset || slaveData?.overlay_offset || slaveData?.ui_widget?.overlay_offset || defaultOledOffset;
+              return (
+                <div style={{
+                  position: 'absolute',
+                  left: offset.left || '8.214%',
+                  top: offset.top || '16.786%',
+                  width: offset.width || '83.571%',
+                  height: offset.height || '43.571%',
+                  display: 'flex',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  overflow: 'hidden',
+                  borderRadius: '3px',
+                  pointerEvents: 'none',
+                  boxSizing: 'border-box'
+                }}>
+                  <OledCanvas frameData={oledFrame} fitInside />
+                </div>
+              );
+            })()}
           </div>
         );
       })()}
@@ -485,22 +629,9 @@ function GenericPeripheralPane(props) {
                 );
               }
 
-              if (ctrl.type === 'canvas_stream') {
+              if ((ctrl.type === 'canvas_stream' || ctrl.type === 'oled') && viewMode === 'display') {
                 return (
-                  <div key={idx} style={{ backgroundColor: '#000', padding: '8px', borderRadius: '4px', textAlign: 'center' }}>
-                    <div style={{ fontSize: '11px', color: '#64748b', marginBottom: '4px' }}>{ctrl.name} (Realtime Framebuffer)</div>
-                    <canvas
-                      width={ctrl.width || 128}
-                      height={ctrl.height || 64}
-                      style={{
-                        border: '1px solid #334155',
-                        imageRendering: 'pixelated',
-                        width: '100%',
-                        maxHeight: '180px',
-                        backgroundColor: '#050505'
-                      }}
-                    />
-                  </div>
+                  <OledCanvas key={idx} frameData={oledFrame} fullHeight={true} />
                 );
               }
 

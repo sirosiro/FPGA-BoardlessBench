@@ -63,18 +63,17 @@
         },
         "seg7Display": {
             "id": "seg7Display",
-            "contentComponent": "oledDisplay",
+            "contentComponent": "genericPeripheralPane",
             "params": {
-                "type": "seg7",
-                "pluginId": "adafruit_ht16k33"
+                "pluginId": "adafruit,ht16k33-red"
             },
             "title": "Adafruit 4-Digit 7-Segment LED (Red)"
         },
         "oledDisplay": {
             "id": "oledDisplay",
-            "contentComponent": "oledDisplay",
+            "contentComponent": "genericPeripheralPane",
             "params": {
-                "type": "oled"
+                "pluginId": "solomon,ssd1306"
             },
             "title": "SSD1306 OLED Display (128x64)"
         }

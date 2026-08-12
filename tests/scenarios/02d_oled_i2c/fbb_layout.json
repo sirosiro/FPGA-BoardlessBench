@@ -46,8 +46,11 @@
         },
         "oledDisplay": {
             "id": "oledDisplay",
-            "contentComponent": "oledDisplay",
-            "title": "Virtual OLED"
+            "contentComponent": "genericPeripheralPane",
+            "params": {
+                "pluginId": "solomon,ssd1306"
+            },
+            "title": "SSD1306 OLED Display (128x64)"
         }
     },
     "activeGroup": "3"

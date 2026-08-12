@@ -14,6 +14,12 @@
       "ui_widget": {
         "title": "SSD1306 OLED Display (128x64)",
         "board_svg": "board.svg",
+        "overlay_offset": {
+          "left": "8.214%",
+          "top": "16.786%",
+          "width": "83.571%",
+          "height": "43.571%"
+        },
         "controls": [
           { "type": "canvas_stream", "name": "display", "width": 128, "height": 64, "format": "mono_raw" }
         ]

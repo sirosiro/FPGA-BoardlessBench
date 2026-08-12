@@ -8,7 +8,6 @@ import UartTerminal from './components/UartTerminal';
 import RegisterTracer from './components/RegisterTracer';
 import HdmiOutput from './components/HdmiOutput';
 import SpiAdcPanel from './components/SpiAdcPanel';
-import OledDisplay from './components/OledDisplay';
 import SdCardPanel from './components/SdCardPanel';
 import DtsVisualizer from './components/DTSVisualizer';
 import GenericPeripheralPane from './components/GenericPeripheralPane';
@@ -24,8 +23,8 @@ const components = {
   uartTerminal: (props) => <UartTerminal {...props} />,
   hdmiOutput: (props) => <HdmiOutput {...props} />,
   spiAdcPanel: (props) => <SpiAdcPanel {...props} />,
-  oledDisplay: (props) => <OledDisplay {...props} />,
-  seg7Display: (props) => <OledDisplay {...props} type="seg7" />,
+  oledDisplay: (props) => <GenericPeripheralPane {...props} />,
+  seg7Display: (props) => <GenericPeripheralPane {...props} />,
   sdCard: (props) => <SdCardPanel {...props} />,
   dtsVisualizer: (props) => <DtsVisualizer {...props} />,
   genericPeripheralPane: (props) => <GenericPeripheralPane {...props} />,
@@ -62,13 +61,16 @@ function DashboardInner() {
         if (layoutData && Object.keys(layoutData).length > 0) {
           // Remap stale UART device names in saved layout to actual manifest UARTs
           const validUartNames = (manifest?.uarts || []).map(u => u.name);
-          if (validUartNames.length > 0 && layoutData.panels) {
+          if (layoutData.panels) {
             Object.values(layoutData.panels).forEach(panel => {
               if (panel.contentComponent === 'uartTerminal' && panel.params?.deviceName) {
-                if (!validUartNames.includes(panel.params.deviceName)) {
+                if (validUartNames.length > 0 && !validUartNames.includes(panel.params.deviceName)) {
                   panel.params.deviceName = validUartNames[0];
                   panel.title = `UART: ${validUartNames[0]}`;
                 }
+              }
+              if (panel.contentComponent === 'oledDisplay' || panel.contentComponent === 'seg7Display') {
+                panel.contentComponent = 'genericPeripheralPane';
               }
             });
           }
@@ -157,46 +159,14 @@ function DashboardInner() {
       },
     });
 
-    // 3c. Add oledDisplay within gpioPanel group (as a tab)
-    const oledPanel = api.addPanel({
-      id: 'oledDisplay',
-      component: 'oledDisplay',
-      title: 'SSD1306 OLED Display (128x64)',
-      position: {
-        referencePanel: 'gpioPanel',
-        direction: 'within',
-      },
-    });
-
-    // 3c2. Add seg7Display as a separate dedicated peripheral panel
+    // 3c. Add generic peripheral panes for all PPA 3.0/4.0 slaves
     const i2cSlaves = manifest?.devices?.flatMap(d => d.i2c_slaves || []) || [];
-    const seg7Slave = i2cSlaves.find(s => s.compatible?.includes('ht16k33'));
-    if (seg7Slave) {
-      api.addPanel({
-        id: 'seg7Display',
-        component: 'oledDisplay',
-        title: seg7Slave.ui_widget?.title || 'Adafruit 4-Digit 7-Segment LED (Red)',
-        params: {
-          type: 'seg7',
-          pluginId: 'adafruit_ht16k33',
-          manifest: seg7Slave
-        },
-        position: {
-          referencePanel: 'oledDisplay',
-          direction: 'within', // Added as a tab or side-by-side
-        },
-      });
-    }
-
-    // 3c3. Add generic peripheral panes for any custom PPA 3.0/4.0 slaves
     const spiSlavesInit = manifest?.devices?.flatMap(d => d.spi_slaves || []) || [];
     const directDevicesInit = manifest?.devices?.filter(d => d.ui_widget || d.compatible?.includes('hub75')) || [];
     const allSlavesInit = [...i2cSlaves, ...spiSlavesInit, ...directDevicesInit];
     allSlavesInit.forEach((s, idx) => {
-      const isLegacyOled = s.compatible?.includes('ssd1306');
-      const isLegacySeg7 = s.compatible?.includes('ht16k33');
       const isLegacySpiAdc = s.compatible?.includes('mcp3208');
-      if (!isLegacyOled && !isLegacySeg7 && !isLegacySpiAdc) {
+      if (!isLegacySpiAdc) {
         const pTitle = s.ui_widget?.title || s.name || 'Generic Peripheral';
         const pId = `generic_peripheral_${s.name || idx}_${idx}`;
         api.addPanel({
