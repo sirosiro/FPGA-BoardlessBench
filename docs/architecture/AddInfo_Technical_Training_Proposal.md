@@ -36,7 +36,7 @@ flowchart LR
 
 ---
 
-## 3. 技術研修における 3 大導入メリット (Business Value)
+## 3. 技術研修における 5 大導入メリット (Business Value)
 
 ### ① 統一された高い技術水準（ナレッジの標準化）を達成
 - ばらつきがちだった組込みLinux・デバイスドライバ・SoC開発のスキルセットを、F-BBの統一された 30 以上の標準シナリオにより、 **エンジニア全体で同一の高い技術水準** へ引き上げることができます。
@@ -46,6 +46,12 @@ flowchart LR
 
 ### ③ Webダッシュボードによる直感的でリアルタイムなハードウェア可視化
 - 1:1 実基板ベクター描画 (`[PCB Board]` モード) や、50%〜400% 拡大パンニング、レジスタ波形描画 (`RegisterTracer`) により、物理基板がなくても実物の基板を目の前で操作している感覚で、波形や信号の変化をリアルタイムに体感学習できます。
+
+### ④ 重厚な FPGA ツール不要の高速 Verilog RTL 学習・検証環境
+- 通常、Verilog RTL の学習には数十 GB 規模の巨大な FPGA 開発ツール (Vivado / Quartus) と長時間の論理合成が必要ですが、F-BB では **Verilator と GCC** を連携させることで、数秒で C++ シミュレーション化。FW 開発者だけでなく Verilog 初学者にとっても、環境構築ストレスなしに RTL 回路記述・バス IP 化・波形解析 (GTKWave) を即座に実践・修得できます。
+
+### ⑤ 業界標準 Device Tree (DTS) 駆動開発手法の修得
+- F-BB のコア軸である Device Tree (DTS) を通じて、単一の情報源 (Single Source of Truth) から C Shim テンプレート、Verilog スケルトン、Rust PAC を自動生成する現代的な組み込み Linux / SoC 開発手法を修得。DTS 構文、レジスタ基底アドレスマップ (`reg`)、割り込み定義 (`interrupts`)、`DTS Visualizer` によるアドレス空間視覚化など、実務で不可欠な仕様記述力を身につけられます。
 
 ---
 
@@ -59,9 +65,9 @@ flowchart LR
        │ (DevContainer / Git リポジトリ経由で受講者へ即時配信)
        ▼
 【受講者環境 (VS Code / Webブラウザ)】
-  ├─ 基礎コース: 生産ライン制御向け Linux UIO & SPI センサ研修
-  ├─ 応用コース: SoC 異種マルチコア (AMP) & RTOS 通信研修
-  └─ 先進コース: FPGA RTL IP & DMA 高速転送研修
+  ├─ 基礎コース: DTS 駆動開発 & Linux UIO / SPI センサ研修
+  ├─ 応用コース: Verilog RTL IP 作成 & AXI DMA 高速転送研修
+  └─ 先進コース: SoC 異種マルチコア (AMP) & RTOS 通信研修
 ```
 
 ---
@@ -75,8 +81,8 @@ flowchart LR
 | 区分 | 評価・学習項目 | F-BB上でのシミュレーション・修得範囲 | 実機環境での最終確認が必要な項目 |
 | :--- | :--- | :--- | :--- |
 | **ソフトウェア / FW** | - C/C++ / Rust ファームウェア<br>- Linux デバイスドライバ (UIO/SPI/I2C)<br>- POSIX システムコール & タスク同期 | **100% 仮想環境上で修得・動作検証可能**<br>実機と完全同一のシステムコール・ドライバコードを作成・ビルド・テスト。 | 実装したアプリケーションの長期連続稼働・耐久試験。 |
-| **ハードウェア / RTL** | - AXI バスインターフェース<br>- カスタム Verilog RTL IP 動作<br>- DMA メモリ間高速転送 | **Verilator を通じて 100% 同時シミュレーション可能**<br>バス転送タイミング、レジスタ書き換え、オーバーラン/アンダーランの事前検出。 | 物理層 (PHY) 電気規格コンプライアンス試験、クロックジッタ、熱設計、電源投入シーケンス (Power Sequencing)。 |
-| **システム / デバッグ** | - 異種マルチコア (AMP) 通信<br>- RTOS (FreeRTOS/ThreadX) 協調<br>- レジスタ状態・波形可視化 | **Web UI と連携し 100% 視覚的トレース可能**<br>共有メモリ排他制御、レジスタ変化グラフ (`RegisterTracer`) による先手デバッグ。 | 物理ボタンスイッチの機械的チャタリング (Bouncing)、実際のモーター・アクチュエータ等の物理的応答遅延。 |
+| **ハードウェア / RTL** | - Verilog RTL 回路記述 & AXI バス IP 化<br>- カスタム Verilog IP 動作<br>- DMA メモリ間高速転送 | **Verilator を通じて 100% 高速シミュレーション可能**<br>重厚な FPGA ツール不要で数秒でビルド＆テスト。波形出力 (GTKWave/FST) によるクロック単位のデバッグ。 | 物理層 (PHY) 電気規格コンプライアンス試験、クロックジッタ、熱設計、電源投入シーケンス (Power Sequencing)。 |
+| **システム / デバッグ** | - Device Tree (DTS/DTSI) 駆動開発<br>- 異種マルチコア (AMP) 通信<br>- RTOS 協調 & レジスタ状態可視化 | **Web UI と連携し 100% 視覚的トレース可能**<br>DTS レジスタマップ編集、`DTS Visualizer` によるアドレス空間把握、共有メモリ排他制御、レジスタ変化グラフ (`RegisterTracer`) による先手デバッグ。 | 物理ボタンスイッチの機械的チャタリング (Bouncing)、実際のモーター・アクチュエータ等の物理的応答遅延。 |
 
 ---
 
@@ -84,8 +90,8 @@ flowchart LR
 
 | フェーズ | 研修テーマ | 具体的な演習内容 (F-BBシナリオ) | 習得できる実務スキル |
 | :--- | :--- | :--- | :--- |
-| **Phase 1<br>(基礎編)** | **組み込みLinux・レジスタ制御 & メモリ安全デバッグ** | - `01_standard_uio` (GPIO / LED / スイッチ)<br>- `02b_multi_spi` (SPI ADC センサ値注入)<br>- **AddressSanitizer (ASan) & Guard Page デバッグ** (`AddInfo_ASan.md`, `AddInfo_GuardPage.md`) | C言語 MMIO、Linux UIOドライバ構造、SPI/I2Cレジスタアクセス、**ASan によるバッファオーバーフロー検知・Guard Page (`mprotect`) による不正アクセス遮断デバッグ** |
-| **Phase 2<br>(応用編)** | **HW/SW 協調設計・RTL IP 結合 & AXI DMA レジスタ解析** | - `06b_hub75_matrix` (ディスプレイ制御)<br>- `07_verilator_custom_ip` (RTLモック結合)<br>- `20_dma_cdma` (Zynq AXI CDMA 高速転送・エラー解析) | Verilator による RTL 共同シミュレーション、**AXI CDMA 制御/ステータスレジスタ (`CDMACR`, `CDMASR`) 設定、アライメントエラー (`DMADecErr`)・アンダーラン・オーバーランのエラー状態解析**、先手デバッグ手法 |
+| **Phase 1<br>(基礎編)** | **Device Tree (DTS) 駆動開発・組み込みLinux & メモリ安全デバッグ** | - `01_standard_uio` (GPIO / LED / スイッチ)<br>- `02b_multi_spi` (SPI ADC センサ値注入)<br>- **Device Tree (DTS) 構文・アドレスマップ編集**<br>- **AddressSanitizer (ASan) & Guard Page デバッグ** (`AddInfo_ASan.md`, `AddInfo_GuardPage.md`) | **Device Tree (DTS) レジスタアドレスマップ・割り込みノード記述**、C言語 MMIO、Linux UIOドライバ構造、SPI/I2Cレジスタアクセス、**ASan によるバッファオーバーフロー検知・Guard Page (`mprotect`) による不正アクセス遮断デバッグ** |
+| **Phase 2<br>(応用編)** | **Verilog RTL 回路設計・HW/SW 協調 & AXI DMA レジスタ解析** | - `06b_hub75_matrix` (ディスプレイ制御)<br>- `07_verilator_custom_ip` (独自 Verilog IP モック結合)<br>- `20_dma_cdma` (Zynq AXI CDMA 高速転送・エラー解析) | **Verilog RTL モジュール記述・AXI-Lite レジスタ結合**、Verilator による RTL/FW 共同シミュレーション、**GTKWave によるクロック単位の波形デバッグ**、**AXI CDMA レジスタ解析** |
 | **Phase 3<br>(先進編)** | **異種マルチコア (AMP) & RTOS 実装** | - `10_amp_mcore_freertos` (FreeRTOS 協調)<br>- `11_amp_mcore_threadx` (ThreadX 共有メモリ)<br>- `16_amp_mcore_Rust_baremetal` (Rust FW) | Linux(Aコア) ＋ RTOS(Mコア) の異種多重処理、共有メモリ排他制御、Rust 組み込み開発 |
 
 ---
@@ -95,4 +101,6 @@ flowchart LR
 - **「高価な基板を用意する必要はありません。ブラウザ1つで、誰でも実機と同等の環境で学べます」**
 - **「『PC環境が違って動かない』トラブルを完全排除。開発コンテナで100%同一の演習環境を提供します」**
 - **「実機基板が届くタイムラグを解消。届く前から仮想基板で製品レベルのコードを開発・修得させます」**
+- **「単なるC言語の勉強にとどまらず、現代の組み込みLinux開発の核であるDevice Tree (DTS) 駆動開発手法を体感・マスターできます」**
+- **「FW開発者だけでなく、Verilogの学習者にとってもVivadoなしで数秒でシミュレーション・波形デバッグできる理想的なハード・ソフト協調学習環境です」**
 - **「社内研修にとどまらず、将来的な大学・高専等との産学連携や採用候補者向け体験教材としても有効活用できる高い汎用性を備えています」**
