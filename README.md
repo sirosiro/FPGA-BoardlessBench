@@ -8,6 +8,9 @@ FPGA-BoardlessBench (F-BB)は、FPGAを搭載した実機や評価ボードが�
 
 しかし、**「よく分からないが、これでFW開発が劇的に楽になりそうだ」** と直感した方は、ぜひこの先もお読みください。本プロジェクトが、あなたのFPGA/FW開発を強力に支える武器になるかもしれません。
 
+**企業・技術研修での活用提案（F-BBのCore Value）**  
+評価ボード・オシロスコープ・JTAG機器なしで、実機Linux/RTOS/FPGA協調設計の製品レベル開発技術を修得できる **[組み込み・FPGA技術研修ソリューション提案書](./docs/architecture/AddInfo_Technical_Training_Proposal.md)** を公開しています。
+
 ---
 [Scenario S01: C++ LFSR シーケンサー・ショーケース](tests/scenarios/S01_cpp_lfsr_sequencer/)
 ![FPGA-BoardlessBench Demo](tests/scenarios/S01_cpp_lfsr_sequencer/assets/dashboard.gif)
@@ -549,6 +552,7 @@ F-BBは、ハードウェア記述言語（RTL）から、低レイヤーのシ�
 
 - **[技術仕様書 (spec.md)](spec.md)**: 各コンポーネントの機能詳細とインターフェース定義。
 - **[アーキテクチャ・マニフェスト](ARCHITECTURE_MANIFEST.md)**: プロジェクトの設計原則と主要な決定事項の記録。
+- **[組み込み・FPGA技術研修ソリューション提案書](./docs/architecture/AddInfo_Technical_Training_Proposal.md)**: 実機基板なしで製品レベルの組み込みLinux・RTOS・FPGA協調設計技術を修得できる技術研修提案ソリューション。
 
 ## ライセンス
 
