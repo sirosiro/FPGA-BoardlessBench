@@ -553,6 +553,7 @@ F-BBは、ハードウェア記述言語（RTL）から、低レイヤーのシ�
 - **[技術仕様書 (spec.md)](spec.md)**: 各コンポーネントの機能詳細とインターフェース定義。
 - **[アーキテクチャ・マニフェスト](ARCHITECTURE_MANIFEST.md)**: プロジェクトの設計原則と主要な決定事項の記録。
 - **[組み込み・FPGA技術研修ソリューション提案書](./docs/architecture/AddInfo_Technical_Training_Proposal.md)**: 実機基板なしで製品レベルの組み込みLinux・RTOS・FPGA協調設計技術を修得できる技術研修提案ソリューション。
+- **[F-BBにおけるGDBデバッグ活用ガイド](./docs/architecture/AddInfo_GDB.md)**: 物理JTAG機器なしでAコアLinux・MコアRTOS・VerilatorシミュレーションをGDB/VS Codeでデバッグする活用ガイド。
 
 ## ライセンス
 
