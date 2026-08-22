@@ -1,0 +1,507 @@
+#!/usr/bin/env python3
+"""
+FPGA-BoardlessBench (F-BB) Unified CLI Toolkit (fbb-cli)
+"""
+
+import sys
+import os
+import argparse
+import shutil
+import subprocess
+import json
+
+# Ensure scripts directory is in sys.path (using realpath to resolve symlinks)
+SCRIPT_REAL_PATH = os.path.realpath(__file__)
+PROJECT_ROOT = os.path.abspath(os.path.join(os.path.dirname(SCRIPT_REAL_PATH), "../"))
+SCRIPTS_DIR = os.path.join(PROJECT_ROOT, "scripts")
+
+if SCRIPTS_DIR not in sys.path:
+    sys.path.insert(0, SCRIPTS_DIR)
+if PROJECT_ROOT not in sys.path:
+    sys.path.insert(0, PROJECT_ROOT)
+
+from vfpga.parser import DTSParser
+
+
+def command_new(args):
+    scenario_name = args.name
+    target = args.target or "zynq7000"
+    target_dir = os.path.join(PROJECT_ROOT, "tests/scenarios", scenario_name)
+
+    if os.path.exists(target_dir):
+        print(f"❌ Error: Scenario directory already exists: {target_dir}")
+        sys.exit(1)
+
+    print(f"Scaffolding new F-BB scenario: '{scenario_name}' (Target: {target})...")
+    os.makedirs(target_dir, exist_ok=True)
+
+    # 1. config.dts
+    dts_content = f"""/dts-v1/;
+
+/ {{
+    #address-cells = <1>;
+    #size-cells = <1>;
+    model = "{target}-vfpga-{scenario_name}";
+    compatible = "generic,fbb-vfpga";
+
+    vfpga_reg@40000000 {{
+        compatible = "generic-uio";
+        reg = <0x40000000 0x1000>;
+        label = "/dev/uio0";
+        status = "okay";
+        registers = 
+            "CTRL   @ 0x00",
+            "STATUS @ 0x04",
+            "ACK    @ 0x08";
+    }};
+}};
+"""
+    with open(os.path.join(target_dir, "config.dts"), "w", encoding="utf-8") as f:
+        f.write(dts_content)
+
+    # 2. vfpga_top.v
+    v_content = """`timescale 1ns / 1ps
+
+/* verilator lint_off UNUSED */
+module vfpga_top (
+    input  wire        clk,
+    input  wire        rst_n,
+    input  wire [31:0] addr,
+    input  wire [31:0] w_data,
+    input  wire        w_en,
+    output reg  [31:0] r_data,
+    output wire        irq_out,
+    input  wire [117:0] l_pins_i,
+    output wire [117:0] l_pins_o,
+    output wire [117:0] l_pins_t
+);
+
+    assign l_pins_o = 118'b0;
+    assign l_pins_t = 118'hFFFFFFFFFFFFFFFFFFFFFFFFFFFFFF;
+    wire [117:0] _unused = l_pins_i;
+
+    reg [31:0] reg_ctrl;
+    reg [31:0] reg_status;
+
+    assign irq_out = reg_status[0];
+
+    always @(posedge clk or negedge rst_n) begin
+        if (!rst_n) begin
+            reg_ctrl   <= 32'h0;
+            reg_status <= 32'h0;
+            r_data     <= 32'h0;
+        end else begin
+            if (w_en) begin
+                if (addr == 32'h40000000) reg_ctrl <= w_data;
+                if (addr == 32'h40000008 && w_data == 32'h1) reg_status[0] <= 1'b0; // ACK
+            end
+            
+            // Read handling
+            case (addr)
+                32'h40000000: r_data <= reg_ctrl;
+                32'h40000004: r_data <= reg_status;
+                default:     r_data <= 32'h0;
+            endcase
+        end
+    end
+
+endmodule
+/* verilator lint_on UNUSED */
+"""
+    with open(os.path.join(target_dir, "vfpga_top.v"), "w", encoding="utf-8") as f:
+        f.write(v_content)
+
+    # 3. main.c
+    c_content = f"""#include <stdio.h>
+#include <stdlib.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/mman.h>
+#include <stdint.h>
+
+int main(void) {{
+    printf("=== F-BB Scenario: {scenario_name} ===\\n");
+    
+    int fd = open("/dev/uio0", O_RDWR);
+    if (fd < 0) {{
+        perror("Failed to open /dev/uio0");
+        return 1;
+    }}
+    
+    volatile uint32_t *regs = (volatile uint32_t *)mmap(NULL, 0x1000, PROT_READ | PROT_WRITE, MAP_SHARED, fd, 0);
+    if (regs == MAP_FAILED) {{
+        perror("mmap failed");
+        close(fd);
+        return 1;
+    }}
+    
+    regs[0] = 0x12345678; // Write CTRL
+    uint32_t val = regs[0];
+    printf("Readback CTRL: 0x%08X\\n", val);
+    
+    munmap((void *)regs, 0x1000);
+    close(fd);
+    
+    if (val == 0x12345678) {{
+        printf("=== Scenario {scenario_name} Test Result: SUCCESS ===\\n");
+        return 0;
+    }}
+    
+    printf("=== Scenario {scenario_name} Test Result: FAILED ===\\n");
+    return 1;
+}}
+"""
+    with open(os.path.join(target_dir, "main.c"), "w", encoding="utf-8") as f:
+        f.write(c_content)
+
+    # 4. CMakeLists.txt
+    cmake_content = f"""cmake_minimum_required(VERSION 3.10)
+project({scenario_name} C)
+
+set(CMAKE_C_STANDARD 99)
+
+file(GLOB SRCS *.c)
+add_executable(test_bin ${{SRCS}})
+target_include_directories(test_bin PRIVATE "${{PROJECT_SOURCE_DIR}}/src/include")
+
+add_custom_command(
+    TARGET test_bin POST_BUILD
+    COMMAND ${{CMAKE_COMMAND}} -E copy
+            $<TARGET_FILE:test_bin>
+            "${{CMAKE_CURRENT_SOURCE_DIR}}/"
+)
+"""
+    with open(os.path.join(target_dir, "CMakeLists.txt"), "w", encoding="utf-8") as f:
+        f.write(cmake_content)
+
+    # 5. run.sh
+    run_content = f"""#!/bin/bash
+# F-BB: {scenario_name} Execution Script
+SCRIPT_DIR=$(cd "$(dirname "$0")" && pwd)
+if [ "$FBB_ACTIVE" = "1" ]; then
+    cd "$SCRIPT_DIR"
+    ./test_bin
+else
+    "$SCRIPT_DIR/../../scenario_runner.sh" "$SCRIPT_DIR" "$@"
+fi
+"""
+    run_path = os.path.join(target_dir, "run.sh")
+    with open(run_path, "w", encoding="utf-8") as f:
+        f.write(run_content)
+    os.chmod(run_path, 0o755)
+
+    # 6. README.md
+    readme_content = f"""# Scenario {scenario_name}
+
+## 1. Overview
+Scaffolded F-BB scenario target: {target}.
+
+## 2. Execution
+```bash
+./run.sh
+```
+"""
+    with open(os.path.join(target_dir, "README.md"), "w", encoding="utf-8") as f:
+        f.write(readme_content)
+
+    print(f"✨ Successfully scaffolded scenario at: {target_dir}")
+
+
+def resolve_scenario_name_or_path(input_str):
+    if not input_str:
+        return None
+
+    clean_input = input_str.rstrip("/")
+
+    # Check 1: Direct path containing run.sh
+    direct_run = os.path.join(clean_input, "run.sh")
+    if os.path.exists(direct_run):
+        return os.path.abspath(os.path.dirname(direct_run))
+
+    # Check 2: Path or scenario name under PROJECT_ROOT/tests/scenarios
+    scenarios_base = os.path.join(PROJECT_ROOT, "tests/scenarios")
+    
+    # Handle paths like "tests/scenarios/01_standard_uio"
+    if clean_input.startswith("tests/scenarios/"):
+        rel_sub = clean_input.replace("tests/scenarios/", "")
+        cand_dir = os.path.join(scenarios_base, rel_sub)
+        if os.path.exists(os.path.join(cand_dir, "run.sh")):
+            return cand_dir
+
+    cand_dir = os.path.join(scenarios_base, os.path.basename(clean_input))
+    if os.path.exists(os.path.join(cand_dir, "run.sh")):
+        return cand_dir
+
+    # Check 3: Fuzzy prefix match (e.g. "01" -> "01_standard_uio")
+    if os.path.exists(scenarios_base):
+        candidates = [d for d in os.listdir(scenarios_base) if d.startswith(clean_input) and os.path.isdir(os.path.join(scenarios_base, d))]
+        if len(candidates) == 1:
+            return os.path.join(scenarios_base, candidates[0])
+
+    return None
+
+
+def resolve_dts_path(input_str):
+    if not input_str:
+        return None
+
+    clean_input = input_str.rstrip("/")
+
+    if os.path.isfile(clean_input):
+        return os.path.abspath(clean_input)
+
+    if os.path.isdir(clean_input) and os.path.exists(os.path.join(clean_input, "config.dts")):
+        return os.path.abspath(os.path.join(clean_input, "config.dts"))
+
+    s_dir = resolve_scenario_name_or_path(clean_input)
+    if s_dir and os.path.exists(os.path.join(s_dir, "config.dts")):
+        return os.path.join(s_dir, "config.dts")
+
+    return None
+
+
+def command_test(args):
+    scenario_input = args.scenario
+    try:
+        if scenario_input:
+            s_dir = resolve_scenario_name_or_path(scenario_input)
+            if not s_dir:
+                print(f"❌ Error: Could not find scenario '{scenario_input}'")
+                print("💡 Tip: You can pass a scenario name (e.g. 01_standard_uio) or a path (e.g. tests/scenarios/01_standard_uio/)")
+                sys.exit(1)
+
+            run_script = os.path.join(s_dir, "run.sh")
+            scenario_name = os.path.basename(s_dir)
+            print(f"🧪 Running scenario '{scenario_name}'...")
+            res = subprocess.run([run_script], cwd=s_dir)
+            sys.exit(res.returncode)
+        else:
+            print("🧪 Running full F-BB automated regression test suite via regression_test.py...")
+            runner = os.path.join(PROJECT_ROOT, "tests/regression_test.py")
+            res = subprocess.run([sys.executable, "-u", runner], cwd=PROJECT_ROOT)
+            sys.exit(res.returncode)
+    except KeyboardInterrupt:
+        print("\n🛑 Test execution interrupted by user (Ctrl+C). Cleaning up...")
+        subprocess.run(["pkill", "-9", "-f", "vlogic_controller"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+        subprocess.run(["pkill", "-9", "-f", "vfpga_sim"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+        sys.exit(130)
+
+
+def command_inspect(args):
+    dts_input = args.dts
+    dts_file = resolve_dts_path(dts_input)
+
+    if not dts_file or not os.path.exists(dts_file):
+        print(f"❌ Error: DTS file not found for input '{dts_input}'")
+        print("💡 Tip: You can specify a config.dts file, a scenario folder, or scenario name (e.g. 01_standard_uio)")
+        sys.exit(1)
+
+    print(f"🔍 Inspecting DTS Address Map & Devices: {os.path.relpath(dts_file, PROJECT_ROOT)}")
+    try:
+        model = DTSParser.parse(dts_file)
+    except Exception as e:
+        print(f"❌ Failed to parse DTS: {e}")
+        sys.exit(1)
+
+    print("-" * 80)
+    print(f"{'Device Name':<25} | {'Base Address':<14} | {'Size':<10} | {'Type':<15}")
+    print("-" * 80)
+    for dev in model.devices:
+        base_str = f"0x{dev.base_addr:08X}" if dev.base_addr is not None else "N/A"
+        size_str = f"0x{dev.size:X}" if dev.size is not None else "N/A"
+        dev_type = dev.type if getattr(dev, 'type', None) else "generic"
+        print(f"{dev.name:<25} | {base_str:<14} | {size_str:<10} | {dev_type:<15}")
+    print("-" * 80)
+
+
+def command_plugin_list(args):
+    print("🔌 Scanning F-BB Plug-and-Play Architecture (PPA 5.1) Plugins...")
+    
+    discovery_paths = [
+        os.path.join(os.path.expanduser("~"), ".fbb/plugins"),
+        os.path.join(PROJECT_ROOT, "src/peripherals/official_plugins"),
+        "/usr/local/share/fbb/plugins"
+    ]
+
+    found_plugins = []
+
+    for path in discovery_paths:
+        if not os.path.exists(path):
+            continue
+        for entry in os.listdir(path):
+            plugin_dir = os.path.join(path, entry)
+            manifest_file = os.path.join(plugin_dir, "fbb-plugin.json")
+            if os.path.isdir(plugin_dir) and os.path.exists(manifest_file):
+                try:
+                    with open(manifest_file, "r", encoding="utf-8") as f:
+                        data = json.load(f)
+                    name = data.get("name", entry)
+                    periphs = data.get("peripherals", [])
+                    if periphs and isinstance(periphs, list):
+                        p0 = periphs[0]
+                        bus = p0.get("bus", "generic")
+                        compat = p0.get("compatible", "N/A")
+                        widget = p0.get("ui_widget", {}).get("title", "No Title")
+                    else:
+                        bus = data.get("bus_type", "generic")
+                        compat = data.get("compatible", "N/A")
+                        widget = data.get("ui_widget", {}).get("title", "No Title")
+                    found_plugins.append((name, bus, compat, widget, path))
+                except Exception:
+                    pass
+
+    print("-" * 95)
+    print(f"{'Plugin Name':<32} | {'Bus':<8} | {'Compatible':<22} | {'UI Title':<25}")
+    print("-" * 95)
+    for p in found_plugins:
+        print(f"{p[0]:<32} | {p[1]:<8} | {p[2]:<22} | {p[3]:<25}")
+    print("-" * 95)
+    print(f"Total discovered PPA plugins: {len(found_plugins)}")
+
+
+def command_plugin_install(args):
+    target_repo = args.source
+    dest_base = os.path.join(os.path.expanduser("~"), ".fbb/plugins")
+    os.makedirs(dest_base, exist_ok=True)
+
+    if os.path.isdir(target_repo):
+        plugin_name = os.path.basename(os.path.abspath(target_repo))
+        dest_dir = os.path.join(dest_base, plugin_name)
+        print(f"📦 Installing local plugin '{plugin_name}' -> {dest_dir}...")
+        if os.path.exists(dest_dir):
+            shutil.rmtree(dest_dir)
+        shutil.copytree(target_repo, dest_dir)
+    else:
+        # Git repo URL
+        plugin_name = target_repo.rstrip("/").split("/")[-1].replace(".git", "")
+        dest_dir = os.path.join(dest_base, plugin_name)
+        print(f"📦 Cloning and installing plugin '{plugin_name}' from {target_repo}...")
+        if os.path.exists(dest_dir):
+            shutil.rmtree(dest_dir)
+        res = subprocess.run(["git", "clone", target_repo, dest_dir])
+        if res.returncode != 0:
+            print(f"❌ Failed to clone plugin repository: {target_repo}")
+            sys.exit(1)
+
+    print(f"✅ Plugin '{plugin_name}' successfully installed to {dest_dir}!")
+
+
+def command_plugin_remove(args):
+    plugin_name = args.name
+    dest_dir = os.path.join(os.path.expanduser("~"), ".fbb/plugins", plugin_name)
+
+    if os.path.exists(dest_dir):
+        shutil.rmtree(dest_dir)
+        print(f"🗑️ Successfully uninstalled plugin '{plugin_name}' from {dest_dir}")
+    else:
+        print(f"❌ Error: Plugin '{plugin_name}' not found in user plugins directory: {dest_dir}")
+        sys.exit(1)
+
+
+def main():
+    main_epilog = """Examples:
+  fbb test                                Run all test scenarios
+  fbb test 01_standard_uio                Run scenario by name
+  fbb test tests/scenarios/01_standard_uio/  Run scenario by relative or absolute path
+  fbb inspect 01_standard_uio             Inspect 32-bit MMIO address map of scenario
+  fbb plugin list                         List all discovered PPA 5.1 peripheral plugins
+  fbb new my_scenario --target zynq7000   Scaffold a new scenario workspace
+"""
+    parser = argparse.ArgumentParser(
+        description="FPGA-BoardlessBench (F-BB) Unified CLI Toolkit (fbb-cli)",
+        epilog=main_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    subparsers = parser.add_subparsers(dest="command", help="Subcommands")
+
+    # 1. new
+    new_epilog = """Examples:
+  fbb new my_custom_gpio --target zynq7000
+  fbb new my_imx_camera  --target imx8mp
+"""
+    parser_new = subparsers.add_parser(
+        "new",
+        help="Scaffold a new F-BB test scenario",
+        epilog=new_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser_new.add_argument("name", help="Name of the scenario directory")
+    parser_new.add_argument("--target", choices=["zynq7000", "imx8mp"], default="zynq7000", help="Target architecture profile")
+
+    # 2. test
+    test_epilog = """Examples:
+  fbb test                                Run full regression test suite
+  fbb test 01_standard_uio                Run specific scenario by name
+  fbb test tests/scenarios/01_standard_uio/  Run specific scenario by directory path
+  fbb test 01b                            Run scenario matching fuzzy prefix
+"""
+    parser_test = subparsers.add_parser(
+        "test",
+        help="Run scenario tests",
+        epilog=test_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser_test.add_argument("scenario", nargs="?", help="Scenario name (e.g. 01_standard_uio), path (e.g. tests/scenarios/01_standard_uio/), or omit to run all")
+
+    # 3. inspect
+    inspect_epilog = """Examples:
+  fbb inspect 01_standard_uio
+  fbb inspect tests/scenarios/01_standard_uio/config.dts
+  fbb inspect config.dts
+"""
+    parser_inspect = subparsers.add_parser(
+        "inspect",
+        help="Inspect DTS address map and devices",
+        epilog=inspect_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser_inspect.add_argument("dts", help="Path to config.dts file, scenario folder, or scenario name")
+
+    # 4. plugin
+    plugin_epilog = """Examples:
+  fbb plugin list
+  fbb plugin install https://github.com/vendor/fbb-plugin-st7789
+  fbb plugin remove fbb-plugin-st7789
+"""
+    parser_plugin = subparsers.add_parser(
+        "plugin",
+        help="Manage PPA 5.1 peripheral plugins",
+        epilog=plugin_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    plugin_subparsers = parser_plugin.add_subparsers(dest="plugin_command", help="Plugin subcommands")
+
+    # plugin list
+    plugin_subparsers.add_parser("list", help="List all discovered PPA plugins")
+
+    # plugin install
+    parser_p_install = plugin_subparsers.add_parser("install", help="Install a PPA plugin from Git URL or local directory")
+    parser_p_install.add_argument("source", help="Git repository URL or local directory path")
+
+    # plugin remove
+    parser_p_remove = plugin_subparsers.add_parser("remove", help="Remove an installed PPA plugin")
+    parser_p_remove.add_argument("name", help="Name of the plugin directory to remove")
+
+    args = parser.parse_args()
+
+    if args.command == "new":
+        command_new(args)
+    elif args.command == "test":
+        command_test(args)
+    elif args.command == "inspect":
+        command_inspect(args)
+    elif args.command == "plugin":
+        if args.plugin_command == "list":
+            command_plugin_list(args)
+        elif args.plugin_command == "install":
+            command_plugin_install(args)
+        elif args.plugin_command == "remove":
+            command_plugin_remove(args)
+        else:
+            parser_plugin.print_help()
+    else:
+        parser.print_help()
+
+
+if __name__ == "__main__":
+    main()

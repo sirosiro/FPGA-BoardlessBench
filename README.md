@@ -203,6 +203,34 @@ FPGA-BoardlessBench (F-BB)が「Zynqを想定した実働FW（ファームウェ
 - (推奨) [GTKWave](https://gtkwave.sourceforge.net/) (波形デバッグ用)
 - (推奨) VS Code + [Dev Containers](https://marketplace.visualstudio.com/items?itemName=ms-vscode-remote.remote-containers) 拡張機能
 
+## 統一 CLI ツールキット (`fbb-cli` / `fbb`)
+
+F-BB では、テスト実行、DTS アドレスマップ検査、新規シナリオスカフォールディング（雛形作成）、サードパーティ製 PPA アドオンペリフェラルのワンコマンドインストールを単一コマンド `fbb` に集約しています。環境起動時にパスおよび Tab キー補完機能が自動有効化されます。
+
+```bash
+# 1. 全自動テストスイートの実行 (全31シナリオの合否一括判定)
+fbb test
+
+# 2. 特定シナリオのテスト実行 (シナリオ名、相対/絶対パス、補完 01_<Tab> 対応)
+fbb test 01_standard_uio
+fbb test tests/scenarios/01_standard_uio/
+
+# 3. シナリオの 32-bit MMIO ベースアドレス・サイズ・ノード情報の視覚化
+fbb inspect 01_standard_uio
+fbb inspect S01_cpp_lfsr_sequencer
+
+# 4. 新しいテストシナリオの雛形（DTS / C / Verilog / CMake）を一発自動生成
+fbb new my_custom_scenario --target zynq7000
+
+# 5. 発見された PPA 5.1 ペリフェラルプラグイン一覧の確認
+fbb plugin list
+
+# 6. サードパーティ製 PPA プラグインのワンコマンドインストール
+fbb plugin install https://github.com/vendor/fbb-plugin-st7789
+```
+
+---
+
 ## クイックスタート
 
 ### 1. 全テストの一括実行
@@ -210,7 +238,7 @@ FPGA-BoardlessBench (F-BB)が「Zynqを想定した実働FW（ファームウェ
 環境が正しくセットアップされているか、すべてのシナリオを自動で一括テストします：
 
 ```bash
-./tests/run_tests.sh
+fbb test
 ```
 
 ### 2. 個別のテストシナリオで学ぶ（推奨）
@@ -483,28 +511,29 @@ F-BBは、ハードウェア記述言語（RTL）から、低レイヤーのシ�
 
 ビルド成果物（`build`, `dist`）、外部パッケージ（`node_modules`）、および一時ファイルを除外したリポジトリ全体の静的ソースコードを `cloc` (Count Lines of Code v1.90) にて正確に計測した結果です。
 
-コメント行や空行を除いた**純プログラムステップ数（Pure Code）だけで 34,217 行 (34.2k+ LOC)**、コメント・空行を含めた**全体総行数は 42,425 行 (42.4k+ Lines)**（全 317 ファイル）に達する大型エミュレーションプラットフォームです。
+コメント行や空行を除いた**純プログラムステップ数（Pure Code）だけで 34,525 行 (34.5k+ LOC)**、コメント・空行を含めた**全体総行数は 42,950 行 (42.9k+ Lines)**（全 319 ファイル）に達する大型エミュレーションプラットフォームです。
 
 > **Project Scale Summary (`cloc` 計測値):**
-> - **Pure Code (純プログラム行数):** **34,217 Lines of Code** *(C/C++: ~10.0k LOC, Markdown/Doc: ~9.4k LOC, JSON/DTS: ~6.6k LOC, React/JSX/JS/CSS: ~3.9k LOC, Python: ~1.5k LOC)*
-> - **Total Lines (総行数):** **42,425 Lines** *(うちコメント行: 1,893行, 空行: 6,315行)*
-> - **Files (全ファイル数):** **317 Files** (Markdown仕様書・JSONマニフェスト・全シナリオのFW含む)
+> - **Pure Code (純プログラム行数):** **34,525 Lines of Code** *(C/C++: ~10.0k LOC, Markdown/Doc: ~9.4k LOC, JSON/DTS: ~6.6k LOC, React/JSX/JS/CSS: ~3.9k LOC, Python: ~1.7k LOC)*
+> - **Total Lines (総行数):** **42,950 Lines** *(うちコメント行: 2,027行, 空行: 6,398行)*
+> - **Files (全ファイル数):** **319 Files** (Markdown仕様書・JSONマニフェスト・全シナリオのFW含む)
 
 | 言語分類 (cloc) | 拡張子 | ファイル数 | 空行 (Blank) | コメント (Comment) | 純コード (Pure LOC) | 総行数 (Total Lines) | 主な構成要素と役割 |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **Markdown** | `.md` | 90 | 3,632 | 0 | **9,385行** | **13,017行** | システム仕様書、ADR歴史的決定アーカイブ、シナリオ別解説書 |
-| **JSON / Manifest** | `.json` | 30 | 0 | 0 | **6,604行** | **6,604行** | PPAペリフェラルマニフェスト (`fbb-plugin.json`)、ボード構造メタデータ |
+| **Markdown** | `.md` | 90 | 3,649 | 0 | **9,447行** | **13,096行** | システム仕様書、ADR歴史的決定アーカイブ、シナリオ別解説書 |
+| **JSON / Manifest** | `.json` | 31 | 0 | 0 | **6,647行** | **6,647行** | PPAペリフェラルマニフェスト (`fbb-plugin.json`)、ボード構造メタデータ |
 | **C++** | `.cpp` | 20 | 784 | 511 | **5,353行** | **6,648行** | Verilator シミュレーションコア、ペリフェラルプラグイン実装 |
 | **C** | `.c` | 31 | 648 | 348 | **4,028行** | **5,024行** | システムコール横取り Shim、エミュレータデーモン、ファームウェア |
 | **JSX** | `.jsx` | 12 | 241 | 44 | **2,750行** | **3,035行** | Vite + React 19 UI（Dockview, Recharts, `GenericPeripheralPane`） |
-| **Python** | `.py` | 12 | 262 | 320 | **1,559行** | **2,141行** | DTSパース・コード自動生成エンジン（`vfpga`）、PPA自動発見 |
+| **Python** | `.py` / CLI | 13 | 331 | 454 | **1,751行** | **2,536行** | DTSパース・コード自動生成エンジン、統一 CLI (`bin/fbb`), PPA |
 | **Bourne Shell** | `.sh` | 35 | 192 | 181 | **859行** | **1,232行** | 自動検証ランナー（`run_tests.sh`）、ラボ起動スクリプト（`start_lab.sh`） |
 | **JavaScript** | `.js` | 3 | 110 | 30 | **816行** | **956行** | ダッシュボード WebSockets サーバー（`dashboard/server.js`） |
 | **CMake** | `CMakeLists.txt` / `.cmake` | 20 | 113 | 67 | **769行** | **949行** | マルチターゲットビルド設定（シナリオ・PPA・カーネル） |
 | **C/C++ Header** | `.h` / `.hpp` | 29 | 100 | 155 | **640行** | **895行** | デバイス共通ヘッダー、レジスタ定義、Shimマクロ |
-| **Verilog** | `.v` | 15 | 80 | 141 | **640行** | **861行** | シミュレーション対象の FPGA ハードウェア記述 (RTL) |
-| **Rust / Other** | `.rs` / `.css` / 他 | 20 | 145 | 96 | **823行** | **1,064行** | UIスタイルシート (CSS), Mコア Rust FW, 各種設定メタデータ |
-| **合計 (SUM Total)** | **-** | **317** | **6,315** | **1,893** | **34,217行** | **42,425行** | **F-BB プラットフォーム全体の静的ソースコード総数** |
+| **Verilog** | `.v` | 15 | 77 | 141 | **651行** | **869行** | シミュレーション対象の FPGA ハードウェア記述 (RTL) |
+| **Rust / Other** | `.rs` / `.css` / 他 | 24 | 155 | 96 | **814行** | **1,065行** | UIスタイルシート (CSS), Mコア Rust FW, 各種設定メタデータ |
+| **合計 (SUM Total)** | **-** | **319** | **6,398** | **2,027** | **34,525行** | **42,950行** | **F-BB プラットフォーム全体の静的ソースコード総数** |
+
 
 > **コード生成エンジンによる動的コード**
 > 上記の静的コードに加えて、DTSを読み込んだ際に Python スクリプトが、外部テンプレート `libfpgashim.c.template` を基にして **C言語 Shim (`libfpgashim.c` / 約680行)** を動的生成するほか、**C++ シミュレーションラッパー (`sim_main.cpp` / 約100行)**、**Verilog スケルトン (`vfpga_top.v` / 約40行)**、**Rust PAC (`fbb_pac.rs` / 約80行)** などをビルド時に自動生成します。

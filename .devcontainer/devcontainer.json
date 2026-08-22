@@ -25,6 +25,6 @@
         "seccomp=unconfined",
         "--shm-size=512m"
     ],
-    "postCreateCommand": "npm --prefix dashboard install && npm --prefix dashboard/client install && npm --prefix dashboard/client run build",
+    "postCreateCommand": "npm --prefix dashboard install && npm --prefix dashboard/client install && npm --prefix dashboard/client run build && ln -sf /workspaces/FPGA-BoardlessBench/bin/fbb /usr/local/bin/fbb && cp /workspaces/FPGA-BoardlessBench/scripts/fbb_completion.bash /etc/bash_completion.d/fbb",
     "forwardPorts": [8080]
 }

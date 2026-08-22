@@ -26,6 +26,7 @@ RUN apt-get update && apt-get install -y \
     strace \
     procps \
     gtkwave \
+    bash-completion \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Verilator
