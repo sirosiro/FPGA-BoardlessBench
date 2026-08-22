@@ -29,6 +29,7 @@
 #include "vfpga_system_config.h"
 #include "vfpga_device_config.h"
 #include <sys/mount.h>
+#include <sys/eventfd.h>
 
 
 #ifndef MAP_FIXED_NOREPLACE
@@ -50,6 +51,7 @@ typedef enum {
 typedef struct {
     FbbDeviceType type;
     int sub_id; // bus_id for I2C, spi_code for SPI, route_idx for UIO, uart_id for UART
+    int eventfd_fd; // UIO IRQ eventfd
 } FbbDeviceContext;
 
 static FbbDeviceContext fd_contexts[MAX_FDS];
@@ -83,6 +85,64 @@ static void sigsegv_handler(int sig, siginfo_t *info, void *context);
 static void init_segv_handler(void);
 
 static int handle_rpmsg_open(void);
+
+struct uio_irq_args {
+    int route_idx;
+    int efd;
+};
+
+static void* uio_irq_listener_thread(void *arg) {
+    struct uio_irq_args *args = (struct uio_irq_args *)arg;
+    int route_idx = args->route_idx;
+    int efd = args->efd;
+    free(args);
+
+    char sock_path[128];
+    snprintf(sock_path, sizeof(sock_path), "/tmp/fbb_uio_irq_%%d", route_idx);
+    unlink(sock_path);
+
+    int listen_fd = socket(AF_UNIX, SOCK_STREAM, 0);
+    if (listen_fd < 0) return NULL;
+
+    struct sockaddr_un addr;
+    memset(&addr, 0, sizeof(addr));
+    addr.sun_family = AF_UNIX;
+    strncpy(addr.sun_path, sock_path, sizeof(addr.sun_path) - 1);
+
+    if (bind(listen_fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
+        close(listen_fd);
+        return NULL;
+    }
+
+    listen(listen_fd, 5);
+
+    while (1) {
+        int client_fd = accept(listen_fd, NULL, NULL);
+        if (client_fd < 0) break;
+        uint64_t val = 1;
+        read(client_fd, &val, sizeof(val));
+        close(client_fd);
+        uint64_t evt = (val > 0) ? val : 1;
+        write(efd, &evt, sizeof(evt));
+    }
+    close(listen_fd);
+    unlink(sock_path);
+    return NULL;
+}
+
+static void setup_uio_irq_listener(int route_idx, int efd) {
+    if (efd < 0) return;
+    struct uio_irq_args *args = (struct uio_irq_args *)malloc(sizeof(struct uio_irq_args));
+    if (!args) return;
+    args->route_idx = route_idx;
+    args->efd = efd;
+    pthread_t t;
+    if (pthread_create(&t, NULL, uio_irq_listener_thread, args) == 0) {
+        pthread_detach(t);
+    } else {
+        free(args);
+    }
+}
 
 static int find_route_by_path(const char *pathname, int *out_route_idx) {
     if (pathname == NULL) return 0;
@@ -398,9 +458,12 @@ int open(const char *pathname, int flags, ...) {
         if (fd != -1 && fd < MAX_FDS) {
             if (route_idx == -1) {
                 fd_contexts[fd].type = FBB_DEV_MEM;
+                fd_contexts[fd].eventfd_fd = -1;
             } else {
                 fd_contexts[fd].type = FBB_DEV_UIO;
                 fd_contexts[fd].sub_id = route_idx;
+                fd_contexts[fd].eventfd_fd = eventfd(0, EFD_CLOEXEC);
+                setup_uio_irq_listener(route_idx, fd_contexts[fd].eventfd_fd);
             }
         }
         return fd;
@@ -474,9 +537,12 @@ int open64(const char *pathname, int flags, ...) {
         if (fd != -1 && fd < MAX_FDS) {
             if (route_idx == -1) {
                 fd_contexts[fd].type = FBB_DEV_MEM;
+                fd_contexts[fd].eventfd_fd = -1;
             } else {
                 fd_contexts[fd].type = FBB_DEV_UIO;
                 fd_contexts[fd].sub_id = route_idx;
+                fd_contexts[fd].eventfd_fd = eventfd(0, EFD_CLOEXEC);
+                setup_uio_irq_listener(route_idx, fd_contexts[fd].eventfd_fd);
             }
         }
         return fd;
@@ -550,9 +616,12 @@ int openat(int dirfd, const char *pathname, int flags, ...) {
         if (fd != -1 && fd < MAX_FDS) {
             if (route_idx == -1) {
                 fd_contexts[fd].type = FBB_DEV_MEM;
+                fd_contexts[fd].eventfd_fd = -1;
             } else {
                 fd_contexts[fd].type = FBB_DEV_UIO;
                 fd_contexts[fd].sub_id = route_idx;
+                fd_contexts[fd].eventfd_fd = eventfd(0, EFD_CLOEXEC);
+                setup_uio_irq_listener(route_idx, fd_contexts[fd].eventfd_fd);
             }
         }
         return fd;
@@ -626,9 +695,12 @@ int openat64(int dirfd, const char *pathname, int flags, ...) {
         if (fd != -1 && fd < MAX_FDS) {
             if (route_idx == -1) {
                 fd_contexts[fd].type = FBB_DEV_MEM;
+                fd_contexts[fd].eventfd_fd = -1;
             } else {
                 fd_contexts[fd].type = FBB_DEV_UIO;
                 fd_contexts[fd].sub_id = route_idx;
+                fd_contexts[fd].eventfd_fd = eventfd(0, EFD_CLOEXEC);
+                setup_uio_irq_listener(route_idx, fd_contexts[fd].eventfd_fd);
             }
         }
         return fd;
@@ -639,6 +711,7 @@ int openat64(int dirfd, const char *pathname, int flags, ...) {
         if (fd != -1 && fd < MAX_FDS) {
             fd_contexts[fd].type = FBB_DEV_I2C;
             fd_contexts[fd].sub_id = i2c_bus_id;
+            fd_contexts[fd].eventfd_fd = -1;
         }
         return fd;
     }
@@ -648,6 +721,7 @@ int openat64(int dirfd, const char *pathname, int flags, ...) {
         if (fd != -1 && fd < MAX_FDS) {
             fd_contexts[fd].type = FBB_DEV_SPI;
             fd_contexts[fd].sub_id = spi_code;
+            fd_contexts[fd].eventfd_fd = -1;
         }
         return fd;
     }
@@ -669,6 +743,7 @@ int openat64(int dirfd, const char *pathname, int flags, ...) {
             if (master_fd < MAX_FDS) {
                 fd_contexts[master_fd].type = FBB_DEV_UART;
                 fd_contexts[master_fd].sub_id = uart_id;
+                fd_contexts[master_fd].eventfd_fd = -1;
                 init_uart_state_file(uart_id);
             }
         }
@@ -680,6 +755,10 @@ int openat64(int dirfd, const char *pathname, int flags, ...) {
 int close(int fd) {
     if (!original_close) original_close = dlsym(RTLD_NEXT, "close");
     if (fd >= 0 && fd < MAX_FDS) {
+        if (fd_contexts[fd].type == FBB_DEV_UIO && fd_contexts[fd].eventfd_fd >= 0) {
+            original_close(fd_contexts[fd].eventfd_fd);
+            fd_contexts[fd].eventfd_fd = -1;
+        }
         fd_contexts[fd].type = FBB_DEV_NONE;
         fd_contexts[fd].sub_id = 0;
     }
@@ -903,11 +982,28 @@ int ioctl(int fd, unsigned long request, ...) {
 
 ssize_t write(int fd, const void *buf, size_t count) {
     if (!original_write) original_write = dlsym(RTLD_NEXT, "write");
+    if (fd >= 0 && fd < MAX_FDS && fd_contexts[fd].type == FBB_DEV_UIO) {
+        if (count == sizeof(uint32_t) && buf != NULL && *(const uint32_t *)buf == 1) {
+            // UIO unmask ACK (re-enabling IRQ)
+            return sizeof(uint32_t);
+        }
+    }
     return original_write(fd, buf, count);
 }
 
 ssize_t read(int fd, void *buf, size_t count) {
     if (!original_read) original_read = dlsym(RTLD_NEXT, "read");
+    if (fd >= 0 && fd < MAX_FDS && fd_contexts[fd].type == FBB_DEV_UIO) {
+        int efd = fd_contexts[fd].eventfd_fd;
+        if (efd >= 0) {
+            uint64_t irq_val = 0;
+            ssize_t res = original_read(efd, &irq_val, sizeof(irq_val));
+            if (res > 0 && count >= sizeof(uint32_t)) {
+                *(uint32_t *)buf = (uint32_t)irq_val;
+                return sizeof(uint32_t);
+            }
+        }
+    }
     return original_read(fd, buf, count);
 }
 

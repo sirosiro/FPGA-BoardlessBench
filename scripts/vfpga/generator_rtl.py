@@ -334,6 +334,24 @@ void run_sim_loop(T* top, volatile uint32_t* shm, uint32_t* old_shm, VerilatedVc
             }
             top->eval(); 
             if constexpr (has_clk<T>::value) { top->clk = 1; top->eval(); top->clk = 0; top->eval(); }
+            if constexpr (has_irq_out<T>::value) {
+                static int last_irq = 0;
+                if (top->irq_out && !last_irq) {
+                    int irq_sock = socket(AF_UNIX, SOCK_STREAM, 0);
+                    if (irq_sock >= 0) {
+                        struct sockaddr_un irq_addr;
+                        memset(&irq_addr, 0, sizeof(irq_addr));
+                        irq_addr.sun_family = AF_UNIX;
+                        strncpy(irq_addr.sun_path, "/tmp/fbb_uio_irq_0", sizeof(irq_addr.sun_path) - 1);
+                        if (connect(irq_sock, (struct sockaddr*)&irq_addr, sizeof(irq_addr)) == 0) {
+                            uint64_t val = 1;
+                            send(irq_sock, &val, sizeof(val), 0);
+                        }
+                        close(irq_sock);
+                    }
+                }
+                last_irq = top->irq_out;
+            }
             m_trace->dump(vtime++);
             bridge.tick(top);
             usleep(100);

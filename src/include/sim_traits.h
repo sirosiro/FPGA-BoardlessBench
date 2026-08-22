@@ -34,6 +34,9 @@ template <typename T> struct has_pl_spi_miso<T, std::void_t<decltype(std::declva
 
 template <typename T, typename = void> struct has_pl_spi_cs_n : std::false_type {};
 template <typename T> struct has_pl_spi_cs_n<T, std::void_t<decltype(std::declval<T>().pl_spi_cs_n)>> : std::true_type {};
+
+template <typename T, typename = void> struct has_irq_out : std::false_type {};
+template <typename T> struct has_irq_out<T, std::void_t<decltype(std::declval<T>().irq_out)>> : std::true_type {};
 #else
 // Verilator internal parser: Dummy definitions to prevent parsing overhead
 template <typename T> struct has_clk : std::false_type {};
@@ -46,6 +49,7 @@ template <typename T> struct has_pl_spi_sclk : std::false_type {};
 template <typename T> struct has_pl_spi_mosi : std::false_type {};
 template <typename T> struct has_pl_spi_miso : std::false_type {};
 template <typename T> struct has_pl_spi_cs_n : std::false_type {};
+template <typename T> struct has_irq_out : std::false_type {};
 #endif
 
 #endif

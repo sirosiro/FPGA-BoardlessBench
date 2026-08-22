@@ -1,0 +1,20 @@
+/dts-v1/;
+
+/ {
+    /*
+     * 【解説: UIO 非同期割り込み (IRQ) デバイスの定義】
+     * 物理ベースアドレス 0x40000000 にアサインされた UIO タイマー/割り込みコントローラ
+     */
+    vfpga_irq_timer@40000000 {
+        compatible = "generic-uio";
+        reg = <0x40000000 0x1000>;
+        label = "/dev/uio0";
+        interrupts = <5>;
+        
+        registers = 
+            "CTRL    @ 0x00",
+            "STATUS  @ 0x04",
+            "INT_ACK @ 0x08",
+            "CNT     @ 0x0C";
+    };
+};
