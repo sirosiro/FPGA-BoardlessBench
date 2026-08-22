@@ -376,6 +376,7 @@ F-BB環境には、基本的なペリフェラル操作から高度なマルチ�
 | シナリオフォルダ | 概要 | 検証対象技術 |
 | :--- | :--- | :--- |
 | [01_standard_uio](tests/scenarios/01_standard_uio/) | 標準 UIO を介した基本レジスタ R/W とシミュレータ同期の検証 | UIO, `mmap`, Verilator 同期 |
+| [01b_uio_irq_interrupt](tests/scenarios/01b_uio_irq_interrupt/) | UIO ドライバの非同期割り込み（IRQ）駆動動作および `eventfd` 透過ブロッキング待機・解凍シーケンスの検証 | UIO, IRQ, `eventfd`, `uio_unmask`, 割り込み駆動 |
 | [02_multi_i2c](tests/scenarios/02_multi_i2c/) | 複数 I2C バスへのアクセスと個別デバイスの識別 | I2C バスエミュレーション, `ioctl` |
 | [02b_multi_spi](tests/scenarios/02b_multi_spi/) | 同一 SPI バス上に NOR Flash と ADC を混在させたマルチデバイス検証。ダッシュボードからのスライダー操作と仮想 FPGA レジスタへの自動流し込みによる Register State Tracer 連携。 | SPI バスエミュレーション, 全二重 `ioctl`, マルチスレーブ, UIOレジスタマップ, Register State Tracer 連動 |
 | [02c_pl_spi](tests/scenarios/02c_pl_spi/) | PL側（RTL）に実装された SPI マスタコントローラピンをシミュレータ経由で仮想 ADC とブリッジ同期させ、ダッシュボードの GPIO (LED) と連動する検証。 | PL-side SPI エミュレーション, UNIXドメインソケット物理ピン変換, GPIO/Pin Array リアルタイム連動 |
