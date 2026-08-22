@@ -8,6 +8,33 @@
 
 ---
 
+## 2. 非同期割り込み IPC アーキテクチャ (Sequence Diagram)
+
+```mermaid
+sequenceDiagram
+    autonumber
+    participant FW as FW (main.c)
+    participant Shim as C-Shim (libfpgashim.so)
+    participant EFD as Linux Kernel (eventfd)
+    participant Socket as UNIX Socket (/tmp/fbb_uio_irq_0)
+    participant RTL as Verilator RTL (vfpga_top.v)
+
+    FW->>Shim: open("/dev/uio0")
+    Shim->>EFD: eventfd(0, EFD_CLOEXEC) 作成
+    Shim->>Socket: バックグラウンドリスナースレッド起動
+    FW->>Shim: mmap() & write(uio_fd, 1) [uio_unmask]
+    FW->>Shim: read(uio_fd, &count) [ブロッキング待機]
+    Shim->>EFD: original_read(eventfd_fd, &val, 8) で安全に停止
+    Note over RTL: Verilog タイマーが 200ms 後にカウント完了
+    RTL->>Socket: irq_out (0 -> 1 立上りエッジ検出)
+    Socket->>EFD: write(eventfd_fd, 1)
+    EFD-->>Shim: read() 完了 (割込着弾解凍)
+    Shim-->>FW: read() 復帰 (irq_count = 1)
+    FW->>RTL: MMIO INT_ACK レジスタクリア (0x08 <= 0x1)
+```
+
+---
+
 ## 2. ハードウェア & レジスタマップ定義 (`config.dts` & `vfpga_top.v`)
 
 ```text
