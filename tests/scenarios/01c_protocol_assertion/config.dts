@@ -6,6 +6,10 @@
     model = "zynq7000-vfpga-01c_protocol_assertion";
     compatible = "generic,fbb-vfpga";
 
+    chosen {
+        stdout-path = "/vfpga_uart@40002000";
+    };
+
     vfpga_reg@40000000 {
         compatible = "generic-uio";
         reg = <0x40000000 0x1000>;
@@ -23,9 +27,16 @@
         label = "/dev/uio1";
         status = "okay";
         registers = 
-            "GPIO_DATA  @ 0x00 : RW",
-            "GPIO_TRI   @ 0x04 : RW",
-            "GPIO2_DATA @ 0x08 : RW",
-            "GPIO2_TRI  @ 0x0C : RW";
+            "GPIO_DATA  (DATA_IN) @ 0x00 : RO",
+            "GPIO_TRI   (INV)     @ 0x04 : RW",
+            "GPIO2_DATA (DATA_IN) @ 0x08 : RO",
+            "GPIO2_TRI  (INV)     @ 0x0C : RW";
+    };
+
+    vfpga_uart@40002000 {
+        compatible = "xlnx,xps-uartlite-1.00.a";
+        reg = <0x40002000 0x1000>;
+        label = "/dev/ttyUL0";
+        port = <2000>;
     };
 };

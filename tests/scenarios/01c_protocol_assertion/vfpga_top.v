@@ -20,27 +20,36 @@ module vfpga_top (
 
     reg [31:0] reg_ctrl;
     reg [31:0] reg_status;
+    reg [31:0] reg_gpio_data;
+    reg [31:0] reg_gpio2_data;
 
     assign irq_out = reg_status[0];
 
     always @(posedge clk or negedge rst_n) begin
         if (!rst_n) begin
-            reg_ctrl   <= 32'h0;
-            reg_status <= 32'h0;
-            r_data     <= 32'h0;
+            reg_ctrl       <= 32'h0;
+            reg_status     <= 32'h0;
+            reg_gpio_data  <= 32'h0;
+            reg_gpio2_data <= 32'h0;
         end else begin
             if (w_en) begin
                 if (addr == 32'h40000000) reg_ctrl <= w_data;
                 if (addr == 32'h40000008 && w_data == 32'h1) reg_status[0] <= 1'b0; // ACK
+                if (addr == 32'h40001000) reg_gpio_data <= w_data;
+                if (addr == 32'h40001008) reg_gpio2_data <= w_data;
             end
-            
-            // Read handling
-            case (addr)
-                32'h40000000: r_data <= reg_ctrl;
-                32'h40000004: r_data <= reg_status;
-                default:     r_data <= 32'h0;
-            endcase
         end
+    end
+
+    // Combinatorial Read Handling
+    always @(*) begin
+        case (addr)
+            32'h40000000: r_data = reg_ctrl;
+            32'h40000004: r_data = reg_status;
+            32'h40001000: r_data = reg_gpio_data;
+            32'h40001008: r_data = reg_gpio2_data;
+            default:     r_data = 32'h0;
+        endcase
     end
 
 endmodule

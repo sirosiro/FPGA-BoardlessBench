@@ -7,47 +7,94 @@
                     "type": "branch",
                     "data": [
                         {
-                            "type": "leaf",
-                            "data": {
-                                "views": [
-                                    "dtsVisualizer"
-                                ],
-                                "activeView": "dtsVisualizer",
-                                "id": "1"
-                            },
-                            "size": 509
+                            "type": "branch",
+                            "data": [
+                                {
+                                    "type": "leaf",
+                                    "data": {
+                                        "views": [
+                                            "dtsVisualizer"
+                                        ],
+                                        "activeView": "dtsVisualizer",
+                                        "id": "1"
+                                    },
+                                    "size": 812
+                                },
+                                {
+                                    "type": "leaf",
+                                    "data": {
+                                        "views": [
+                                            "gpioPanel"
+                                        ],
+                                        "activeView": "gpioPanel",
+                                        "id": "4"
+                                    },
+                                    "size": 252
+                                }
+                            ],
+                            "size": 532
                         },
                         {
-                            "type": "leaf",
-                            "data": {
-                                "views": [
-                                    "transactionLogger"
-                                ],
-                                "activeView": "transactionLogger",
-                                "id": "3"
-                            },
-                            "size": 1072
+                            "type": "branch",
+                            "data": [
+                                {
+                                    "type": "leaf",
+                                    "data": {
+                                        "views": [
+                                            "uartTerminal_default"
+                                        ],
+                                        "activeView": "uartTerminal_default",
+                                        "id": "3"
+                                    },
+                                    "size": 615
+                                },
+                                {
+                                    "type": "leaf",
+                                    "data": {
+                                        "views": [
+                                            "transactionLogger"
+                                        ],
+                                        "activeView": "transactionLogger",
+                                        "id": "2"
+                                    },
+                                    "size": 449
+                                }
+                            ],
+                            "size": 1049
                         }
                     ],
-                    "size": 966
+                    "size": 1064
                 }
             ],
             "size": 1581
         },
         "width": 1581,
-        "height": 966,
+        "height": 1064,
         "orientation": "VERTICAL"
     },
     "panels": {
-        "transactionLogger": {
-            "id": "transactionLogger",
-            "contentComponent": "transactionLogger",
-            "title": "Transaction Logger"
-        },
         "dtsVisualizer": {
             "id": "dtsVisualizer",
             "contentComponent": "dtsVisualizer",
             "title": "DTS Visualizer & AI"
+        },
+        "gpioPanel": {
+            "id": "gpioPanel",
+            "contentComponent": "gpioPanel",
+            "title": "GPIO / Pin Array"
+        },
+        "uartTerminal_default": {
+            "id": "uartTerminal_default",
+            "contentComponent": "uartTerminal",
+            "params": {
+                "deviceName": "default"
+            },
+            "title": "UART Console"
+        },
+        "transactionLogger": {
+            "id": "transactionLogger",
+            "contentComponent": "transactionLogger",
+            "title": "Transaction Logger"
         }
     },
     "activeGroup": "3"
