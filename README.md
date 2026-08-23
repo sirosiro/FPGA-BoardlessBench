@@ -165,6 +165,9 @@ FPGA-BoardlessBench (F-BB)は、物理的なFPGA評価ボードや実機ハー�
 - **Aコア（Linux）アプリケーション**: [LD_PRELOAD](./docs/architecture/AddInfo_LD_PRELOAD.md) という技術を用いて、`/dev/mem` や UIO デバイスへの `open`/`mmap`/`ioctl` といったハードウェアアクセス用システムコールや、シリアル通信構成用システムコール（`tcsetattr`/`cfsetospeed`/`cfsetispeed`）を自動的にインターセプトします。これらをエミュレートされた仮想FPGAレジスタやI2C、UART、SPI、ブロックデバイス（SDカード）等のバスへと透過的にルーティングし、設定状態のメタデータを追跡します。このインターセプトエンジンは、**型安全な状態管理機構（`FbbDeviceContext` / `FbbDeviceType`）** に基づいており、OSによるファイル記述子 (FD) の再利用（リサイクル）時にも競合を引き起こさないよう、`close` システムコールのフックにより内部状態を自律クリーンアップする堅牢な構造を採用しています。
 - **Mコア（ベアメタル/RTOS）アプリケーション**: 起動時に `libfpgashim.so` のコンストラクタ（`__attribute__((constructor))`）が自動介入し、`mmap` の [MAP_FIXED_NOREPLACE](./docs/architecture/AddInfo_MAP_FIXED_NOREPLACE.md) フラグ（非サポート時は [MAP_FIXED](./docs/architecture/AddInfo_MAP_FIXED_NOREPLACE.md#従来の方法ヒントと-map_fixed-との違い) に自動フォールバック）を使用して、F-BBの共有メモリ（仮想FPGAレジスタ空間）を**実機と同じ物理アドレス（例: `0x40001000`）へ強制的にマッピング**します。これにより、実機コードで多用されるポインタ直叩き（例: `*(volatile uint32_t*)(0x40001000) = value`）を、ホストPC上でセグメンテーション違反（セグフォ）を起こさずに100%透過的に実行させることができます（詳細は [BBにおけるRTOS/ベアメタルFWエミュレーション](./docs/architecture/AddInfo_RTOS.md#24-コード透過性100を実現する自動mmapインジェクション実装済み) を参照）。
 
+  > **【設計ノート：実機透過性と Transaction Logger トラッキングの仕様について】**  
+  > 生のポインタ直叩き（`volatile uint32_t*`）は「実機透過性100%」を最優先し、シミュレータ専用関数を介さずオーバーヘッドゼロでそのまま透過実行されます。一方、Webダッシュボードの **Transaction & Violation Inspector** 画面でミリ秒単位のアクセス履歴追跡および Read-Only レジスタへの不正書き込み等のアサーション警告（`[PROTOCOL_VIOLATION]`）を行いたい場合は、C-Shim トラッカー関数（`fbb_write_reg` / `fbb_read_reg`）または HAL API を介してアクセスします。開発者は用途に応じて「完全実機透過コード」と「デバッグアクセス解析コード」を自由に選択・併用可能です。
+
 ### 2. FPGAの完成を待たない「先行並行開発」
 FPGA回路（RTL）が完成する前であっても、仕様さえ決まっていればFWの先行開発が可能です。
 - FPGAエンジニアからレジスタ名、オフセット、ピンの役割などをヒアリングし、F-BB用の `.dts`（デバイスツリー定義）と、簡単な Verilog モックを作成します。
@@ -405,6 +408,7 @@ F-BB環境には、基本的なペリフェラル操作から高度なマルチ�
 | :--- | :--- | :--- |
 | [01_standard_uio](tests/scenarios/01_standard_uio/) | 標準 UIO を介した基本レジスタ R/W とシミュレータ同期の検証 | UIO, `mmap`, Verilator 同期 |
 | [01b_uio_irq_interrupt](tests/scenarios/01b_uio_irq_interrupt/) | UIO ドライバの非同期割り込み（IRQ）駆動動作および `eventfd` 透過ブロッキング待機・解凍シーケンスの検証 | UIO, IRQ, `eventfd`, `uio_unmask`, 割り込み駆動 |
+| [01c_protocol_assertion](tests/scenarios/01c_protocol_assertion/) | C-Shim アクセストラッカーによる Read-Only レジスタへの誤アクセス検知・アサーションログと Transaction Logger のリアルタイム検証 | プロトコル・アサーション, Transaction Logger, `: RO`/`: WO`/`: RW` 属性 |
 | [02_multi_i2c](tests/scenarios/02_multi_i2c/) | 複数 I2C バスへのアクセスと個別デバイスの識別 | I2C バスエミュレーション, `ioctl` |
 | [02b_multi_spi](tests/scenarios/02b_multi_spi/) | 同一 SPI バス上に NOR Flash と ADC を混在させたマルチデバイス検証。ダッシュボードからのスライダー操作と仮想 FPGA レジスタへの自動流し込みによる Register State Tracer 連携。 | SPI バスエミュレーション, 全二重 `ioctl`, マルチスレーブ, UIOレジスタマップ, Register State Tracer 連動 |
 | [02c_pl_spi](tests/scenarios/02c_pl_spi/) | PL側（RTL）に実装された SPI マスタコントローラピンをシミュレータ経由で仮想 ADC とブリッジ同期させ、ダッシュボードの GPIO (LED) と連動する検証。 | PL-side SPI エミュレーション, UNIXドメインソケット物理ピン変換, GPIO/Pin Array リアルタイム連動 |
@@ -448,7 +452,7 @@ F-BB環境には、基本的なペリフェラル操作から高度なマルチ�
 ### F-BBにおける `.dts` の立ち位置（Linux/YoctoのDTSとの違い）
 F-BBが使用する `.dts` は、**FWをシミュレータ上で論理デバッグするために構築するエミュレータ専用の定義ファイル**です。
 - **Linux標準の `.dts` を置き換えるものではありません。**
-- F-BB上でレジスタ単位のシミュレーションとエミュレーション（自動コード生成やアドレスルーティング）を実現するため、標準のデバイスツリー定義には存在しない `registers` 属性（例：`registers = "RST @ 0x10, EN @ 0x14"`）などの独自拡張を取り入れた「DTSの新しいファミリー（独自サブセット）」という位置づけになります。
+- F-BB上でレジスタ単位のシミュレーションとエミュレーション（自動コード生成やアドレスルーティング）を実現するため、標準のデバイスツリー定義には存在しない `registers` 属性（例：`registers = "CTRL @ 0x00 : RW", "STATUS @ 0x04 : RO"` 等のアクセス権限属性オプショナル指定）などの独自拡張を取り入れた「DTSの新しいファミリー（独自サブセット）」という位置づけになります。
 
 ### F-BBを活用した推奨開発フロー
 
@@ -511,28 +515,28 @@ F-BBは、ハードウェア記述言語（RTL）から、低レイヤーのシ�
 
 ビルド成果物（`build`, `dist`）、外部パッケージ（`node_modules`）、および一時ファイルを除外したリポジトリ全体の静的ソースコードを `cloc` (Count Lines of Code v1.90) にて正確に計測した結果です。
 
-コメント行や空行を除いた**純プログラムステップ数（Pure Code）だけで 34,525 行 (34.5k+ LOC)**、コメント・空行を含めた**全体総行数は 42,950 行 (42.9k+ Lines)**（全 319 ファイル）に達する大型エミュレーションプラットフォームです。
+F-BB 独自のプロジェクトコードのみ（`--cleanall` 時）で**純プログラムステップ数（Pure Code） 35,163 行 (35.1k+ LOC)**、総行数 **43,730 行**（全 327 ファイル）で構成されています。また、シナリオ 10〜15 で動的ロードされる外部 RTOS カーネル（FreeRTOS, ThreadX, CMSIS_5）のソース群を含むフル状態では **83,011 行 (83.0k+ LOC)** / **全 158,332 行**（全 707 ファイル）の規模となります。
 
 > **Project Scale Summary (`cloc` 計測値):**
-> - **Pure Code (純プログラム行数):** **34,525 Lines of Code** *(C/C++: ~10.0k LOC, Markdown/Doc: ~9.4k LOC, JSON/DTS: ~6.6k LOC, React/JSX/JS/CSS: ~3.9k LOC, Python: ~1.7k LOC)*
-> - **Total Lines (総行数):** **42,950 Lines** *(うちコメント行: 2,027行, 空行: 6,398行)*
-> - **Files (全ファイル数):** **319 Files** (Markdown仕様書・JSONマニフェスト・全シナリオのFW含む)
+> - **Pure F-BB Code (F-BB独自コードのみ):** **35,163 Lines of Code** *(総行数 43,730行 / 327ファイル)*
+> - **Full Environment (外部RTOSカーネル同梱時):** **83,011 Lines of Code** *(総行数 158,332行 / 707ファイル)*
+> - **主要言語構成:** *(Markdown/Doc: ~9.5k LOC, JSON: ~6.7k LOC, C/C++: ~10.2k LOC (全シナリオFW/Shim), React/JSX/JS/CSS: ~4.1k LOC, Python: ~1.8k LOC)*
 
 | 言語分類 (cloc) | 拡張子 | ファイル数 | 空行 (Blank) | コメント (Comment) | 純コード (Pure LOC) | 総行数 (Total Lines) | 主な構成要素と役割 |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **Markdown** | `.md` | 90 | 3,649 | 0 | **9,447行** | **13,096行** | システム仕様書、ADR歴史的決定アーカイブ、シナリオ別解説書 |
-| **JSON / Manifest** | `.json` | 31 | 0 | 0 | **6,647行** | **6,647行** | PPAペリフェラルマニフェスト (`fbb-plugin.json`)、ボード構造メタデータ |
-| **C++** | `.cpp` | 20 | 784 | 511 | **5,353行** | **6,648行** | Verilator シミュレーションコア、ペリフェラルプラグイン実装 |
-| **C** | `.c` | 31 | 648 | 348 | **4,028行** | **5,024行** | システムコール横取り Shim、エミュレータデーモン、ファームウェア |
-| **JSX** | `.jsx` | 12 | 241 | 44 | **2,750行** | **3,035行** | Vite + React 19 UI（Dockview, Recharts, `GenericPeripheralPane`） |
-| **Python** | `.py` / CLI | 13 | 331 | 454 | **1,751行** | **2,536行** | DTSパース・コード自動生成エンジン、統一 CLI (`bin/fbb`), PPA |
-| **Bourne Shell** | `.sh` | 35 | 192 | 181 | **859行** | **1,232行** | 自動検証ランナー（`run_tests.sh`）、ラボ起動スクリプト（`start_lab.sh`） |
-| **JavaScript** | `.js` | 3 | 110 | 30 | **816行** | **956行** | ダッシュボード WebSockets サーバー（`dashboard/server.js`） |
-| **CMake** | `CMakeLists.txt` / `.cmake` | 20 | 113 | 67 | **769行** | **949行** | マルチターゲットビルド設定（シナリオ・PPA・カーネル） |
-| **C/C++ Header** | `.h` / `.hpp` | 29 | 100 | 155 | **640行** | **895行** | デバイス共通ヘッダー、レジスタ定義、Shimマクロ |
-| **Verilog** | `.v` | 15 | 77 | 141 | **651行** | **869行** | シミュレーション対象の FPGA ハードウェア記述 (RTL) |
-| **Rust / Other** | `.rs` / `.css` / 他 | 24 | 155 | 96 | **814行** | **1,065行** | UIスタイルシート (CSS), Mコア Rust FW, 各種設定メタデータ |
-| **合計 (SUM Total)** | **-** | **319** | **6,398** | **2,027** | **34,525行** | **42,950行** | **F-BB プラットフォーム全体の静的ソースコード総数** |
+| **Markdown** | `.md` | 91 | 3,656 | 0 | **9,480行** | **13,136行** | システム仕様書、ADR歴史的決定アーカイブ、シナリオ別解説書 |
+| **JSON / Manifest** | `.json` | 31 | 0 | 0 | **6,658行** | **6,658行** | PPAペリフェラルマニフェスト (`fbb-plugin.json`)、ボード構造メタデータ |
+| **C++** | `.cpp` | 20 | 786 | 513 | **5,365行** | **6,664行** | Verilator シミュレーションコア、ペリフェラルプラグイン実装 |
+| **C** | `.c` | 32 | 674 | 355 | **4,174行** | **5,203行** | システムコール横取り Shim、エミュレータデーモン、全シナリオ FW |
+| **JSX** | `.jsx` | 13 | 260 | 46 | **2,939行** | **3,245行** | Vite + React 19 UI（Dockview, Recharts, `GenericPeripheralPane`, `TransactionLoggerPane`） |
+| **Python** | `.py` / CLI | 13 | 350 | 481 | **1,844行** | **2,675行** | DTSパース・コード自動生成エンジン、統一 CLI (`bin/fbb`), PPA |
+| **Bourne Shell** | `.sh` | 36 | 194 | 184 | **878行** | **1,256行** | 自動検証ランナー（`run_tests.sh`）、ラボ起動スクリプト（`start_lab.sh`） |
+| **JavaScript** | `.js` | 3 | 113 | 32 | **858行** | **1,003行** | ダッシュボード WebSockets サーバー（`dashboard/server.js`） |
+| **CMake** | `CMakeLists.txt` / `.cmake` | 21 | 113 | 67 | **776行** | **956行** | マルチターゲットビルド設定（シナリオ・PPA・カーネル） |
+| **Verilog** | `.v` | 16 | 87 | 144 | **677行** | **908行** | シミュレーション対象の FPGA ハードウェア記述 (RTL) |
+| **C/C++ Header** | `.h` / `.hpp` | 30 | 101 | 157 | **655行** | **913行** | デバイス共通ヘッダー、レジスタ定義、Shimマクロ、ライブラリ |
+| **Other / Rust** | `.rs` / `.css` / 他 | 21 | 157 | 141 | **859行** | **1,157行** | UIスタイルシート (CSS), Mコア Rust FW, 各種設定メタデータ |
+| **合計 (SUM Total)** | **-** | **327** | **6,491** | **2,076** | **35,163行** | **43,730行** | **F-BB プラットフォーム全体の静的ソースコード総数** |
 
 
 > **コード生成エンジンによる動的コード**

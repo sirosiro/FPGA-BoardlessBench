@@ -70,6 +70,65 @@ static int (*original_tcsetattr)(int fd, int optional_actions, const struct term
 struct mmap_route { unsigned long base_addr; unsigned long size; const char *shm_path; const char *path; };
 static struct mmap_route routes[] = { %s };
 
+struct fbb_reg_perm {
+    unsigned long base_addr;
+    unsigned long offset;
+    const char *name;
+    const char *direction; // "RO", "WO", "RW"
+};
+static struct fbb_reg_perm reg_perms[] = { %s };
+static int num_reg_perms = %d;
+
+__attribute__((visibility("default"))) void fbb_check_protocol_assertion_addr(unsigned long addr, int is_write, unsigned long val);
+__attribute__((visibility("default"))) void fbb_write_reg(void *base_addr, unsigned long offset, uint32_t val);
+__attribute__((visibility("default"))) uint32_t fbb_read_reg(void *base_addr, unsigned long offset);
+
+__attribute__((visibility("default"))) void fbb_check_protocol_assertion_addr(unsigned long addr, int is_write, unsigned long val) {
+    if (num_reg_perms == 0) return;
+    for (int i = 0; i < num_reg_perms; i++) {
+        unsigned long target_addr = reg_perms[i].base_addr + reg_perms[i].offset;
+        if (addr == target_addr) {
+            const char *dir = reg_perms[i].direction;
+            struct timeval tv;
+            gettimeofday(&tv, NULL);
+            unsigned long long ts_ms = (unsigned long long)tv.tv_sec * 1000ULL + (tv.tv_usec / 1000);
+
+            FILE *vf = fopen("/tmp/fbb_protocol_violations.log", "a");
+            if (is_write && strcmp(dir, "RO") == 0) {
+                fprintf(stderr, "\033[1;31m[F-BB Protocol Assertion Error] Write to Read-Only register '%%s' @ 0x%%lX (val=0x%%lX)!\033[0m\n",
+                        reg_perms[i].name, target_addr, val);
+                if (vf) fprintf(vf, "[ts=%%llu] [PROTOCOL_VIOLATION] WRITE_TO_RO reg=%%s addr=0x%%lX val=0x%%lX\n", ts_ms, reg_perms[i].name, target_addr, val);
+            } else if (!is_write && strcmp(dir, "WO") == 0) {
+                fprintf(stderr, "\033[1;31m[F-BB Protocol Assertion Error] Read from Write-Only register '%%s' @ 0x%%lX!\033[0m\n",
+                        reg_perms[i].name, target_addr);
+                if (vf) fprintf(vf, "[ts=%%llu] [PROTOCOL_VIOLATION] READ_FROM_WO reg=%%s addr=0x%%lX\n", ts_ms, reg_perms[i].name, target_addr);
+            } else {
+                // Normal register transaction
+                if (is_write) {
+                    if (vf) fprintf(vf, "[ts=%%llu] [OK] WRITE reg=%%s addr=0x%%lX val=0x%%lX\n", ts_ms, reg_perms[i].name, target_addr, val);
+                } else {
+                    if (vf) fprintf(vf, "[ts=%%llu] [OK] READ reg=%%s addr=0x%%lX val=0x%%lX\n", ts_ms, reg_perms[i].name, target_addr, val);
+                }
+            }
+            if (vf) fclose(vf);
+            break;
+        }
+    }
+}
+
+__attribute__((visibility("default"))) void fbb_write_reg(void *base_addr, unsigned long offset, uint32_t val) {
+    unsigned long abs_addr = 0x40000000 + offset;
+    fbb_check_protocol_assertion_addr(abs_addr, 1, val);
+    *(volatile uint32_t *)((char *)base_addr + offset) = val;
+}
+
+__attribute__((visibility("default"))) uint32_t fbb_read_reg(void *base_addr, unsigned long offset) {
+    unsigned long abs_addr = 0x40000000 + offset;
+    uint32_t val = *(volatile uint32_t *)((char *)base_addr + offset);
+    fbb_check_protocol_assertion_addr(abs_addr, 0, val);
+    return val;
+}
+
 static pthread_mutex_t mappings_mutex = PTHREAD_MUTEX_INITIALIZER;
 struct active_mapping {
     void *addr;

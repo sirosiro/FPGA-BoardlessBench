@@ -51,6 +51,37 @@ let lastRegState = null;
 let traceIndex = 0;
 const MAX_TRACE_HISTORY = 500;
 
+// Protocol Violation Logger Watcher
+let lastViolationSize = 0;
+const VIOLATION_LOG_PATH = '/tmp/fbb_protocol_violations.log';
+
+function checkProtocolViolations() {
+    try {
+        if (fs.existsSync(VIOLATION_LOG_PATH)) {
+            const stats = fs.statSync(VIOLATION_LOG_PATH);
+            if (stats.size > lastViolationSize) {
+                const fd = fs.openSync(VIOLATION_LOG_PATH, 'r');
+                const buffer = Buffer.alloc(stats.size - lastViolationSize);
+                fs.readSync(fd, buffer, 0, buffer.length, lastViolationSize);
+                fs.closeSync(fd);
+                lastViolationSize = stats.size;
+                const lines = buffer.toString('utf8').split('\n').filter(Boolean);
+                lines.forEach(line => {
+                    io.emit('protocol_violation', {
+                        timestamp: new Date().toISOString(),
+                        log: line
+                    });
+                });
+            }
+        } else {
+            lastViolationSize = 0;
+        }
+    } catch (e) {
+        // ignore
+    }
+}
+setInterval(checkProtocolViolations, 300);
+
 // マニフェストの読み込み
 function loadManifest() {
     try {
@@ -720,6 +751,22 @@ app.get('/api/sdcard/dump', (req, res) => {
 });
 
 app.get('/api/manifest', (req, res) => res.json(manifest));
+
+app.get('/api/violations', (req, res) => {
+    try {
+        if (fs.existsSync(VIOLATION_LOG_PATH)) {
+            const content = fs.readFileSync(VIOLATION_LOG_PATH, 'utf8');
+            const lines = content.split('\n').filter(Boolean);
+            return res.json(lines.map(line => ({
+                timestamp: new Date().toISOString(),
+                log: line
+            })));
+        }
+    } catch (e) {
+        console.error('[Backend] Failed to read violation log:', e);
+    }
+    res.json([]);
+});
 
 app.get('/api/dts/tree', (req, res) => {
     try {

@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from 'react';
-import { Box, Plus, ChevronDown, Monitor, Cpu, Activity, Terminal, Tv, HardDrive, Layers, FileCode } from 'lucide-react';
+import { Box, Plus, ChevronDown, Monitor, Cpu, Activity, Terminal, Tv, HardDrive, Layers, FileCode, ShieldAlert } from 'lucide-react';
 import { DockviewReact } from 'dockview-react';
 import { DashboardProvider, useDashboard } from './components/DashboardContext';
 import RegisterMonitor from './components/RegisterMonitor';
@@ -10,6 +10,7 @@ import HdmiOutput from './components/HdmiOutput';
 import SdCardPanel from './components/SdCardPanel';
 import DtsVisualizer from './components/DTSVisualizer';
 import GenericPeripheralPane from './components/GenericPeripheralPane';
+import TransactionLoggerPane from './components/TransactionLoggerPane';
 import MemoryErrorModal from './components/MemoryErrorModal';
 import './App.css';
 
@@ -19,6 +20,7 @@ const components = {
   registerMonitor: (props) => <RegisterMonitor {...props} />,
   gpioPanel: (props) => <GpioPanel {...props} />,
   registerTracer: (props) => <RegisterTracer {...props} />,
+  transactionLogger: (props) => <TransactionLoggerPane {...props} />,
   uartTerminal: (props) => <UartTerminal {...props} />,
   hdmiOutput: (props) => <HdmiOutput {...props} />,
   spiAdcPanel: (props) => <GenericPeripheralPane {...props} />,
@@ -392,6 +394,7 @@ function DashboardInner() {
         { id: 'registerMonitor', component: 'registerMonitor', title: 'Registers', icon: Cpu },
         { id: 'gpioPanel', component: 'gpioPanel', title: 'GPIO / Pin Array', icon: Activity },
         { id: 'registerTracer', component: 'registerTracer', title: 'Tracer', icon: Layers },
+        { id: 'transactionLogger', component: 'transactionLogger', title: 'Transaction Logger', icon: ShieldAlert },
         { id: 'dtsVisualizer', component: 'dtsVisualizer', title: 'DTS Visualizer & AI', icon: FileCode },
       ]
     },

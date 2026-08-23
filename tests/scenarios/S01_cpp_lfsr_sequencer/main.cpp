@@ -4,6 +4,7 @@
 #include <unistd.h>
 #include <vector>
 #include <string>
+#include <cstring>
 #include <sstream>
 #include <map>
 #include <memory>
@@ -156,6 +157,9 @@ public:
 #include "vfpga_device_config.h"
 int main() {
     try {
+        // 保存: dup2前の元の標準出力 (Linuxターミナル画面へメッセージを出力するため)
+        int real_stdout = dup(STDOUT_FILENO);
+
         // UARTデバイスをオープンして標準入出力にリダイレクト
         // これによりダッシュボードのUARTコンソールにシェルが表示される
         int uart_fd = open(FBB_DEV_PATH_VFPGA_UART, O_RDWR | O_NOCTTY);
@@ -182,6 +186,18 @@ int main() {
         
         // GPIO を全ビット出力モードに設定 (TRI=0)
         gpio.set_direction(0x00000000);
+
+        // 全デバイス初期化完了をユーザーの Linux ターミナル画面へ通知
+        if (real_stdout >= 0) {
+            const char* ready_msg =
+                "\n============================================================\n"
+                "  [App] All peripherals initialized successfully!\n"
+                "  Interactive C++ Shell is ready on Web Dashboard UART.\n"
+                "  Access dashboard at: http://localhost:8080\n"
+                "============================================================\n\n";
+            write(real_stdout, ready_msg, strlen(ready_msg));
+            close(real_stdout);
+        }
         
         SystemShell shell(gpio, engine);
         shell.run();

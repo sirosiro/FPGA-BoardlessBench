@@ -33,6 +33,19 @@ class ShimGenerator(BaseGenerator):
                     '    }' % dev.path
                 )
         
+        reg_perm_entries = []
+        for dev in mmap_devs:
+            for reg in dev.registers:
+                base_addr_str = dev.base_reg.split()[0] if dev.base_reg else "0x0"
+                reg_perm_entries.append('    { %s, %s, "%s", "%s" }' % (
+                    base_addr_str,
+                    reg.offset,
+                    reg.name,
+                    reg.direction
+                ))
+        reg_perm_str = ", ".join(reg_perm_entries) if reg_perm_entries else ""
+        num_reg_perms = len(reg_perm_entries)
+
         # テンプレートファイルを読み込む
         template_path = os.path.join(os.path.dirname(__file__), 'templates/libfpgashim.c.template')
         with open(template_path, 'r') as f:
@@ -40,6 +53,8 @@ class ShimGenerator(BaseGenerator):
 
         return template % (
             ", ".join(mmap_routes),
+            reg_perm_str,
+            num_reg_perms,
             " ".join(i2c_matches),
             " ".join(uart_matches),
             " ".join(spi_matches),

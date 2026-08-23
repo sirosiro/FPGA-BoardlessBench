@@ -55,11 +55,11 @@ if [ "$CLEAN" = true ]; then
         CLEAN_TARGETS="clean"
     fi
     echo "[Runner] Cleaning artifacts for scenario: ${SCENARIO_NAME} with targets: ${CLEAN_TARGETS}..."
-    cd "${PROJECT_ROOT}"
     if [ -d "build" ]; then rm -rf build/* build/.[!.]* 2>/dev/null; fi
     rm -f libfpgashim.so vfpga_sim 2>/dev/null
+    rm -rf logs obj_dir 2>/dev/null
     rm -f /dev/shm/spi_adc /dev/shm/fbb_* 2>/dev/null
-    rm -f /tmp/vring0 /tmp/vfpga_reg /tmp/fbb_compatible /tmp/fbb_model /tmp/uio* /tmp/fbb_uart_* /tmp/vfpga_uart_* /tmp/fbb_spi_* /tmp/fbb_i2c_* 2>/dev/null
+    rm -f /tmp/vring0 /tmp/vfpga_reg /tmp/fbb_compatible /tmp/fbb_model /tmp/uio* /tmp/fbb_uart_* /tmp/vfpga_uart_* /tmp/fbb_spi_* /tmp/fbb_i2c_* /tmp/fbb_protocol_violations.log 2>/dev/null
     if [ -n "$SCENARIO_DIR" ]; then
         if [[ " $CLEAN_TARGETS " =~ " distclean " || " $CLEAN_TARGETS " =~ " cleanall " ]]; then
             rm -rf "${SCENARIO_DIR}/FreeRTOS-Kernel" "${SCENARIO_DIR}/threadx" "${SCENARIO_DIR}/CMSIS-FreeRTOS" "${SCENARIO_DIR}/stm32-mw-cmsis-rtos-tx" "${SCENARIO_DIR}/CMSIS_5" 2>/dev/null
@@ -85,7 +85,6 @@ cleanup() {
     echo -e "\n[Runner] Stopping background processes..."
     pkill -f vlogic_controller || true
     pkill -f vfpga_sim || true
-    pkill -f "node dashboard/server.js" || true
     
     # remoteproc M-core processes cleanup
     if [ -f "/tmp/fbb/sys/class/remoteproc/remoteproc0/pid" ]; then
@@ -100,6 +99,9 @@ cleanup() {
 
 # 異常終了時や中断時（Ctrl+C）にプロセスを掃除するように設定
 trap cleanup EXIT
+
+# 過去の違反ログを削除して新規実行を開始
+rm -f /tmp/fbb_protocol_violations.log 2>/dev/null
 
 # --- 実行フェーズ ---
 
@@ -127,6 +129,13 @@ cmake --build build || exit 1
 echo "[Runner] Starting Backend Controller & RTL Simulator..."
 python3 -u "${CONTROLLER}" "${DTS}" > "${SCENARIO_DIR}/controller.log" 2>&1 &
 "${SIMULATOR}" > "${SCENARIO_DIR}/simulator.log" 2>&1 &
+
+# ダッシュボードサーバーが未起動の場合は自動的にバックグラウンド起動
+if ! pgrep -f "node dashboard/server.js" > /dev/null 2>&1; then
+    echo "[Runner] Starting Web Dashboard Server (http://localhost:8080)..."
+    mkdir -p "${PROJECT_ROOT}/logs"
+    nohup node "${PROJECT_ROOT}/dashboard/server.js" > "${PROJECT_ROOT}/logs/dashboard.log" 2>&1 </dev/null &
+fi
 
 # 通信の準備が整うまで少し待機
 sleep 2

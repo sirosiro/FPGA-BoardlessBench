@@ -101,6 +101,8 @@ if [ "$CLEAN" = true ]; then
 
     rm -f tests/scenarios/*/*.log
     rm -f *.log
+    rm -rf logs 2>/dev/null
+    rm -rf obj_dir 2>/dev/null
     rm -f tests/scenarios/*/*.vcd
     rm -f *.vcd
     rm -rf tests/scenarios/*/sd_card 2>/dev/null

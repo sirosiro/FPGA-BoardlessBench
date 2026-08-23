@@ -1,0 +1,54 @@
+{
+    "grid": {
+        "root": {
+            "type": "branch",
+            "data": [
+                {
+                    "type": "branch",
+                    "data": [
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "dtsVisualizer"
+                                ],
+                                "activeView": "dtsVisualizer",
+                                "id": "1"
+                            },
+                            "size": 509
+                        },
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "transactionLogger"
+                                ],
+                                "activeView": "transactionLogger",
+                                "id": "3"
+                            },
+                            "size": 1072
+                        }
+                    ],
+                    "size": 966
+                }
+            ],
+            "size": 1581
+        },
+        "width": 1581,
+        "height": 966,
+        "orientation": "VERTICAL"
+    },
+    "panels": {
+        "transactionLogger": {
+            "id": "transactionLogger",
+            "contentComponent": "transactionLogger",
+            "title": "Transaction Logger"
+        },
+        "dtsVisualizer": {
+            "id": "dtsVisualizer",
+            "contentComponent": "dtsVisualizer",
+            "title": "DTS Visualizer & AI"
+        }
+    },
+    "activeGroup": "3"
+}

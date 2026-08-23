@@ -1,0 +1,31 @@
+/dts-v1/;
+
+/ {
+    #address-cells = <1>;
+    #size-cells = <1>;
+    model = "zynq7000-vfpga-01c_protocol_assertion";
+    compatible = "generic,fbb-vfpga";
+
+    vfpga_reg@40000000 {
+        compatible = "generic-uio";
+        reg = <0x40000000 0x1000>;
+        label = "/dev/uio0";
+        status = "okay";
+        registers = 
+            "CTRL   @ 0x00 : RW",
+            "STATUS @ 0x04 : RO",
+            "TRIG   @ 0x08 : WO";
+    };
+
+    vfpga_gpio@40001000 {
+        compatible = "xlnx,xps-gpio-1.00.a";
+        reg = <0x40001000 0x1000>;
+        label = "/dev/uio1";
+        status = "okay";
+        registers = 
+            "GPIO_DATA  @ 0x00 : RW",
+            "GPIO_TRI   @ 0x04 : RW",
+            "GPIO2_DATA @ 0x08 : RW",
+            "GPIO2_TRI  @ 0x0C : RW";
+    };
+};

@@ -281,6 +281,18 @@ class DTSParser:
                     for r_str in reg_list:
                         r_str = r_str.strip().strip('"').strip()
                         if '@' in r_str:
+                            reg_direction = 'RW'
+                            if ':' in r_str:
+                                r_str, dir_part = r_str.split(':', 1)
+                                dir_part = dir_part.strip().strip('[').strip(']').upper()
+                                if dir_part in ['RO', 'WO', 'RW']:
+                                    reg_direction = dir_part
+                            elif '[' in r_str and ']' in r_str:
+                                bracket_match = re.search(r'\[\s*(RO|WO|RW)\s*\]', r_str, re.IGNORECASE)
+                                if bracket_match:
+                                    reg_direction = bracket_match.group(1).upper()
+                                    r_str = re.sub(r'\[\s*(RO|WO|RW)\s*\]', '', r_str, flags=re.IGNORECASE)
+
                             reg_parts = r_str.split('@')
                             reg_name = reg_parts[0].strip()
                             reg_offset = reg_parts[1].strip()
@@ -304,7 +316,7 @@ class DTSParser:
                                 else:
                                     direction_mode = 'active_high_input'
                             
-                            device.registers.append(Register(reg_name, reg_offset, 'RW', logical_name, direction_mode))
+                            device.registers.append(Register(reg_name, reg_offset, reg_direction, logical_name, direction_mode))
                 base_name = device.name
                 counter = 1
                 while any(d.name == device.name for d in devices):
