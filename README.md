@@ -189,6 +189,7 @@ FPGA回路（RTL）が完成する前であっても、仕様さえ決まって�
 
 FPGA-BoardlessBench (F-BB)が「Zynqを想定した実働FW（ファームウェア）開発に耐えうるものか」、および「QEMUに対する決定的な優位性は何か」や使い分けの詳細については、以下の追加情報を参照してください。
 
+- [なぜ Zynq をリファレンスアーキテクチャに選んだのか (AddInfo_WhyZynq.md)](./docs/architecture/AddInfo_WhyZynq.md)
 - [Zynq実稼働FW開発への適用性とQEMUに対する優位性 (AddInfo_vs_QEMU.md)](./docs/architecture/AddInfo_vs_QEMU.md)
 
 ---
@@ -592,6 +593,7 @@ F-BB 独自のプロジェクトコードのみ（`--cleanall` 時）で**純プ
 
 - **[技術仕様書 (spec.md)](spec.md)**: 各コンポーネントの機能詳細とインターフェース定義。
 - **[アーキテクチャ・マニフェスト](ARCHITECTURE_MANIFEST.md)**: プロジェクトの設計原則と主要な決定事項の記録。
+- **[なぜ Zynq をリファレンスアーキテクチャに選んだのか](./docs/architecture/AddInfo_WhyZynq.md)**: 認知的アンカーとしての Zynq 選定理由と、NXP 等の他社 SoC・オリジナル仮想 SoC への汎用性解説。
 - **[組み込み・FPGA技術研修ソリューション提案書](./docs/architecture/AddInfo_Technical_Training_Proposal.md)**: 実機基板なしで製品レベルの組み込みLinux・RTOS・FPGA協調設計技術を修得できる技術研修提案ソリューション。
 - **[F-BBにおけるGDBデバッグ活用ガイド](./docs/architecture/AddInfo_GDB.md)**: 物理JTAG機器なしでAコアLinux・MコアRTOS・VerilatorシミュレーションをGDB/VS Codeでデバッグする活用ガイド。
 
