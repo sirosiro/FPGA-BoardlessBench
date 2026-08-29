@@ -171,6 +171,7 @@ class DTSParser:
                 elif 'spi' in compatible or 'cdns,spi' in compatible or 'xlnx,zynq-spi' in compatible: dev_type = 'spi'
                 elif 'dma' in compatible or 'xlnx,axi-dma' in compatible or 'xlnx,axi-cdma' in compatible: dev_type = 'dma'
                 elif 'rpmsg' in compatible: dev_type = 'rpmsg'
+                elif any(c in compatible for c in ['xlnx,zynq-can', 'bosch,cc770', 'nxp,flexcan', 'fbb,can']): dev_type = 'can'
                 if dev_type == 'unknown' and label.startswith('/dev/uio'):
                     dev_type = 'uio'
                 

@@ -1,5 +1,5 @@
 import { useRef, useState, useEffect } from 'react';
-import { Box, Plus, ChevronDown, Monitor, Cpu, Activity, Terminal, Tv, HardDrive, Layers, FileCode, ShieldAlert } from 'lucide-react';
+import { Box, Plus, ChevronDown, Monitor, Cpu, Activity, Terminal, Tv, HardDrive, Layers, FileCode, ShieldAlert, Car } from 'lucide-react';
 import { DockviewReact } from 'dockview-react';
 import { DashboardProvider, useDashboard } from './components/DashboardContext';
 import RegisterMonitor from './components/RegisterMonitor';
@@ -11,6 +11,7 @@ import SdCardPanel from './components/SdCardPanel';
 import DtsVisualizer from './components/DTSVisualizer';
 import GenericPeripheralPane from './components/GenericPeripheralPane';
 import TransactionLoggerPane from './components/TransactionLoggerPane';
+import CanAnalyzerPane from './components/CanAnalyzerPane';
 import MemoryErrorModal from './components/MemoryErrorModal';
 import './App.css';
 
@@ -29,6 +30,7 @@ const components = {
   sdCard: (props) => <SdCardPanel {...props} />,
   dtsVisualizer: (props) => <DtsVisualizer {...props} />,
   genericPeripheralPane: (props) => <GenericPeripheralPane {...props} />,
+  canAnalyzer: (props) => <CanAnalyzerPane {...props} />,
 };
 
 
@@ -393,6 +395,7 @@ function DashboardInner() {
       items: [
         { id: 'registerMonitor', component: 'registerMonitor', title: 'Registers', icon: Cpu },
         { id: 'gpioPanel', component: 'gpioPanel', title: 'GPIO / Pin Array', icon: Activity },
+        { id: 'canAnalyzer', component: 'canAnalyzer', title: 'CAN Bus Analyzer', icon: Car },
         { id: 'registerTracer', component: 'registerTracer', title: 'Tracer', icon: Layers },
         { id: 'transactionLogger', component: 'transactionLogger', title: 'Transaction Logger', icon: ShieldAlert },
         { id: 'dtsVisualizer', component: 'dtsVisualizer', title: 'DTS Visualizer & AI', icon: FileCode },

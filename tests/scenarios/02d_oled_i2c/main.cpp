@@ -273,8 +273,10 @@ int main() {
     patterns.push_back(p5);
 
     std::cout << "[OLED Scenario] Starting animation loop. Press Ctrl+C to stop.\n";
-    int pattern_idx = 0;
-    while (true) {
+    bool interactive = (getenv("VFPGA_INTERACTIVE") != nullptr);
+    size_t total_cycles = interactive ? 1000000 : patterns.size();
+    for (size_t i = 0; i < total_cycles; ++i) {
+        size_t pattern_idx = i % patterns.size();
         std::cout << "[OLED Scenario] Drawing Pattern " << (pattern_idx + 1) << "...\n";
         
         // アドレスを先頭にリセットし、かつ Addressing Mode を毎回設定して堅牢性を確保する
@@ -287,9 +289,13 @@ int main() {
         // パターンの送信
         write_data(fd, patterns[pattern_idx]);
 
-        pattern_idx = (pattern_idx + 1) % patterns.size();
-        sleep(2); // 2秒おきに切り替え
+        if (interactive) {
+            sleep(2); // 2秒おきに切り替え
+        } else {
+            usleep(50000); // 50ms in batch test
+        }
     }
+    std::cout << "[OLED Scenario] All patterns rendered successfully.\n";
 
     close(fd);
     return 0;

@@ -19,7 +19,7 @@ ZynqのPSには、ハードウェアIPとして固定されている多くのペ
 | **SD/SDIO** | 2ポート | **対応済** | Aコア側：システムコールフックによるローカルディレクトリ（`sd_card/`）の透過的マウント、およびダッシュボード統合（Text/HEXプレビューア対応） | 中 |
 | **SPI** | 2ポート | **対応済** | PS側：UNIXソケット/外部エミュレータ中継（Flash/ADCマルチスレーブ）<br>PL側：RTL SPI物理ピン（SCLK/MOSI/CS_N/MISO）と外部デバイスプロセスの双方向同期ブリッジ | 高 |
 | **CDMA / DMA** | 1チャネル (AXI CDMA) | **対応済** | C-Shim Writeフックによる即時 `memcpy` エミュレーション（ホスト 30-100GB/s 帯域）、事前アライメントチェック (`DMADecErr`)、アンダーラン (Stale Data 残留)、オーバーラン (`OVERRUN_ERR`) | 高 |
-| **CAN** | 2ポート | 未対応 | SocketCANへのマッピング | 低 |
+| **CAN** | 2ポート | **対応済** | Linux標準 SocketCAN API (`socket(PF_CAN, SOCK_RAW, CAN_RAW)`) の100%透過エミュレーション、UNIXドメインソケットによるサーバレスマルチキャスト（`/tmp/fbb_can_p{bus_id}/`）、共有メモリリングバッファ（`/dev/shm/fbb_can_ring{bus_id}`）、Webダッシュボード `CanAnalyzerPane`（リアルタイムパケットテーブル & OBD-II インジェクター）統合 | 高 |
 | **WDT (Watchdog)** | 3個 | 未対応 | タイムアウトイベントの通知 | 低 |
 | **TTC (Triple Timer)** | 2個 | 未対応 | クロック精度のタイマーイベント | 中 |
 
@@ -38,6 +38,7 @@ ZynqのPSには、ハードウェアIPとして固定されている多くのペ
 *   **AXI CDMA 高速転送 & 事前アライメント/境界エラー検証 (シナリオ20):** Zynq AXI CDMA IP (`xlnx,axi-cdma-1.00.a`) の仕様に厳格準拠した 100% 実機透過な `memcpy` DMA エミュレーション、アライメント拒否判定、および境界外データ破棄・保護ロジックの統合。
 *   **AMP Mコア AXI CDMA オフロード & リアルタイム DMA エミュレーション (シナリオ20b):** Mコア (Cortex-M / ベアメタル) から AXI CDMA IP を直接 MMIO 制御し、Aコア CPU 負荷ゼロでのゼロコピー共有メモリ DMA 転送、アライメント拒否、および境界エラー判定を 100% 実機透過で統合。
 *   **UIO 非同期割り込み（IRQ）エミュレーション & eventfd 透過ブロッキング (シナリオ01b):** 実機 FW に条件分岐（`#ifdef`）を一切含めず、Linux UIO ドライバの実務標準である割り込み駆動動作（`/dev/uio*` に対する `read()` ブロック待機、`uio_unmask` 再有効化、および RTL/eventfd からの即時解凍）を 100% 実機透過で統合。
+*   **Linux SocketCAN 透過エミュレーション & 車載 ECU / OBD-II 診断統合 (シナリオ21):** Linux 標準の SocketCAN API (`AF_CAN`) を 100% 透過インターセプトし、実車同様の 25Hz 車両テレメトリ常時配信（`0x100`, `0x101`）と OBD-II / UDS 診断要求（`0x7DF`）に対する即時レスポンス（`0x7E8`）、および Web ダッシュボードの `CanAnalyzerPane`（リアルタイムパケット監視、ID フィルタリング、GUI パケットインジェクター）との完全統合。
 
 ### 1. 短期目標：デバッグ視認性の極大化（Dashboard 2.0）
 *   **UI側でのデバイス個別リセット機能:** 

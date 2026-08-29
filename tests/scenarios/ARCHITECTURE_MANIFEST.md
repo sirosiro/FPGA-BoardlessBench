@@ -121,6 +121,9 @@
 * **`20_dma_cdma`**
   - **意図**: Zynq AXI CDMA (`xlnx,axi-cdma-1.00.a`) のエミュレーションとメモリ間高速転送・境界エラーの検証。
   - **役割**: ホスト PC のメモリ帯域を活用した同期 `memcpy` 転送、アライメントエラー（`DMADecErr`）、バッファアンダーラン（Stale Data 残留）、オーバーラン（データ切捨て）の100%実機透過エミュレーション、および Web ダッシュボード（`GpioPanel` / `Register Monitor` / `UartConsole`）での対話テストと一括バッチ回帰テストの両立検証。
+* **`21_can_socketcan_ecu`**
+  - **意図**: 車載 ECU ゲートウェイおよび Linux 標準 SocketCAN (`AF_CAN`) API の完全透過エミュレーションと OBD-II / UDS 診断応答の検証。
+  - **役割**: C-Shim における `socket(AF_CAN, SOCK_RAW, CAN_RAW)`, `bind()`, `setsockopt(CAN_RAW_FILTER)`, `ioctl(SIOCGIFINDEX)` のインターセプト、サーバレス・マルチキャスト通信、ロックフリー共有メモリリングバッファ、Web ダッシュボード CAN Bus Analyzer ペイン連携、および対話型 UART コンソールメニューと自動回帰テストの両立検証。
 * **`P01_frdmIMX`**
   - **意図**: 車載画像処理SoC（i.MX95/8MP）を模擬した高度なハードウェア/ソフトウェア協調デバッグ。
   - **役割**: Mesa OpenGL ESを使用した4カメラ歪み補正・バードアイ合成、およびSoCモデル自動検知（compatible/model）、極性反転設計（TRI = ~GDIR）の検証。
@@ -160,6 +163,9 @@
 - **2026-08-22: ADR #008 UIO 非同期割り込み（IRQ）エミュレーションと `eventfd` 透過ブロッキング機構の導入**
   - **Decision**: C-Shim において `/dev/uio*` に対する `read()` システムコールを横取りし、Linux ネイティブの `eventfd` を用いて割込発生まで FW プロセスを安全にブロック待機させる `FbbDeviceContext` 拡張機能を導入した。また `01_standard_uio` の直系派生シナリオとして `01b_uio_irq_interrupt` を新設した。
   - **Rationale**: 実機ファームウェアのコードに条件分岐（`#ifdef`）を一切書き込まず、製品開発で採用されている実務標準の UIO 割り込み駆動ドライバ（`mmap` ➔ `uio_unmask` ➔ `read` 待機 ➔ INT ACK）を 100% 透過的に走行させるため。
+- **2026-08-29: ADR #009 Linux SocketCAN (`AF_CAN`) API の完全透過エミュレーションと車載 ECU 診断環境の導入**
+  - **Decision**: C-Shim に `socket(AF_CAN, SOCK_RAW, CAN_RAW)`, `bind()`, `setsockopt(CAN_RAW_FILTER)`, `ioctl(SIOCGIFINDEX)` のインターセプトを実装。外部ブローカーデーモンを排したサーバレス・マルチキャスト（`/tmp/fbb_can_p{bus_id}/`）とロックフリー共有メモリリングバッファ（`/dev/shm/fbb_can_ring{bus_id}`）によるゼロオーバーヘッド通信、および Web ダッシュボード用 `CanAnalyzerPane`（リアルタイムパケットテーブル & OBD-II パケットインジェクター）を導入した。また、`start_lab.sh` 起動時の対話型 UART コンソールメニュー（`/dev/ttyPS1`）と自動回帰テストモードの切り替え機構を `21_can_socketcan_ecu` に統合した。
+  - **Rationale**: 物理 CAN トランシーバやカーネル `vcan` モジュールを必要とせず、実機の車載 ECU ファームウェアや診断ツール（OBD-II / UDS）をホスト PC 上で 100% 透過的に開発・検証できるようにするため。
 
 
 

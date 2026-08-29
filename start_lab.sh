@@ -45,6 +45,7 @@ cleanup() {
 
     # 共有メモリファイルとマニフェストの削除
     echo "Cleaning up temporary files..."
+    rm -rf /tmp/fbb_can_* /dev/shm/fbb_can_* 2>/dev/null
     rm -f /dev/shm/spi_adc /dev/shm/fbb_* 2>/dev/null
     rm -f /tmp/gpio /tmp/vfpga_* 2>/dev/null
     rm -f /tmp/fbb_uart_* 2>/dev/null

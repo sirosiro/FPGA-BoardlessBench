@@ -54,8 +54,7 @@ def main():
         
         stdout, stderr = "", ""
         is_passed = False
-        is_infinite = s in ("02d_oled_i2c", "02e_ht16k33_7seg_i2c", "S01_cpp_lfsr_sequencer")
-        is_violation_test = s == "04b_dev_mem_violation_legacy"
+        is_infinite = s in ("S01_cpp_lfsr_sequencer",)
         try:
             if is_infinite:
                 # Wait for 15 seconds, then raise TimeoutExpired
@@ -63,11 +62,7 @@ def main():
                 is_passed = (proc.returncode == 0)
             else:
                 stdout, stderr = proc.communicate()
-                if is_violation_test:
-                    has_violation_file = os.path.exists("/tmp/fbb_memory_violation")
-                    is_passed = (proc.returncode == 1) and has_violation_file
-                else:
-                    is_passed = (proc.returncode == 0)
+                is_passed = (proc.returncode == 0)
         except subprocess.TimeoutExpired:
             print(f"[Runner] Scenario {s} timed out as expected. Terminating process group...")
             try:

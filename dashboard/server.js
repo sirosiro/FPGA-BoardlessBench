@@ -537,13 +537,87 @@ io.on('connection', (socket) => {
             console.error(`[Backend Error] peripheral:action failed for ${targetPath}:`, e.message);
         }
     });
+
+function pushCanFrameToRing(busId, canId, dlc, dataBytes) {
+    try {
+        const filePath = `/dev/shm/fbb_can_ring${busId}`;
+        if (!fs.existsSync(filePath)) return;
+        const buffer = fs.readFileSync(filePath);
+        if (buffer.length < 16) return;
+        const magic = buffer.readUInt32LE(0);
+        if (magic !== 0x43414E30) return;
+
+        const head = buffer.readUInt32LE(4);
+        const CAPACITY = 256;
+        const ENTRY_SIZE = 24;
+        const offset = 16 + (head * ENTRY_SIZE);
+        if (offset + ENTRY_SIZE <= buffer.length) {
+            const nowUs = BigInt(Date.now()) * 1000n;
+            const ts_lo = Number(nowUs & 0xFFFFFFFFn);
+            const ts_hi = Number((nowUs >> 32n) & 0xFFFFFFFFn);
+            buffer.writeUInt32LE(ts_lo, offset);
+            buffer.writeUInt32LE(ts_hi, offset + 4);
+            buffer.writeUInt32LE(canId, offset + 8);
+            buffer.writeUInt8(dlc, offset + 12);
+            buffer.writeUInt8(0, offset + 13);
+            buffer.writeUInt8(busId, offset + 14);
+            buffer.writeUInt8(0, offset + 15);
+            for (let i = 0; i < 8; i++) {
+                buffer.writeUInt8(dataBytes[i] || 0, offset + 16 + i);
+            }
+            const nextHead = (head + 1) % CAPACITY;
+            buffer.writeUInt32LE(nextHead, 4);
+            fs.writeFileSync(filePath, buffer);
+        }
+    } catch (e) {
+        console.error('[Backend Error] pushCanFrameToRing failed:', e.message);
+    }
+}
+
+    socket.on('can:send', (payload) => {
+        try {
+            const busId = payload.busId !== undefined ? payload.busId : 0;
+            const canId = parseInt(payload.canId, 16) || 0;
+            const dlc = payload.dlc !== undefined ? payload.dlc : 8;
+            const dataBytes = Array.isArray(payload.data) ? payload.data : [];
+
+            // Record into SHM ring buffer for live analyzer visibility
+            pushCanFrameToRing(busId, canId, dlc, dataBytes);
+
+            // Construct struct can_frame (16 bytes)
+            const frameBuf = Buffer.alloc(16);
+            frameBuf.writeUInt32LE(canId, 0);
+            frameBuf.writeUInt8(dlc, 4);
+            for (let i = 0; i < 8; i++) {
+                frameBuf.writeUInt8(dataBytes[i] || 0, 8 + i);
+            }
+
+            const dgram = require('dgram');
+            const client = dgram.createSocket('unix_dgram');
+            const peersDir = `/tmp/fbb_can_p${busId}`;
+            if (fs.existsSync(peersDir)) {
+                const peers = fs.readdirSync(peersDir);
+                peers.forEach(peer => {
+                    const peerPath = path.join(peersDir, peer);
+                    try {
+                        client.send(frameBuf, 0, frameBuf.length, peerPath, () => {});
+                    } catch (e) {}
+                });
+            }
+            setTimeout(() => {
+                try { client.close(); } catch (e) {}
+            }, 100);
+        } catch (e) {
+            console.error('[Backend Error] can:send failed:', e.message);
+        }
+    });
 });
 
 const lastShmBuffers = {};
 function updatePeripheralShm() {
     try {
         if (!fs.existsSync('/dev/shm')) return;
-        const files = fs.readdirSync('/dev/shm').filter(f => f.startsWith('fbb_'));
+        const files = fs.readdirSync('/dev/shm').filter(f => f.startsWith('fbb_') && !f.startsWith('fbb_can_ring'));
         files.forEach(file => {
             const filePath = path.join('/dev/shm', file);
             try {
@@ -567,6 +641,64 @@ function updatePeripheralShm() {
     } catch (e) {}
 }
 
+const lastCanTails = {};
+function updateCanRingBuffers() {
+    try {
+        if (!fs.existsSync('/dev/shm')) return;
+        const files = fs.readdirSync('/dev/shm').filter(f => f.startsWith('fbb_can_ring'));
+        files.forEach(file => {
+            const filePath = path.join('/dev/shm', file);
+            try {
+                const buffer = fs.readFileSync(filePath);
+                if (buffer.length < 16) return;
+                const magic = buffer.readUInt32LE(0);
+                if (magic !== 0x43414E30) return; // "CAN0"
+
+                const head = buffer.readUInt32LE(4);
+                const lastTail = lastCanTails[file] !== undefined ? lastCanTails[file] : 0;
+                if (head === lastTail) return;
+
+                const entries = [];
+                const CAPACITY = 256;
+                const ENTRY_SIZE = 24; // 8B ts + 4B can_id + 1B dlc + 1B flags + 1B ch + 1B res + 8B data = 24B
+                let cur = lastTail;
+                while (cur !== head) {
+                    const offset = 16 + (cur * ENTRY_SIZE);
+                    if (offset + ENTRY_SIZE <= buffer.length) {
+                        const ts_lo = buffer.readUInt32LE(offset);
+                        const ts_hi = buffer.readUInt32LE(offset + 4);
+                        const ts_us = ts_hi * 4294967296 + ts_lo;
+                        const can_id = buffer.readUInt32LE(offset + 8);
+                        const can_dlc = buffer.readUInt8(offset + 12);
+                        const flags = buffer.readUInt8(offset + 13);
+                        const channel = buffer.readUInt8(offset + 14);
+                        const data = [];
+                        for (let i = 0; i < 8; i++) {
+                            data.push(buffer.readUInt8(offset + 16 + i));
+                        }
+                        entries.push({
+                            timestamp_us: ts_us,
+                            can_id: can_id,
+                            can_dlc: can_dlc,
+                            flags: flags,
+                            channel: channel,
+                            data: data
+                        });
+                    }
+                    cur = (cur + 1) % CAPACITY;
+                }
+                lastCanTails[file] = head;
+                if (entries.length > 0) {
+                    io.emit('can:frames', {
+                        bus: file.replace('fbb_can_ring', ''),
+                        frames: entries
+                    });
+                }
+            } catch (e) {}
+        });
+    } catch (e) {}
+}
+
 setInterval(() => {
     loadManifest();
     updateShm();
@@ -575,6 +707,7 @@ setInterval(() => {
 
 setInterval(() => {
     updatePeripheralShm();
+    updateCanRingBuffers();
 }, 33); // ~30 FPS
 
 

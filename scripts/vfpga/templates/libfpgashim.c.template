@@ -30,6 +30,10 @@
 #include "vfpga_device_config.h"
 #include <sys/mount.h>
 #include <sys/eventfd.h>
+#include <linux/can.h>
+#include <linux/can/raw.h>
+#include <net/if.h>
+#include <dirent.h>
 
 
 #ifndef MAP_FIXED_NOREPLACE
@@ -45,13 +49,21 @@ typedef enum {
     FBB_DEV_I2C,      // I2C bus
     FBB_DEV_SPI,      // SPI bus
     FBB_DEV_UART,     // UART PTY master
-    FBB_DEV_RPMSG     // VirtIO/RPMsg vring
+    FBB_DEV_RPMSG,    // VirtIO/RPMsg vring
+    FBB_DEV_CAN       // SocketCAN bus
 } FbbDeviceType;
 
+#define MAX_CAN_FILTERS 16
 typedef struct {
     FbbDeviceType type;
-    int sub_id; // bus_id for I2C, spi_code for SPI, route_idx for UIO, uart_id for UART
+    int sub_id; // bus_id for I2C/CAN, spi_code for SPI, route_idx for UIO, uart_id for UART
     int eventfd_fd; // UIO IRQ eventfd
+    int can_ifindex;
+    struct can_filter can_filters[MAX_CAN_FILTERS];
+    int num_can_filters;
+    int can_loopback;
+    int can_recv_own_msgs;
+    char can_sock_path[108];
 } FbbDeviceContext;
 
 static FbbDeviceContext fd_contexts[MAX_FDS];
@@ -66,6 +78,12 @@ static ssize_t (*original_write)(int fd, const void *buf, size_t count) = NULL;
 static ssize_t (*original_read)(int fd, void *buf, size_t count) = NULL;
 static int (*original_close)(int fd) = NULL;
 static int (*original_tcsetattr)(int fd, int optional_actions, const struct termios *termios_p) = NULL;
+static int (*original_socket)(int domain, int type, int protocol) = NULL;
+static int (*original_bind)(int sockfd, const struct sockaddr *addr, socklen_t addrlen) = NULL;
+static int (*original_setsockopt)(int sockfd, int level, int optname, const void *optval, socklen_t optlen) = NULL;
+static int (*original_getsockopt)(int sockfd, int level, int optname, void *optval, socklen_t *optlen) = NULL;
+static ssize_t (*original_sendto)(int sockfd, const void *buf, size_t len, int flags, const struct sockaddr *dest_addr, socklen_t addrlen) = NULL;
+static ssize_t (*original_recvfrom)(int sockfd, void *buf, size_t len, int flags, struct sockaddr *src_addr, socklen_t *addrlen) = NULL;
 
 struct mmap_route { unsigned long base_addr; unsigned long size; const char *shm_path; const char *path; };
 static struct mmap_route routes[] = { %s };
@@ -840,9 +858,16 @@ int close(int fd) {
         if (fd_contexts[fd].type == FBB_DEV_UIO && fd_contexts[fd].eventfd_fd >= 0) {
             original_close(fd_contexts[fd].eventfd_fd);
             fd_contexts[fd].eventfd_fd = -1;
+        } else if (fd_contexts[fd].type == FBB_DEV_CAN) {
+            if (fd_contexts[fd].can_sock_path[0]) {
+                unlink(fd_contexts[fd].can_sock_path);
+            }
         }
         fd_contexts[fd].type = FBB_DEV_NONE;
         fd_contexts[fd].sub_id = 0;
+        fd_contexts[fd].can_ifindex = 0;
+        fd_contexts[fd].num_can_filters = 0;
+        fd_contexts[fd].can_sock_path[0] = '\0';
     }
     return original_close(fd);
 }
@@ -998,6 +1023,193 @@ static void init_segv_handler(void) {
     sigaction(SIGSEGV, &sa, &old_segv_action);
 }
 
+#define CAN_RING_MAGIC 0x43414E30 /* "CAN0" */
+#define CAN_RING_CAPACITY 256
+struct can_ring_entry {
+    uint64_t timestamp_us;
+    uint32_t can_id;
+    uint8_t can_dlc;
+    uint8_t flags;
+    uint8_t channel;
+    uint8_t reserved;
+    uint8_t data[8];
+};
+struct can_ring_buffer {
+    uint32_t magic;
+    uint32_t head;
+    uint32_t tail;
+    uint32_t dropped;
+    struct can_ring_entry entries[CAN_RING_CAPACITY];
+};
+
+static void push_can_frame_to_shm_ring(int bus_id, const struct can_frame *frame) {
+    char shm_path[64];
+    snprintf(shm_path, sizeof(shm_path), "/fbb_can_ring%%d", bus_id);
+    int shm_fd = shm_open(shm_path, O_RDWR | O_CREAT, 0666);
+    if (shm_fd < 0) return;
+    if (ftruncate(shm_fd, sizeof(struct can_ring_buffer)) < 0) {
+        original_close(shm_fd);
+        return;
+    }
+    struct can_ring_buffer *ring = (struct can_ring_buffer *)original_mmap(
+        NULL, sizeof(struct can_ring_buffer), PROT_READ | PROT_WRITE, MAP_SHARED, shm_fd, 0
+    );
+    original_close(shm_fd);
+    if (ring == MAP_FAILED || !ring) return;
+
+    if (ring->magic != CAN_RING_MAGIC) {
+        ring->magic = CAN_RING_MAGIC;
+        ring->head = 0;
+        ring->tail = 0;
+        ring->dropped = 0;
+    }
+
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    uint64_t ts = (uint64_t)tv.tv_sec * 1000000ULL + (uint64_t)tv.tv_usec;
+
+    uint32_t cur_head = ring->head;
+    uint32_t next_head = (cur_head + 1) %% CAN_RING_CAPACITY;
+    struct can_ring_entry *e = &ring->entries[cur_head];
+    e->timestamp_us = ts;
+    e->can_id = frame->can_id;
+    e->can_dlc = frame->can_dlc;
+    e->flags = 0;
+    e->channel = (uint8_t)bus_id;
+    e->reserved = 0;
+    memcpy(e->data, frame->data, 8);
+    __sync_synchronize();
+    ring->head = next_head;
+    munmap(ring, sizeof(struct can_ring_buffer));
+}
+
+static ssize_t broadcast_can_frame(int fd, const struct can_frame *frame) {
+    if (fd < 0 || fd >= MAX_FDS || fd_contexts[fd].type != FBB_DEV_CAN) return -1;
+    int bus_id = fd_contexts[fd].sub_id;
+    push_can_frame_to_shm_ring(bus_id, frame);
+
+    char peers_dir[64];
+    snprintf(peers_dir, sizeof(peers_dir), "/tmp/fbb_can_p%%d", bus_id);
+    DIR *d = opendir(peers_dir);
+    if (!d) return sizeof(struct can_frame);
+
+    struct dirent *dir;
+    while ((dir = readdir(d)) != NULL) {
+        if (dir->d_name[0] == '.') continue;
+        int peer_pid = 0, peer_fd = 0;
+        if (sscanf(dir->d_name, "%%d_%%d.s", &peer_pid, &peer_fd) == 2) {
+            if (peer_pid > 0 && kill(peer_pid, 0) != 0 && errno == ESRCH) {
+                char stale_path[108];
+                snprintf(stale_path, sizeof(stale_path), "%%s/%%.32s", peers_dir, dir->d_name);
+                unlink(stale_path);
+                continue;
+            }
+        }
+        char peer_path[108];
+        snprintf(peer_path, sizeof(peer_path), "%%s/%%.32s", peers_dir, dir->d_name);
+        if (strcmp(peer_path, fd_contexts[fd].can_sock_path) == 0) {
+            if (!fd_contexts[fd].can_recv_own_msgs) continue;
+        }
+        struct sockaddr_un dest;
+        memset(&dest, 0, sizeof(dest));
+        dest.sun_family = AF_UNIX;
+        strncpy(dest.sun_path, peer_path, sizeof(dest.sun_path) - 1);
+        if (original_sendto(fd, frame, sizeof(*frame), MSG_DONTWAIT, (struct sockaddr *)&dest, sizeof(dest)) < 0) {
+            if (errno == ECONNREFUSED || errno == ENOENT) {
+                unlink(peer_path);
+            }
+        }
+    }
+    closedir(d);
+    return sizeof(struct can_frame);
+}
+
+int socket(int domain, int type, int protocol) {
+    if (!original_socket) original_socket = dlsym(RTLD_NEXT, "socket");
+    if (domain == AF_CAN && (type & SOCK_RAW) && (protocol == CAN_RAW || protocol == 0)) {
+        int real_type = SOCK_DGRAM | (type & (SOCK_NONBLOCK | SOCK_CLOEXEC));
+        int fd = original_socket(AF_UNIX, real_type, 0);
+        if (fd >= 0 && fd < MAX_FDS) {
+            memset(&fd_contexts[fd], 0, sizeof(FbbDeviceContext));
+            fd_contexts[fd].type = FBB_DEV_CAN;
+            fd_contexts[fd].sub_id = 0; // default bus 0
+            fd_contexts[fd].can_ifindex = 1; // default can0
+            fd_contexts[fd].can_loopback = 1;
+            fd_contexts[fd].can_recv_own_msgs = 0;
+            fd_contexts[fd].eventfd_fd = -1;
+        }
+        return fd;
+    }
+    return original_socket(domain, type, protocol);
+}
+
+int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
+    if (!original_bind) original_bind = dlsym(RTLD_NEXT, "bind");
+    if (sockfd >= 0 && sockfd < MAX_FDS && fd_contexts[sockfd].type == FBB_DEV_CAN && addr && addr->sa_family == AF_CAN) {
+        struct sockaddr_can *can_addr = (struct sockaddr_can *)addr;
+        int ifindex = can_addr->can_ifindex;
+        int bus_id = (ifindex > 0) ? (ifindex - 1) : 0;
+        fd_contexts[sockfd].sub_id = bus_id;
+        fd_contexts[sockfd].can_ifindex = ifindex;
+
+        char peers_dir[64];
+        snprintf(peers_dir, sizeof(peers_dir), "/tmp/fbb_can_p%%d", bus_id);
+        mkdir(peers_dir, 0777);
+
+        snprintf(fd_contexts[sockfd].can_sock_path, sizeof(fd_contexts[sockfd].can_sock_path),
+                 "/tmp/fbb_can_p%%d/%%d_%%d.s", bus_id, (int)getpid(), sockfd);
+        unlink(fd_contexts[sockfd].can_sock_path);
+
+        struct sockaddr_un local_sun;
+        memset(&local_sun, 0, sizeof(local_sun));
+        local_sun.sun_family = AF_UNIX;
+        strncpy(local_sun.sun_path, fd_contexts[sockfd].can_sock_path, sizeof(local_sun.sun_path) - 1);
+        int res = original_bind(sockfd, (struct sockaddr *)&local_sun, sizeof(local_sun));
+        return res;
+    }
+    return original_bind(sockfd, addr, addrlen);
+}
+
+int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t optlen) {
+    if (!original_setsockopt) original_setsockopt = dlsym(RTLD_NEXT, "setsockopt");
+    if (sockfd >= 0 && sockfd < MAX_FDS && fd_contexts[sockfd].type == FBB_DEV_CAN && level == SOL_CAN_RAW) {
+        if (optname == CAN_RAW_FILTER) {
+            if (optval == NULL || optlen == 0) {
+                fd_contexts[sockfd].num_can_filters = 0;
+                return 0;
+            }
+            int nfilters = optlen / sizeof(struct can_filter);
+            if (nfilters > MAX_CAN_FILTERS) nfilters = MAX_CAN_FILTERS;
+            memcpy(fd_contexts[sockfd].can_filters, optval, nfilters * sizeof(struct can_filter));
+            fd_contexts[sockfd].num_can_filters = nfilters;
+            return 0;
+        }
+        if (optname == CAN_RAW_LOOPBACK && optval && optlen >= sizeof(int)) {
+            fd_contexts[sockfd].can_loopback = *(const int *)optval;
+            return 0;
+        }
+        if (optname == CAN_RAW_RECV_OWN_MSGS && optval && optlen >= sizeof(int)) {
+            fd_contexts[sockfd].can_recv_own_msgs = *(const int *)optval;
+            return 0;
+        }
+        return 0;
+    }
+    return original_setsockopt(sockfd, level, optname, optval, optlen);
+}
+
+int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *optlen) {
+    if (!original_getsockopt) original_getsockopt = dlsym(RTLD_NEXT, "getsockopt");
+    if (sockfd >= 0 && sockfd < MAX_FDS && fd_contexts[sockfd].type == FBB_DEV_CAN && level == SOL_CAN_RAW) {
+        if (optname == CAN_RAW_LOOPBACK && optval && optlen && *optlen >= sizeof(int)) {
+            *(int *)optval = fd_contexts[sockfd].can_loopback;
+            *optlen = sizeof(int);
+            return 0;
+        }
+        return 0;
+    }
+    return original_getsockopt(sockfd, level, optname, optval, optlen);
+}
+
 static void __attribute__((constructor)) init_fbb_core(void) {
     original_open = dlsym(RTLD_NEXT, "open");
     original_open64 = dlsym(RTLD_NEXT, "open64");
@@ -1009,6 +1221,12 @@ static void __attribute__((constructor)) init_fbb_core(void) {
     original_read = dlsym(RTLD_NEXT, "read");
     original_close = dlsym(RTLD_NEXT, "close");
     original_tcsetattr = dlsym(RTLD_NEXT, "tcsetattr");
+    original_socket = dlsym(RTLD_NEXT, "socket");
+    original_bind = dlsym(RTLD_NEXT, "bind");
+    original_setsockopt = dlsym(RTLD_NEXT, "setsockopt");
+    original_getsockopt = dlsym(RTLD_NEXT, "getsockopt");
+    original_sendto = dlsym(RTLD_NEXT, "sendto");
+    original_recvfrom = dlsym(RTLD_NEXT, "recvfrom");
     init_segv_handler();
 }
 
@@ -1059,16 +1277,40 @@ int ioctl(int fd, unsigned long request, ...) {
                 return 0; // その他の RD_MODE などの設定コマンド is dummy success
             }
         }
+        if (ctx.type == FBB_DEV_CAN) {
+            if (request == SIOCGIFINDEX) {
+                struct ifreq *ifr = (struct ifreq *)argp;
+                if (!ifr) return -EFAULT;
+                if (strcmp(ifr->ifr_name, "can0") == 0) { ifr->ifr_ifindex = 1; return 0; }
+                if (strcmp(ifr->ifr_name, "can1") == 0) { ifr->ifr_ifindex = 2; return 0; }
+                ifr->ifr_ifindex = 1;
+                return 0;
+            }
+            if (request == SIOCGIFNAME) {
+                struct ifreq *ifr = (struct ifreq *)argp;
+                if (!ifr) return -EFAULT;
+                if (ifr->ifr_ifindex == 1) { strcpy(ifr->ifr_name, "can0"); return 0; }
+                if (ifr->ifr_ifindex == 2) { strcpy(ifr->ifr_name, "can1"); return 0; }
+                strcpy(ifr->ifr_name, "can0");
+                return 0;
+            }
+            return 0;
+        }
     }
     return original_ioctl(fd, request, argp);
 }
 
 ssize_t write(int fd, const void *buf, size_t count) {
     if (!original_write) original_write = dlsym(RTLD_NEXT, "write");
-    if (fd >= 0 && fd < MAX_FDS && fd_contexts[fd].type == FBB_DEV_UIO) {
-        if (count == sizeof(uint32_t) && buf != NULL && *(const uint32_t *)buf == 1) {
-            // UIO unmask ACK (re-enabling IRQ)
-            return sizeof(uint32_t);
+    if (fd >= 0 && fd < MAX_FDS) {
+        if (fd_contexts[fd].type == FBB_DEV_UIO) {
+            if (count == sizeof(uint32_t) && buf != NULL && *(const uint32_t *)buf == 1) {
+                // UIO unmask ACK (re-enabling IRQ)
+                return sizeof(uint32_t);
+            }
+        } else if (fd_contexts[fd].type == FBB_DEV_CAN) {
+            if (!buf || count < sizeof(struct can_frame)) return -EINVAL;
+            return broadcast_can_frame(fd, (const struct can_frame *)buf);
         }
     }
     return original_write(fd, buf, count);
@@ -1076,14 +1318,36 @@ ssize_t write(int fd, const void *buf, size_t count) {
 
 ssize_t read(int fd, void *buf, size_t count) {
     if (!original_read) original_read = dlsym(RTLD_NEXT, "read");
-    if (fd >= 0 && fd < MAX_FDS && fd_contexts[fd].type == FBB_DEV_UIO) {
-        int efd = fd_contexts[fd].eventfd_fd;
-        if (efd >= 0) {
-            uint64_t irq_val = 0;
-            ssize_t res = original_read(efd, &irq_val, sizeof(irq_val));
-            if (res > 0 && count >= sizeof(uint32_t)) {
-                *(uint32_t *)buf = (uint32_t)irq_val;
-                return sizeof(uint32_t);
+    if (fd >= 0 && fd < MAX_FDS) {
+        if (fd_contexts[fd].type == FBB_DEV_UIO) {
+            int efd = fd_contexts[fd].eventfd_fd;
+            if (efd >= 0) {
+                uint64_t irq_val = 0;
+                ssize_t res = original_read(efd, &irq_val, sizeof(irq_val));
+                if (res > 0 && count >= sizeof(uint32_t)) {
+                    *(uint32_t *)buf = (uint32_t)irq_val;
+                    return sizeof(uint32_t);
+                }
+            }
+        } else if (fd_contexts[fd].type == FBB_DEV_CAN) {
+            while (1) {
+                struct can_frame temp_frame;
+                ssize_t r = original_read(fd, &temp_frame, sizeof(temp_frame));
+                if (r <= 0) return r;
+                if (fd_contexts[fd].num_can_filters > 0) {
+                    int matched = 0;
+                    for (int i = 0; i < fd_contexts[fd].num_can_filters; i++) {
+                        struct can_filter *f = &fd_contexts[fd].can_filters[i];
+                        if ((temp_frame.can_id & f->can_mask) == (f->can_id & f->can_mask)) {
+                            matched = 1;
+                            break;
+                        }
+                    }
+                    if (!matched) continue;
+                }
+                size_t copy_len = count < sizeof(temp_frame) ? count : sizeof(temp_frame);
+                memcpy(buf, &temp_frame, copy_len);
+                return copy_len;
             }
         }
     }

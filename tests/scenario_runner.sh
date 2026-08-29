@@ -96,7 +96,7 @@ cleanup() {
             kill -9 $MCORE_PID 2>/dev/null
         fi
     fi
-    rm -rf /tmp/fbb 2>/dev/null
+    rm -rf /tmp/fbb /tmp/fbb_can_* /dev/shm/fbb_can_* 2>/dev/null
     rm -f /tmp/vring0 /tmp/vfpga_reg /tmp/fbb_compatible /tmp/fbb_model /tmp/uio* /tmp/fbb_uart_* /tmp/vfpga_uart_* /tmp/fbb_spi_* /tmp/fbb_i2c_* 2>/dev/null
 }
 
@@ -125,6 +125,7 @@ python3 "${PROJECT_ROOT}/scripts/gen_vfpga.py" "${DTS}"
 # そうしないと、対向デーモン不在によるソケット接続待ちでシミュレータがデッドロックします。
 echo "[Runner] Building simulation engine (this may take a few seconds)..."
 cd "${PROJECT_ROOT}"
+if [ -d "build" ]; then rm -rf build/* build/.[!.]* 2>/dev/null; fi
 cmake -B build -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DSCENARIO_DIR="${SCENARIO_DIR}" || exit 1
 cmake --build build || exit 1
 

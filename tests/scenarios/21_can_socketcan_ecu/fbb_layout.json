@@ -1,0 +1,101 @@
+{
+    "grid": {
+        "root": {
+            "type": "branch",
+            "data": [
+                {
+                    "type": "branch",
+                    "data": [
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "dtsVisualizer"
+                                ],
+                                "activeView": "dtsVisualizer",
+                                "id": "3"
+                            },
+                            "size": 705
+                        },
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "registerTracer",
+                                    "registerMonitor"
+                                ],
+                                "activeView": "registerMonitor",
+                                "id": "4"
+                            },
+                            "size": 359
+                        }
+                    ],
+                    "size": 544.3152567977086
+                },
+                {
+                    "type": "branch",
+                    "data": [
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "uartTerminal_default"
+                                ],
+                                "activeView": "uartTerminal_default",
+                                "id": "1"
+                            },
+                            "size": 595
+                        },
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "canAnalyzer"
+                                ],
+                                "activeView": "canAnalyzer",
+                                "id": "6"
+                            },
+                            "size": 469
+                        }
+                    ],
+                    "size": 1216.6847432022914
+                }
+            ],
+            "size": 1064
+        },
+        "width": 1761,
+        "height": 1064,
+        "orientation": "HORIZONTAL"
+    },
+    "panels": {
+        "dtsVisualizer": {
+            "id": "dtsVisualizer",
+            "contentComponent": "dtsVisualizer",
+            "title": "DTS Visualizer & AI"
+        },
+        "registerTracer": {
+            "id": "registerTracer",
+            "contentComponent": "registerTracer",
+            "title": "Tracer"
+        },
+        "registerMonitor": {
+            "id": "registerMonitor",
+            "contentComponent": "registerMonitor",
+            "title": "Registers"
+        },
+        "uartTerminal_default": {
+            "id": "uartTerminal_default",
+            "contentComponent": "uartTerminal",
+            "params": {
+                "deviceName": "default"
+            },
+            "title": "UART Console"
+        },
+        "canAnalyzer": {
+            "id": "canAnalyzer",
+            "contentComponent": "canAnalyzer",
+            "title": "CAN Bus Analyzer"
+        }
+    },
+    "activeGroup": "4"
+}

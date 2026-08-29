@@ -34,7 +34,7 @@ cleanup_processes() {
             kill -9 $MCORE_PID 2>/dev/null
         fi
     fi
-    rm -rf /tmp/fbb 2>/dev/null
+    rm -rf /tmp/fbb /tmp/fbb_can_* /dev/shm/fbb_can_* 2>/dev/null
     rm -f /tmp/vring0 /tmp/vfpga_reg /tmp/fbb_compatible /tmp/fbb_model 2>/dev/null
 }
 
@@ -79,6 +79,7 @@ if [ "$CLEAN" = true ]; then
     pkill -9 -f "dashboard/server.js" 2>/dev/null || true
     
     if [ -d "${BUILD_DIR}" ]; then rm -rf ${BUILD_DIR}/* ${BUILD_DIR}/.[!.]* 2>/dev/null; fi
+    if [ -d "${PROJECT_ROOT}/build" ]; then rm -rf "${PROJECT_ROOT}/build"/* "${PROJECT_ROOT}/build"/.[!.]* 2>/dev/null; fi
     rm -f libfpgashim.so vfpga_sim
     rm -f tests/scenarios/*/test_bin tests/scenarios/*/*.bin tests/scenarios/*/*.elf tests/scenarios/*/*.o
     rm -rf tests/scenarios/*/m_core/target 2>/dev/null

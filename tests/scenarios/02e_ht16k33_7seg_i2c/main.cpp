@@ -164,9 +164,12 @@ int main() {
     std::cout << "[02e Scenario] Multi-peripheral initialization complete!\n";
 
     int sec_counter = 0;
-    while (true) {
+    bool interactive = (getenv("VFPGA_INTERACTIVE") != nullptr);
+    int max_cycles = interactive ? 1000000 : 1;
+    for (int cycle = 0; cycle < max_cycles; ++cycle) {
         // --- モード 1: クロック・タイマーモード (MM:SS) ---
-        for (int step = 0; step < 10; ++step) {
+        int steps = interactive ? 10 : 3;
+        for (int step = 0; step < steps; ++step) {
             int minutes = sec_counter / 60;
             int seconds = sec_counter % 60;
             bool colon = (step % 2 == 0); // 1Hz明滅
@@ -203,7 +206,11 @@ int main() {
             oled_write_data(fd, oled_buf);
 
             sec_counter++;
-            usleep(500000); // 500ms
+            if (interactive) {
+                usleep(500000); // 500ms
+            } else {
+                usleep(50000); // 50ms in batch test
+            }
         }
 
         // --- モード 2: システム診断モード (Hex点滅 & 診断UI) ---
@@ -219,19 +226,26 @@ int main() {
             SEVEN_SEG_FONT[0x0D]  // 'd'
         );
 
-        for (int i = 0; i < 4; ++i) {
+        int diag_steps = interactive ? 4 : 2;
+        for (int i = 0; i < diag_steps; ++i) {
             std::vector<uint8_t> oled_buf(1024, 0);
             oled_draw_string(oled_buf, "F-BB DIAGNOSTIC", 8, 4);
             oled_draw_string(oled_buf, "STATUS: 0xDEAD", 8, 24);
             oled_draw_string(oled_buf, "TEST: PASSED", 8, 40);
             oled_write_cmds(fd, {0x20, 0x00, 0x21, 0, 127, 0x22, 0, 7});
             oled_write_data(fd, oled_buf);
-            usleep(500000);
+            if (interactive) {
+                usleep(500000);
+            } else {
+                usleep(50000);
+            }
         }
 
         // 7セグLED: 点滅オフ (0x81) に戻す
         write_i2c_data(fd, SEG7_ADDR, {0x81});
     }
+
+    std::cout << "[02e Scenario] Multi-peripheral demo completed successfully.\n";
 
     close(fd);
     return 0;
