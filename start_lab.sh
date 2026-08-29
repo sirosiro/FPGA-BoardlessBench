@@ -1,5 +1,8 @@
 #!/bin/bash
 
+export LC_ALL=C
+export LANG=C
+
 # F-BB Integrated Launcher
 # Usage: ./start_lab.sh <scenario_dir>
 

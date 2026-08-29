@@ -601,8 +601,8 @@ def main():
         try:
             if 'log' in registry:
                 log_path = os.path.join(os.path.dirname(dts_path), registry['log'])
-                log_file = open(log_path, "w")
-                proc = subprocess.Popen(args, stdout=log_file, stderr=subprocess.STDOUT)
+                with open(log_path, "w") as log_file:
+                    proc = subprocess.Popen(args, stdout=log_file, stderr=subprocess.STDOUT)
             else:
                 proc = subprocess.Popen(args, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
             peripheral_processes.append(proc)

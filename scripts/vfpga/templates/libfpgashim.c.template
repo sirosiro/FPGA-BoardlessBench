@@ -116,19 +116,6 @@ __attribute__((visibility("default"))) void fbb_check_protocol_assertion_addr(un
     }
 }
 
-__attribute__((visibility("default"))) void fbb_write_reg(void *base_addr, unsigned long offset, uint32_t val) {
-    unsigned long abs_addr = 0x40000000 + offset;
-    fbb_check_protocol_assertion_addr(abs_addr, 1, val);
-    *(volatile uint32_t *)((char *)base_addr + offset) = val;
-}
-
-__attribute__((visibility("default"))) uint32_t fbb_read_reg(void *base_addr, unsigned long offset) {
-    unsigned long abs_addr = 0x40000000 + offset;
-    uint32_t val = *(volatile uint32_t *)((char *)base_addr + offset);
-    fbb_check_protocol_assertion_addr(abs_addr, 0, val);
-    return val;
-}
-
 static pthread_mutex_t mappings_mutex = PTHREAD_MUTEX_INITIALIZER;
 struct active_mapping {
     void *addr;
@@ -138,6 +125,43 @@ struct active_mapping {
 #define MAX_ACTIVE_MAPPINGS 32
 static struct active_mapping active_mappings[MAX_ACTIVE_MAPPINGS];
 static int num_active_mappings = 0;
+
+static unsigned long resolve_physical_addr(void *base_addr, unsigned long offset) {
+    if ((uintptr_t)base_addr >= 0x10000000 && (uintptr_t)base_addr < 0x80000000) {
+        return (unsigned long)(uintptr_t)base_addr + offset;
+    }
+    pthread_mutex_lock(&mappings_mutex);
+    for (int i = 0; i < num_active_mappings; i++) {
+        if (base_addr >= active_mappings[i].addr && 
+            (char *)base_addr < (char *)active_mappings[i].addr + active_mappings[i].size) {
+            for (int r = 0; r < (int)(sizeof(routes)/sizeof(routes[0])); r++) {
+                if (strcmp(active_mappings[i].path, routes[r].path) == 0) {
+                    unsigned long virt_offset = (char *)base_addr - (char *)active_mappings[i].addr;
+                    pthread_mutex_unlock(&mappings_mutex);
+                    return routes[r].base_addr + virt_offset + offset;
+                }
+            }
+        }
+    }
+    pthread_mutex_unlock(&mappings_mutex);
+    if ((sizeof(routes)/sizeof(routes[0])) > 0) {
+        return routes[0].base_addr + offset;
+    }
+    return 0x40000000 + offset;
+}
+
+__attribute__((visibility("default"))) void fbb_write_reg(void *base_addr, unsigned long offset, uint32_t val) {
+    unsigned long abs_addr = resolve_physical_addr(base_addr, offset);
+    fbb_check_protocol_assertion_addr(abs_addr, 1, val);
+    *(volatile uint32_t *)((char *)base_addr + offset) = val;
+}
+
+__attribute__((visibility("default"))) uint32_t fbb_read_reg(void *base_addr, unsigned long offset) {
+    unsigned long abs_addr = resolve_physical_addr(base_addr, offset);
+    uint32_t val = *(volatile uint32_t *)((char *)base_addr + offset);
+    fbb_check_protocol_assertion_addr(abs_addr, 0, val);
+    return val;
+}
 
 static struct sigaction old_segv_action;
 static void sigsegv_handler(int sig, siginfo_t *info, void *context);
@@ -495,7 +519,6 @@ int open(const char *pathname, int flags, ...) {
     mode_t mode = 0; if (flags & O_CREAT) { va_list arg; va_start(arg, flags); mode = (mode_t)va_arg(arg, int); va_end(arg); }
     if (!original_open) original_open = dlsym(RTLD_NEXT, "open");
     pathname = redirect_firmware_path(pathname);
-    fprintf(stderr, "[Shim Debug] open: %%s\n", pathname); fflush(stderr);
 %s
     if (pathname != NULL && strcmp(pathname, "/sys/class/remoteproc/remoteproc0/firmware") == 0) {
         ensure_dir();
@@ -1001,6 +1024,7 @@ int ioctl(int fd, unsigned long request, ...) {
             int i2c_bus_id = ctx.sub_id;
             if (request == I2C_RDWR) {
                 struct i2c_rdwr_ioctl_data *data = (struct i2c_rdwr_ioctl_data *)argp;
+                if (!data || !data->msgs) return -EFAULT;
                 int ret = 0;
                 for (unsigned int i = 0; i < data->nmsgs; i++) {
                     if (transfer_i2c_msg_via_socket(i2c_bus_id, &data->msgs[i]) < 0) {

@@ -195,7 +195,8 @@ int main() {
                 "  Interactive C++ Shell is ready on Web Dashboard UART.\n"
                 "  Access dashboard at: http://localhost:8080\n"
                 "============================================================\n\n";
-            write(real_stdout, ready_msg, strlen(ready_msg));
+            ssize_t _w = write(real_stdout, ready_msg, strlen(ready_msg));
+            (void)_w;
             close(real_stdout);
         }
         

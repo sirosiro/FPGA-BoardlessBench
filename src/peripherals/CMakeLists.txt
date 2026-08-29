@@ -1,5 +1,11 @@
 # F-BB 共有ペリフェラル・ライブラリのビルド定義 (PPA 4.0 開発者向け自動発見対応)
 
+cmake_minimum_required(VERSION 3.12)
+if(NOT CMAKE_PROJECT_NAME)
+    project(fbb_peripherals CXX)
+endif()
+find_package(Threads REQUIRED)
+
 if(CMAKE_CROSSCOMPILING)
     return()
 endif()
