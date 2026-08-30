@@ -105,11 +105,16 @@ private:
     size_t current_addr_{0};           ///< 現在の読み書きアドレスポインタ
 };
 
+#include "../../common/cli_helper.hpp"
+
 // グローバルスコープのシグナル制御用インスタンスポインタ
 static I2cEeprom* g_eeprom_instance = nullptr;
 
 /**
  * @brief シグナル受信時の安全なクリーンアップハンドラ
+ * @intent:responsibility SIGINT/SIGTERM を受信した際に I2C EEPROM デーモンを安全に停止し、メモリ内容をファイルへフラッシュする。
+ * @intent:rationale ソケットの孤立を防ぎ、不揮発データの保存整合性を担保する。
+ * @intent:pre-condition g_eeprom_instance が初期化されていること。
  */
 void handle_signal(int sig) {
     (void)sig;
@@ -119,45 +124,38 @@ void handle_signal(int sig) {
     }
 }
 
+/**
+ * @brief AT24C02C I2C EEPROM エミュレータデーモンエントリポイント
+ * @intent:responsibility CLI 引数をパースして I2C ソケット上で EEPROM エミュレーションデーモンを起動する。
+ * @intent:rationale 仮想 I2C バス経由でバイト/ページ読み書き要求に応答し、ファイル永続化を提供する。
+ * @intent:pre-condition --socket オプションで有効なソケットパスが指定されていること。
+ */
 int main(int argc, char *argv[]) {
-    std::string sock_file;
-    std::string mock_file;
-    uint8_t init_val = 0x10; // デフォルト初期値 (10進数: 16)
+    fbb::PluginCLI cli("Microchip AT24C02C 2Kbit I2C Serial EEPROM",
+                       "Emulates 256-byte I2C serial EEPROM with auto-increment addressing and non-volatile file persistence (--file).");
+    auto opt = cli.parse(argc, argv);
+    if (opt.show_help) return 0;
 
-    // コマンドライン引数解析
-    for (int i = 1; i < argc; i++) {
-        if (std::strcmp(argv[i], "--socket") == 0 && i + 1 < argc) {
-            sock_file = argv[++i];
-        } else if (std::strcmp(argv[i], "--file") == 0 && i + 1 < argc) {
-            mock_file = argv[++i];
-        } else if (std::strcmp(argv[i], "--init-val") == 0 && i + 1 < argc) {
-            init_val = static_cast<uint8_t>(std::strtol(argv[++i], nullptr, 0));
-        }
-    }
-
-    if (sock_file.empty()) {
-        std::cerr << "Usage: " << argv[0] << " --socket <socket_path> [--file <mock_file>] [--init-val <val>]\n"
-                  << "Options:\n"
-                  << "  --socket    UNIX domain socket path (Required)\n"
-                  << "  --file      Persistence backing file path for the memory cells (Optional)\n"
-                  << "  --init-val  Initial value for memory cell 0 (Default: 0x10) (Optional)\n";
+    if (opt.socket_path.empty()) {
+        std::cerr << "Error: --socket <socket_path> is required.\n\n";
+        cli.print_help();
         return 1;
     }
 
+    uint8_t init_val = opt.has_init_val ? static_cast<uint8_t>(opt.init_val) : 0x10;
+
     // デバイスエミュレータ起動
-    I2cEeprom eeprom(0x50, init_val, mock_file);
+    I2cEeprom eeprom(0x50, init_val, opt.file_path);
     g_eeprom_instance = &eeprom;
 
-    // クリーンアップ用のシグナルハンドリング
-    std::signal(SIGINT, handle_signal);
-    std::signal(SIGTERM, handle_signal);
+    fbb::PluginCLI::setup_signal_handler(handle_signal);
 
-    std::cout << "[I2C EEPROM] Mock daemon starting on " << sock_file 
+    std::cout << "[I2C EEPROM] Mock daemon starting on " << opt.socket_path 
               << " (default init-val: 0x" << std::hex << (int)init_val << ")\n";
     std::flush(std::cout);
 
     // エミュレーション稼働 (接続待ちループ、ブロッキング)
-    if (!eeprom.start(sock_file)) {
+    if (!eeprom.start(opt.socket_path)) {
         std::cerr << "[I2C EEPROM] Failed to start daemon.\n";
         return 1;
     }

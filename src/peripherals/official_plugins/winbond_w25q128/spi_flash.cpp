@@ -142,11 +142,16 @@ private:
     uint8_t status_reg1_{0x00};        ///< ステータスレジスタ1
 };
 
+#include "../../common/cli_helper.hpp"
+
 // グローバルスコープのシグナル制御用インスタンスポインタ
 static SpiFlash* g_flash_instance = nullptr;
 
 /**
  * @brief シグナル受信時の安全なクリーンアップハンドラ
+ * @intent:responsibility SIGINT/SIGTERM を受信した際に SPI Flash デーモンを安全に停止し、メモリ内容をファイルへフラッシュする。
+ * @intent:rationale ソケットの孤立を防ぎ、不揮発データの保存整合性を担保する。
+ * @intent:pre-condition g_flash_instance が初期化されていること。
  */
 void handle_signal(int sig) {
     (void)sig;
@@ -156,40 +161,35 @@ void handle_signal(int sig) {
     }
 }
 
+/**
+ * @brief W25Q128 SPI NOR Flash エミュレータデーモンエントリポイント
+ * @intent:responsibility CLI 引数をパースして SPI ソケット上で Flash エミュレーションデーモンを起動する。
+ * @intent:rationale 仮想 SPI バス経由で JEDEC ID 読み出しやセクタ消去・ページ書き込みコマンドに応答する。
+ * @intent:pre-condition --socket オプションで有効なソケットパスが指定されていること。
+ */
 int main(int argc, char *argv[]) {
-    std::string sock_file;
-    std::string mock_file;
+    fbb::PluginCLI cli("Winbond W25Q128 16MB SPI NOR Flash",
+                       "Emulates 16MB SPI NOR Flash memory with optional non-volatile file persistence (--file).");
+    auto opt = cli.parse(argc, argv);
+    if (opt.show_help) return 0;
 
-    // コマンドライン引数解析
-    for (int i = 1; i < argc; i++) {
-        if (std::strcmp(argv[i], "--socket") == 0 && i + 1 < argc) {
-            sock_file = argv[++i];
-        } else if (std::strcmp(argv[i], "--file") == 0 && i + 1 < argc) {
-            mock_file = argv[++i];
-        }
-    }
-
-    if (sock_file.empty()) {
-        std::cerr << "Usage: " << argv[0] << " --socket <socket_path> [--file <mock_file>]\n"
-                  << "Options:\n"
-                  << "  --socket    UNIX domain socket path (Required)\n"
-                  << "  --file      Persistence backing file path for flash memory (Optional)\n";
+    if (opt.socket_path.empty()) {
+        std::cerr << "Error: --socket <socket_path> is required.\n\n";
+        cli.print_help();
         return 1;
     }
 
     // デバイスエミュレータ起動
-    SpiFlash flash(0, mock_file);
+    SpiFlash flash(0, opt.file_path);
     g_flash_instance = &flash;
 
-    // クリーンアップ用のシグナルハンドリング
-    std::signal(SIGINT, handle_signal);
-    std::signal(SIGTERM, handle_signal);
+    fbb::PluginCLI::setup_signal_handler(handle_signal);
 
-    std::cout << "[SPI Flash] Mock daemon starting on " << sock_file << "\n";
+    std::cout << "[SPI Flash] Mock daemon starting on " << opt.socket_path << "\n";
     std::flush(std::cout);
 
     // エミュレーション稼働 (接続待ちループ、ブロッキング)
-    if (!flash.start(sock_file)) {
+    if (!flash.start(opt.socket_path)) {
         std::cerr << "[SPI Flash] Failed to start daemon.\n";
         return 1;
     }

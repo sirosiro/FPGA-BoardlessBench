@@ -227,8 +227,16 @@ private:
     uint8_t contrast_{0x7F};
 };
 
+#include "../../common/cli_helper.hpp"
+
 static I2cSsd1306* g_ssd1306_instance = nullptr;
 
+/**
+ * @brief シグナル受信時の安全な停止ハンドラ
+ * @intent:responsibility SIGINT/SIGTERM を受信した際に SSD1306 デーモンを安全に停止・クリーンアップする。
+ * @intent:rationale ソケットファイルや共有メモリの孤立・残存プロセス化を防止する。
+ * @intent:pre-condition g_ssd1306_instance が初期化されていること。
+ */
 void handle_signal(int sig) {
     (void)sig;
     if (g_ssd1306_instance) {
@@ -237,28 +245,33 @@ void handle_signal(int sig) {
     }
 }
 
+/**
+ * @brief SSD1306 OLED エミュレータデーモンエントリポイント
+ * @intent:responsibility CLI 引数をパースして I2C ソケット上で OLED エミュレーションデーモンを起動する。
+ * @intent:rationale 仮想 I2C バス経由でグラフィックコマンドを受信し、共有メモリへリアルタイム描画する。
+ * @intent:pre-condition --socket オプションで有効なソケットパスが指定されていること。
+ */
 int main(int argc, char* argv[]) {
-    std::string sock_file;
-    for (int i = 1; i < argc; i++) {
-        if (std::strcmp(argv[i], "--socket") == 0 && i + 1 < argc) {
-            sock_file = argv[++i];
-        }
-    }
-    if (sock_file.empty()) {
-        std::cerr << "Usage: " << argv[0] << " --socket <socket_path>\n";
+    fbb::PluginCLI cli("Solomon SSD1306 OLED Display (128x64)",
+                       "Emulates 128x64 monochrome OLED display with GDDRAM synced to POSIX shared memory (/fbb_display_0).");
+    auto opt = cli.parse(argc, argv);
+    if (opt.show_help) return 0;
+
+    if (opt.socket_path.empty()) {
+        std::cerr << "Error: --socket <socket_path> is required.\n\n";
+        cli.print_help();
         return 1;
     }
 
     I2cSsd1306 ssd1306(0x3C); // SSD1306のデフォルトI2Cアドレス 0x3C
     g_ssd1306_instance = &ssd1306;
 
-    std::signal(SIGINT, handle_signal);
-    std::signal(SIGTERM, handle_signal);
+    fbb::PluginCLI::setup_signal_handler(handle_signal);
 
-    std::cout << "[SSD1306] Mock daemon starting on " << sock_file << "\n";
+    std::cout << "[SSD1306] Mock daemon starting on " << opt.socket_path << "\n";
     std::flush(std::cout);
 
-    if (!ssd1306.start(sock_file)) {
+    if (!ssd1306.start(opt.socket_path)) {
         std::cerr << "[SSD1306] Failed to start daemon.\n";
         return 1;
     }

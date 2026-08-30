@@ -135,8 +135,16 @@ private:
     std::vector<uint16_t> local_channels_; ///< ローカルフォールバック用チャンネルデータ
 };
 
+#include "../../common/cli_helper.hpp"
+
 static SpiAdc* g_adc_instance = nullptr;
 
+/**
+ * @brief シグナル受信時の安全なクリーンアップハンドラ
+ * @intent:responsibility SIGINT/SIGTERM を受信した際に SPI ADC デーモンを安全に停止・クリーンアップする。
+ * @intent:rationale ソケットファイルや共有メモリの孤立・残存プロセス化を防止する。
+ * @intent:pre-condition g_adc_instance が初期化されていること。
+ */
 void handle_signal(int sig) {
     (void)sig;
     if (g_adc_instance) {
@@ -145,41 +153,38 @@ void handle_signal(int sig) {
     }
 }
 
+/**
+ * @brief MCP3208 8ch SPI ADC エミュレータデーモンエントリポイント
+ * @intent:responsibility CLI 引数をパースして SPI ソケット上で ADC エミュレーションデーモンを起動する。
+ * @intent:rationale 仮想 SPI バス経由で 12-bit ADC 読み出し要求に応答し、共有メモリからの電圧インジェクションを反映する。
+ * @intent:pre-condition --socket オプションで有効なソケットパスが指定されていること。
+ */
 int main(int argc, char *argv[]) {
-    std::string sock_file;
-    uint16_t init_val = 2048; // デフォルト初期値 (12-bit の中央値 2048 = 約 1.65V)
+    fbb::PluginCLI cli("Microchip MCP3208 8-Ch 12-Bit SPI ADC",
+                       "Emulates Microchip MCP3208 12-bit ADC with dynamic channel voltage injection via shared memory (/spi_adc).");
+    auto opt = cli.parse(argc, argv);
+    if (opt.show_help) return 0;
 
-    // コマンドライン引数解析
-    for (int i = 1; i < argc; i++) {
-        if (std::strcmp(argv[i], "--socket") == 0 && i + 1 < argc) {
-            sock_file = argv[++i];
-        } else if (std::strcmp(argv[i], "--init-val") == 0 && i + 1 < argc) {
-            init_val = static_cast<uint16_t>(std::strtol(argv[++i], nullptr, 0));
-        }
-    }
-
-    if (sock_file.empty()) {
-        std::cerr << "Usage: " << argv[0] << " --socket <socket_path> [--init-val <val>]\n"
-                  << "Options:\n"
-                  << "  --socket    UNIX domain socket path (Required)\n"
-                  << "  --init-val  Initial ADC digital value for all channels (Default: 2048) (Optional)\n";
+    if (opt.socket_path.empty()) {
+        std::cerr << "Error: --socket <socket_path> is required.\n\n";
+        cli.print_help();
         return 1;
     }
+
+    uint16_t init_val = opt.has_init_val ? static_cast<uint16_t>(opt.init_val) : 2048;
 
     // デバイスエミュレータ起動
     SpiAdc adc(1, init_val);
     g_adc_instance = &adc;
 
-    // クリーンアップ用のシグナルハンドリング
-    std::signal(SIGINT, handle_signal);
-    std::signal(SIGTERM, handle_signal);
+    fbb::PluginCLI::setup_signal_handler(handle_signal);
 
-    std::cout << "[SPI ADC] Mock daemon starting on " << sock_file 
+    std::cout << "[SPI ADC] Mock daemon starting on " << opt.socket_path 
               << " (initial val: " << init_val << ")\n";
     std::flush(std::cout);
 
     // エミュレーション稼働 (接続待ちループ、ブロッキング)
-    if (!adc.start(sock_file)) {
+    if (!adc.start(opt.socket_path)) {
         std::cerr << "[SPI ADC] Failed to start daemon.\n";
         return 1;
     }

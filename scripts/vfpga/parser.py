@@ -2,10 +2,12 @@
 @file scripts/vfpga/parser.py
 @intent:responsibility
     Device Tree Source (config.dts) を構文解析し、F-BB の内部オブジェクトモデル（BoardModel, Device, Register, I2CSlave, SPISlave）を構築する。
+    構文誤記やインクルード欠落を検知した際は、行番号・コードスニペット・修正ヒントを含む親切な DTSParserError を発行する。
 @intent:rationale
     F-BB では Single Source of Truth（SSOT）原則（ADR #001）を徹底しており、C-Shim、Verilog スケルトン、
     シミュレータラッパー、Rust PAC、ダッシュボードマニフェスト（board_manifest.json）の全生成物は、
     この DTS パーサーが生成する単一の BoardModel から一元的に導出される。
+    初学者が DTS のセミコロン抜けや中括弧不整合を起こした際にも、即座に修正箇所を特定できるようにする。
 @intent:pre-condition
     入力ファイルは有効な DTS 構文であり、F-BB の独自拡張プロパティ（registers @ 0x00:RW, fbb,mock-data 等）を含みうること。
 """
@@ -15,18 +17,186 @@ import os
 from vfpga.models import Device, Register, I2CSlave, SPISlave, BoardModel
 
 
+class DTSParserError(Exception):
+    """
+    @class DTSParserError
+    @intent:responsibility
+        DTS 構文解析エラー時に、ファイル名、行番号、該当コードスニペット、原因、および修正ヒントを整形して通知する。
+    """
+    def __init__(self, message, file_path=None, line=None, node=None, snippet=None, tip=None):
+        self.message = message
+        self.file_path = file_path
+        self.line = line
+        self.node = node
+        self.snippet = snippet
+        self.tip = tip
+        super().__init__(self._format_error())
+
+    def _format_error(self):
+        lines = [
+            "=" * 70,
+            "[DTSParser Error] Syntax error in Device Tree Source",
+            "-" * 70,
+        ]
+        if self.file_path:
+            lines.append(f"File     : {self.file_path}")
+        if self.line:
+            lines.append(f"Line     : {self.line}")
+        if self.node:
+            lines.append(f"Node     : {self.node}")
+        if self.snippet:
+            lines.append("Snippet  :")
+            for s in self.snippet.splitlines():
+                lines.append(f"  {s}")
+        lines.append(f"Reason   : {self.message}")
+        if self.tip:
+            lines.append(f"Tip      : {self.tip}")
+        lines.append("=" * 70)
+        return "\n".join(lines)
+
+
 class DTSParser:
     """
     @class DTSParser
     @intent:responsibility
-        DTS ファイルの再帰的 include 展開、マクロ展開、ノード抽出、レジスタ権限・ペリフェラル属性のパースを担当。
+        DTS ファイルの再帰的 include 展開、マクロ展開、構文バリデーション、ノード抽出、レジスタ権限・ペリフェラル属性のパースを担当。
     @intent:rationale
         外部の巨大な dtc（Device Tree Compiler）バイナリに依存せず、Python 標準ライブラリのみで高速・ポータブルに
-        DTS サブセットをパースすることで、ゼロ依存の高速起動を実現する。
+        DTS サブセットをパースし、親切な診断レポートを出力することで、ゼロ依存の高速起動と優れた開発体験を両立する。
     """
 
     @staticmethod
-    def preprocess_includes(content, base_dir, visited=None):
+    def make_snippet(content, line_num, radius=2):
+        """
+        @intent:responsibility
+            エラー発生行の前後数行を抽出し、問題の行に '>' ポインタを付与した行番号付きスニペットを生成する。
+        @intent:rationale
+            単なるエラー行番号だけでなく前後のコードコンテキストを可視化することで、初学者がエラー箇所を一目で把握できるようにする。
+        @intent:pre-condition
+            content は改行区切りの文字列であり、line_num は 1 以上の整数であること。
+        """
+        lines = content.splitlines()
+        start_idx = max(0, line_num - radius - 1)
+        end_idx = min(len(lines), line_num + radius)
+        res = []
+        for idx in range(start_idx, end_idx):
+            cur_line = idx + 1
+            prefix = "> " if cur_line == line_num else "  "
+            res.append(f"{prefix}{cur_line:4d} | {lines[idx]}")
+        return "\n".join(res)
+
+    @staticmethod
+    def _remove_comments_and_strings(text):
+        """
+        @intent:responsibility
+            コメント（/* ... */, // ...）および文字列リテラル（"..."）を行数・文字位置を崩さずに空白でマスクする。
+        @intent:rationale
+            コメントや文字列の中に含まれる '{', '}' などの記号が中括弧バランス検査を誤認させるのを完全に防ぐ。
+        @intent:pre-condition
+            text は有効な UTF-8 文字列であること。
+        """
+        def repl_str(m):
+            return '"' + ' ' * (len(m.group(0)) - 2) + '"'
+        text_no_str = re.sub(r'"([^"\\]|\\.)*"', repl_str, text)
+        def repl_block(m):
+            return '\n' * m.group(0).count('\n')
+        text_no_comm = re.sub(r'/\*.*?\*/', repl_block, text_no_str, flags=re.DOTALL)
+        return re.sub(r'//.*$', '', text_no_comm, flags=re.MULTILINE)
+
+    @staticmethod
+    def validate_syntax_precheck(content, file_path):
+        """
+        @intent:responsibility
+            DTS の中括弧不整合（閉じ忘れ・余剰）およびプロパティ末尾のセミコロン忘れを事前に静的検査する。
+        @intent:rationale
+            ジェネレーターや正規表現パーサーが中途半端に失敗する前に、明確な行番号と修正 Tip を添えて早期に診断する。
+        @intent:pre-condition
+            content はファイルから読み込まれた生の DTS 文字列であること。
+        """
+        # 1. Check balanced braces
+        clean = DTSParser._remove_comments_and_strings(content)
+        open_braces = []
+        for idx, char in enumerate(clean):
+            if char == '{':
+                open_braces.append(idx)
+            elif char == '}':
+                if open_braces:
+                    open_braces.pop()
+                else:
+                    line_num = content[:idx].count('\n') + 1
+                    raise DTSParserError(
+                        "Extraneous closing brace '}' without matching '{'",
+                        file_path=file_path,
+                        line=line_num,
+                        snippet=DTSParser.make_snippet(content, line_num),
+                        tip="Check for duplicate or misplaced '};' node closers."
+                    )
+        if open_braces:
+            last_open_idx = open_braces[-1]
+            line_num = content[:last_open_idx].count('\n') + 1
+            raise DTSParserError(
+                "Unclosed opening brace '{' detected (missing matching '};')",
+                file_path=file_path,
+                line=line_num,
+                snippet=DTSParser.make_snippet(content, line_num),
+                tip="Ensure every opened node '{' has a corresponding closing '};'."
+            )
+
+        # 2. Check property semicolons
+        lines = content.splitlines()
+        in_block_comment = False
+        in_property = False
+        prop_start_line = 0
+
+        for idx, line in enumerate(lines):
+            line_num = idx + 1
+            stripped = line.strip()
+            if not stripped:
+                continue
+
+            if "/*" in line:
+                in_block_comment = True
+            if "*/" in line:
+                in_block_comment = False
+                continue
+            if in_block_comment or stripped.startswith("//") or stripped.startswith("#"):
+                continue
+
+            if re.match(r'^[a-zA-Z0-9_,-]+\s*=', stripped) and not stripped.endswith('{'):
+                if in_property:
+                    raise DTSParserError(
+                        "Missing terminating ';' in property definition",
+                        file_path=file_path,
+                        line=prop_start_line,
+                        snippet=DTSParser.make_snippet(content, prop_start_line),
+                        tip="Each property assignment must end with a semicolon (e.g. 'label = \"/dev/uio0\";')."
+                    )
+                in_property = True
+                prop_start_line = line_num
+
+            if in_property:
+                if stripped.endswith(';'):
+                    in_property = False
+                elif stripped.endswith('{') or (re.match(r'^[a-zA-Z0-9_@:-]+\s*\{', stripped) and not stripped.startswith('registers')):
+                    raise DTSParserError(
+                        "Missing terminating ';' before new node definition",
+                        file_path=file_path,
+                        line=prop_start_line,
+                        snippet=DTSParser.make_snippet(content, prop_start_line),
+                        tip="Each property assignment must end with a semicolon before starting a child node."
+                    )
+
+        if in_property:
+            raise DTSParserError(
+                "Missing terminating ';' in property definition",
+                file_path=file_path,
+                line=prop_start_line,
+                snippet=DTSParser.make_snippet(content, prop_start_line),
+                tip="Ensure the last property definition ends with ';'."
+            )
+
+    @staticmethod
+    def preprocess_includes(content, base_dir, visited=None, source_file=None):
         """
         @intent:responsibility
             #include ディレクティブを再帰的に走査し、インクルード先ファイルの内容でインライン置換する。
@@ -48,8 +218,15 @@ class DTSParser:
                 target_path = os.path.normpath(os.path.join(proj_root, inc_path))
 
             if not os.path.exists(target_path):
-                print(f"[DTSParser] Warning: Included file not found: {inc_path}")
-                return ""
+                match_start = match.start()
+                line_num = content[:match_start].count('\n') + 1
+                raise DTSParserError(
+                    f"Included file not found: '{inc_path}'",
+                    file_path=source_file,
+                    line=line_num,
+                    snippet=DTSParser.make_snippet(content, line_num),
+                    tip=f"Check if '{inc_path}' exists in the scenario directory or in the repository root."
+                )
 
             if target_path in visited:
                 return ""  # Avoid circular inclusion
@@ -58,10 +235,19 @@ class DTSParser:
             try:
                 with open(target_path, "r", encoding="utf-8") as f_inc:
                     inc_content = f_inc.read()
-                return DTSParser.preprocess_includes(inc_content, os.path.dirname(target_path), visited)
+                return DTSParser.preprocess_includes(inc_content, os.path.dirname(target_path), visited, target_path)
+            except DTSParserError:
+                raise
             except Exception as e:
-                print(f"[DTSParser] Error reading include file {target_path}: {e}")
-                return ""
+                match_start = match.start()
+                line_num = content[:match_start].count('\n') + 1
+                raise DTSParserError(
+                    f"Error reading include file '{target_path}': {e}",
+                    file_path=source_file,
+                    line=line_num,
+                    snippet=DTSParser.make_snippet(content, line_num),
+                    tip="Ensure the file has read permissions and is valid UTF-8 text."
+                )
 
         # Match #include "..." or #include <...>
         pattern = r'#include\s+["<]([^">]+)[">]'
@@ -100,11 +286,21 @@ class DTSParser:
         @intent:pre-condition
             dts_path が指すファイルが存在し、読み取り可能であること。
         """
-        with open(dts_path, "r") as f:
+        if not os.path.exists(dts_path):
+            raise DTSParserError(
+                f"Device Tree Source file not found: '{dts_path}'",
+                file_path=dts_path,
+                tip="Check if the file path is correct or scaffold a new scenario using 'bin/fbb new'."
+            )
+
+        with open(dts_path, "r", encoding="utf-8") as f:
             raw_content = f.read()
 
+        # Precheck syntax on the primary DTS file before expansion
+        DTSParser.validate_syntax_precheck(raw_content, dts_path)
+
         # Preprocess #include statements recursively
-        content = DTSParser.preprocess_includes(raw_content, os.path.dirname(os.path.abspath(dts_path)))
+        content = DTSParser.preprocess_includes(raw_content, os.path.dirname(os.path.abspath(dts_path)), source_file=dts_path)
 
         # Expand #define macros (e.g. #define FBB_I2C_BUS i2c0)
         defines = dict(re.findall(r"#define\s+([A-Za-z0-9_]+)\s+([A-Za-z0-9_]+)", content))
@@ -227,7 +423,8 @@ class DTSParser:
                 if dev_type == "unknown" and label.startswith("/dev/uio"):
                     dev_type = "uio"
 
-                device = Device(name, label, dev_type, props.get("reg", "0x0 0x0"))
+                reg_val = props.get("reg", "0x0 0x0")
+                device = Device(name, label, dev_type, reg_val)
                 for k, v in props.items():
                     if k not in ["label", "reg", "registers"]:
                         device.extra_props[k] = v

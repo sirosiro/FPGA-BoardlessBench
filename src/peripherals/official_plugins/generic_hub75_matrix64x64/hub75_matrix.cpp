@@ -28,8 +28,16 @@
 #define HUB75_FRAME_SIZE (HUB75_WIDTH * HUB75_HEIGHT * HUB75_CHANNELS)
 #define HUB75_SHM_PATH "/dev/shm/fbb_hub75_0"
 
+#include "../../common/cli_helper.hpp"
+
 static std::atomic<bool> g_running{true};
 
+/**
+ * @brief シグナル受信ハンドラ
+ * @intent:responsibility SIGINT/SIGTERM 受信時にデーモンのメインループ停止フラグをセットする。
+ * @intent:rationale 共有メモリマッピングの正常解除とファイルディスクリプタのクローズを保証する。
+ * @intent:pre-condition なし。
+ */
 void signal_handler(int sig) {
     (void)sig;
     g_running = false;
@@ -37,29 +45,27 @@ void signal_handler(int sig) {
 
 /**
  * @brief HUB75 エミュレータデーモンエントリポイント
- * @param argc [1: shm_path, 2: width, 3: height]
- * @intent:responsibility コマンドライン引数から解像度と共有メモリパスを取得し、フレームバッファを初期化する。
+ * @param argc 引数の数
+ * @param argv 引数配列
+ * @intent:responsibility fbb::PluginCLI から解像度と共有メモリパスを取得し、フレームバッファを初期化・待機する。
+ * @intent:rationale 共有メモリ経由で高速フレームバッファ描画領域を提供し、Web ダッシュボードへリアルタイム反映する。
+ * @intent:pre-condition 有効な共有メモリ名または位置引数が指定されていること。
  */
 int main(int argc, char** argv) {
-    signal(SIGINT, signal_handler);
-    signal(SIGTERM, signal_handler);
+    fbb::PluginCLI cli("Generic HUB75 RGB LED Matrix (64x64 / Daisy Chain)",
+                       "Emulates 64x64 (or custom resolution) RGB LED Matrix with direct shared memory frame buffer.");
+    auto opt = cli.parse(argc, argv);
+    if (opt.show_help) return 0;
 
-    std::string shm_path = HUB75_SHM_PATH;
-    int width = HUB75_WIDTH;
-    int height = HUB75_HEIGHT;
+    fbb::PluginCLI::setup_signal_handler(signal_handler);
 
-    if (argc >= 2) {
-        shm_path = argv[1];
-        if (shm_path.find("/dev/shm/") != 0) {
-            shm_path = "/dev/shm/" + shm_path;
-        }
+    std::string shm_path = opt.shm_path.empty() ? HUB75_SHM_PATH : opt.shm_path;
+    if (shm_path.find("/dev/shm/") != 0 && shm_path.find("/") != 0) {
+        shm_path = "/dev/shm/" + shm_path;
     }
-    if (argc >= 3) {
-        width = std::stoi(argv[2]);
-    }
-    if (argc >= 4) {
-        height = std::stoi(argv[3]);
-    }
+
+    int width = (opt.width > 0) ? opt.width : HUB75_WIDTH;
+    int height = (opt.height > 0) ? opt.height : HUB75_HEIGHT;
 
     size_t frame_size = width * height * HUB75_CHANNELS;
 

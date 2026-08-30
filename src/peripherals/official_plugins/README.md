@@ -142,14 +142,71 @@ OLED ディスプレイ、RGB LED マトリクス、液晶パネル、カメラ�
 
 ---
 
-## 4. 基板ベクター外形図 (`board.svg`)
+## 4. ペリフェラルエミュレータ C++ 実装規約 & 統一 CLI インターフェース (`cli_helper.hpp`)
+
+サードパーティ製および公式ペリフェラルデーモンは、`src/peripherals/common/` に配置された抽象基底クラス（`I2cSlave`, `SpiSlave`, `UartDevice`）を継承して実装します。
+
+コマンドライン引数の解析およびシグナル制御には、共通パーサー `fbb::PluginCLI`（`src/peripherals/common/cli_helper.hpp`）を使用します。これにより、すべてのペリフェラルで以下の統一オプションおよび整形ヘルプメニューが自動サポートされます。
+
+### 統一コマンドラインオプション
+| オプション | 引数 | 説明 | 対象デバイス例 |
+| :--- | :--- | :--- | :--- |
+| `-s`, `--socket` | `<path>` | I2C / SPI マスターブリッジ用 UNIX ドメインソケットパス | OLED, 7seg, ADC, EEPROM, Flash |
+| `--shm` | `<path>` | POSIX 共有メモリパス（`/dev/shm/...`） | HUB75, フレームバッファ |
+| `-f`, `--file` | `<path>` | 不揮発ストレージ保存用バッキングファイルパス | EEPROM, SPI Flash |
+| `-p`, `--pts-file` | `<path>` | 割り当てられた PTY スレーブパス格納ファイル | UART ループバック |
+| `-i`, `--init-val` | `<val>` | レジスタまたは ADC チャンネルの初期値（16進数/10進数） | ADC, EEPROM |
+| `-w`, `--width` | `<pixels>` | ディスプレイ・マトリクスの横幅ピクセル数（既定値: 64） | HUB75, OLED |
+| `-H`, `--height` | `<pixels>` | ディスプレイ・マトリクスの縦幅ピクセル数（既定値: 64） | HUB75, OLED |
+| `-h`, `--help` | - | プラグイン情報、パラメータ一覧、使用例を表示して終了 | 全ペリフェラル |
+
+### C++ エミュレータ最小実装テンプレート
+```cpp
+#include "../../common/i2c_slave.hpp"
+#include "../../common/cli_helper.hpp"
+
+class MyCustomI2cSensor : public I2cSlave {
+public:
+    MyCustomI2cSensor(uint8_t dev_addr) : I2cSlave(dev_addr) {}
+protected:
+    void onWrite(const std::vector<uint8_t>& data) override {
+        // マスターからの書き込み処理
+    }
+    std::vector<uint8_t> onRead(size_t length) override {
+        // センサー応答バイト列の返却
+        return std::vector<uint8_t>(length, 0x55);
+    }
+};
+
+static MyCustomI2cSensor* g_sensor_instance = nullptr;
+void handle_signal(int sig) {
+    if (g_sensor_instance) g_sensor_instance->stop();
+}
+
+int main(int argc, char* argv[]) {
+    fbb::PluginCLI cli("Vendor Custom I2C Sensor", "Emulates 3-axis accelerometer over I2C.");
+    auto opt = cli.parse(argc, argv);
+    if (opt.show_help) return 0;
+    if (opt.socket_path.empty()) { cli.print_help(); return 1; }
+
+    MyCustomI2cSensor sensor(0x68);
+    g_sensor_instance = &sensor;
+    fbb::PluginCLI::setup_signal_handler(handle_signal);
+
+    return sensor.start(opt.socket_path) ? 0 : 1;
+}
+```
+
+---
+
+## 5. 基板ベクター外形図 (`board.svg`)
 
 - 基板外形、ネジ穴、コネクタ、ICチップ、シルク文字等を SVG 形式で作成します。
 - ディスプレイ画面切り抜き部分が存在する場合、`overlay_offset`（`left`, `top`, `width`, `height`）をパーセンテージ指定することで、SVG 画像の上にフレームバッファ（Canvas）がピクセル単位で 1:1 にオーバーレイ描画されます。
 
 ---
 
-## 5. 公式プラグイン一覧
+## 6. 公式プラグイン一覧
 
 1. **`adafruit_ht16k33`**: Adafruit 0.56" 4-Digit 7-Segment HT16K33 I2C Display
 2. **`generic_hub75_matrix64x64`**: Generic HUB75 64x64 / 128x64 RGB LED Matrix

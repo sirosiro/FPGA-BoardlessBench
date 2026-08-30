@@ -36,11 +36,16 @@ protected:
     }
 };
 
+#include "../../common/cli_helper.hpp"
+
 // グローバルスコープのシグナル制御用インスタンスポインタ
 static UartLoopback* g_uart_instance = nullptr;
 
 /**
  * @brief シグナル受信時の安全なクリーンアップハンドラ
+ * @intent:responsibility SIGINT/SIGTERM を受信した際に UART ループバックデーモンを安全に停止する。
+ * @intent:rationale PTY デバイスディスクリプタの孤立・残存プロセス化を防止する。
+ * @intent:pre-condition g_uart_instance が初期化されていること。
  */
 void handle_signal(int sig) {
     (void)sig;
@@ -50,20 +55,23 @@ void handle_signal(int sig) {
     }
 }
 
+/**
+ * @brief 汎用 UART ループバックエミュレータデーモンエントリポイント
+ * @intent:responsibility CLI 引数をパースして PTY マップファイルを参照し、UART ループバックデーモンを起動する。
+ * @intent:rationale 送信されたシリアルバイト列を受信バッファへオウム返し転送する。
+ * @intent:pre-condition --pts-file オプションで有効な PTY マップファイルパスが指定されていること。
+ */
 int main(int argc, char *argv[]) {
-    std::string pts_file;
+    fbb::PluginCLI cli("Generic UART Loopback Device",
+                       "Emulates a bi-directional serial terminal loopback connected to master/slave PTY.");
+    auto opt = cli.parse(argc, argv);
+    if (opt.show_help) return 0;
 
-    // コマンドライン引数解析
-    for (int i = 1; i < argc; i++) {
-        if (std::strcmp(argv[i], "--pts-file") == 0 && i + 1 < argc) {
-            pts_file = argv[++i];
-        }
-    }
+    std::string pts_file = opt.pts_file.empty() ? opt.file_path : opt.pts_file;
 
     if (pts_file.empty()) {
-        std::cerr << "Usage: " << argv[0] << " --pts-file <path_to_vfpga_uart_X_file>\n"
-                  << "Options:\n"
-                  << "  --pts-file    Path to the temporary file containing the allocated PTY slave path (Required)\n";
+        std::cerr << "Error: --pts-file <path> is required.\n\n";
+        cli.print_help();
         return 1;
     }
 
@@ -71,9 +79,7 @@ int main(int argc, char *argv[]) {
     UartLoopback uart;
     g_uart_instance = &uart;
 
-    // クリーンアップ用のシグナルハンドリング
-    std::signal(SIGINT, handle_signal);
-    std::signal(SIGTERM, handle_signal);
+    fbb::PluginCLI::setup_signal_handler(handle_signal);
 
     std::cout << "[UART Loopback] Starting loopback daemon using map file: " << pts_file << "\n";
     std::flush(std::cout);
