@@ -1,3 +1,14 @@
+/**
+ * @file src/peripherals/official_plugins/adafruit_ht16k33/ht16k33.cpp
+ * @intent:responsibility
+ *   Holtek HT16K33 16x8 LED ドライバ（7 セグメント LED / LED マトリクスコントローラ）のエミュレーションデーモン。
+ *   I2C 経由で受信したアドレスポインタ（0x00〜0x0F）とコマンド（発振器、ブリンク、輝度）を解析し、
+ *   16 バイトの表示 RAM を POSIX 共有メモリ（/fbb_display_7seg_0）へ同期する。
+ * @intent:rationale
+ *   Adafruit 4 桁 7 セグメントバックパック等のハードウェア挙動を完全エミュレートし、
+ *   Web ダッシュボードの 7-segment LED ウィジェットへ非侵襲にリアルタイム数値を反映する。
+ */
+
 #include "../../common/i2c_slave.hpp"
 #include <iostream>
 #include <vector>
@@ -9,8 +20,18 @@
 
 constexpr size_t HT16K33_RAM_SIZE = 16; // 16 bytes display RAM
 
+/**
+ * @class I2cHt16k33
+ * @intent:responsibility
+ *   HT16K33 コマンド解析、16 バイト表示 RAM の管理、および共有メモリへの同期。
+ */
 class I2cHt16k33 : public I2cSlave {
 public:
+    /**
+     * @brief コンストラクタ
+     * @param dev_addr I2C 7-bit アドレス（通常 0x70）
+     * @intent:responsibility 表示 RAM 初期化および /fbb_display_7seg_0 共有メモリの作成・mmap を行う。
+     */
     I2cHt16k33(uint8_t dev_addr)
         : I2cSlave(dev_addr),
           display_ram_(HT16K33_RAM_SIZE, 0),
@@ -34,6 +55,10 @@ public:
         }
     }
 
+    /**
+     * @brief デストラクタ
+     * @intent:responsibility 共有メモリの munmap および shm_unlink を行いリソースを解放する。
+     */
     ~I2cHt16k33() override {
         if (shm_data_) {
             munmap(shm_data_, HT16K33_RAM_SIZE);
@@ -45,6 +70,11 @@ public:
     }
 
 protected:
+    /**
+     * @brief I2C 書き込みハンドラ
+     * @param data 先頭バイトがアドレスポインタまたはコマンドバイト
+     * @intent:responsibility 0x00〜0x0F の RAM 書き込み、0x20/0x21(発振器), 0x80(ブリンク), 0xE0(輝度)のコマンドを処理。
+     */
     void onWrite(const std::vector<uint8_t>& data) override {
         if (data.empty()) return;
 
@@ -78,6 +108,10 @@ protected:
         }
     }
 
+    /**
+     * @brief I2C 読み出しハンドラ
+     * @intent:responsibility 現在の表示 RAM データをマスターへ返送する。
+     */
     std::vector<uint8_t> onRead(size_t length) override {
         std::vector<uint8_t> resp(length, 0x00);
         for (size_t i = 0; i < length && i < HT16K33_RAM_SIZE; ++i) {
@@ -87,6 +121,9 @@ protected:
     }
 
 private:
+    /**
+     * @brief 表示 RAM の内容を共有メモリへ同期する。
+     */
     void sync_shm() {
         if (shm_data_) {
             std::memcpy(shm_data_, display_ram_.data(), HT16K33_RAM_SIZE);

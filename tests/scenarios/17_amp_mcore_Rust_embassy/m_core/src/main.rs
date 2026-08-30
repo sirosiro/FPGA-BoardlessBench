@@ -1,3 +1,8 @@
+//! @file main.rs
+//! @intent:responsibility Embassy 非同期タスクから PAC 経由で共有メモリレジスタを更新する。
+//! @intent:rationale      no_std Rust 環境でのタイマー駆動型非同期エグゼキュータ動作をテストする。
+//! @intent:pre-condition  vfpga_pac クレートがリンクされていること。
+
 mod fbb_pac;
 mod host_bsp;
 

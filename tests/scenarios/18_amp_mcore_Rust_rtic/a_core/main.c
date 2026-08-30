@@ -1,3 +1,10 @@
+/**
+ * @file main.c
+ * @intent:responsibility Rust リアルタイムフレームワーク（RTIC）駆動 Mコアと Aコア間の協調動作を検証する。
+ * @intent:rationale      RTIC のハードウェア優先度ベーススケジューリングと共有リソース保護をテストする。
+ * @intent:pre-condition  Rust RTIC Mコアバイナリが起動していること。
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>

@@ -1,3 +1,10 @@
+/**
+ * @file main.cpp
+ * @intent:responsibility デイジーチェーン接続された複数枚の HUB75 パネルへの展開描画を検証する。
+ * @intent:rationale      パネル連結時のアスペクト比計算および複数パネルフレーム同期をテストする。
+ * @intent:pre-condition  chain_layout 設定が config.dts に定義されていること。
+ */
+
 #include <iostream>
 #include <vector>
 #include <cmath>

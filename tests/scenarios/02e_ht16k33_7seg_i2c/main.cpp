@@ -1,3 +1,10 @@
+/**
+ * @file main.cpp
+ * @intent:responsibility HT16K33 4 桁 7 セグメント LED への数字・コロン表示およびブリンク制御を検証する。
+ * @intent:rationale      表示 RAM の部分書き込みと発振器/輝度設定コマンドの動作をテストする。
+ * @intent:pre-condition  HT16K33 デバイスエミュレータ（0x70）が起動していること。
+ */
+
 #include <iostream>
 #include <vector>
 #include <fcntl.h>

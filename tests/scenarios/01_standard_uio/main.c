@@ -1,3 +1,10 @@
+/**
+ * @file main.c
+ * @intent:responsibility Linux UIO（/dev/uio0）と Verilator RTL 間で MMIO レジスタ同期とカウンタインクリメントを検証する。
+ * @intent:rationale      PS-PL 間の最も基本的なメモリマップド I/O（mmap）アクセスとクロック同期ロジックの整合性をテストする。
+ * @intent:pre-condition  config.dts で定義された vfpga_reg デバイス（0x40000000）が有効であること。
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>

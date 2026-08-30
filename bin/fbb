@@ -1,6 +1,15 @@
 #!/usr/bin/env python3
 """
 FPGA-BoardlessBench (F-BB) Unified CLI Toolkit (fbb-cli)
+
+@intent:responsibility
+  開発者が F-BB のシナリオ作成（new）、テスト実行（test）、DTS アドレス空間検査（inspect）、
+  および PPA 5.1 プラグイン管理（plugin list/install/remove）を単一のエントリポイントから直感的に操作できる統合 CLI を提供する。
+@intent:rationale
+  個別のシェルスクリプトや手動コマンド（run.sh, gen_vfpga.py, regression_test.py）の構文を統一し、
+  あいまい検索（前方一致）や自動クリーンアップ（Ctrl+C 時のバックグラウンドプロセス一括停止）を内包して開発体験を向上させる。
+@intent:pre-condition
+  Python 3.8 以上が利用可能であり、PROJECT_ROOT 配下に scripts/, tests/scenarios/ が配置されていること。
 """
 
 import sys
@@ -24,6 +33,12 @@ from vfpga.parser import DTSParser
 
 
 def command_new(args):
+    """
+    @intent:responsibility
+      新規シナリオ用ディレクトリ・DTS・Verilog RTL・CMakeLists.txt・Cソース・README のスケルトンを一括自動生成する。
+    @intent:rationale
+      初学者がゼロから構成ファイルを作成する手間を省き、ベストプラクティスに沿った構成を即座に提供する。
+    """
     scenario_name = args.name
     target = args.target or "zynq7000"
     target_dir = os.path.join(PROJECT_ROOT, "tests/scenarios", scenario_name)
@@ -208,6 +223,12 @@ Scaffolded F-BB scenario target: {target}.
 
 
 def resolve_scenario_name_or_path(input_str):
+    """
+    @intent:responsibility
+      あいまい入力（プレフィックス "01" や相対パス "tests/scenarios/01_standard_uio"）から正確なシナリオディレクトリ絶対パスを解決する。
+    @intent:rationale
+      ユーザーがフルパスを入力することなく、最小限のタイピング（例: fbb test 01）で目的のシナリオを実行可能にする。
+    """
     if not input_str:
         return None
 
@@ -242,6 +263,10 @@ def resolve_scenario_name_or_path(input_str):
 
 
 def resolve_dts_path(input_str):
+    """
+    @intent:responsibility
+      シナリオ名、フォルダパス、または直接の DTS ファイルパスから対象 config.dts の絶対パスを解決する。
+    """
     if not input_str:
         return None
 
@@ -261,6 +286,12 @@ def resolve_dts_path(input_str):
 
 
 def command_test(args):
+    """
+    @intent:responsibility
+      単一シナリオ（run.sh）またはフルリグレッションテストスイート（regression_test.py）を実行し、Ctrl+C 時にシミュレータプロセスを確実に回収する。
+    @intent:rationale
+      テスト中断時に孤立プロセス（vlogic_controller, vfpga_sim）が残存してポートや共有メモリを占有するのを防ぐ。
+    """
     scenario_input = args.scenario
     try:
         if scenario_input:
@@ -288,6 +319,10 @@ def command_test(args):
 
 
 def command_inspect(args):
+    """
+    @intent:responsibility
+      指定された config.dts またはシナリオの 32-bit MMIO アドレス空間とペリフェラル一覧を表形式で整形出力する。
+    """
     dts_input = args.dts
     dts_file = resolve_dts_path(dts_input)
 
@@ -315,6 +350,10 @@ def command_inspect(args):
 
 
 def command_plugin_list(args):
+    """
+    @intent:responsibility
+      ~/.fbb/plugins, official_plugins 等の標準パスを探索し、PPA 5.1 マニフェスト（fbb-plugin.json）をパースして一覧表示する。
+    """
     print("🔌 Scanning F-BB Plug-and-Play Architecture (PPA 5.1) Plugins...")
     
     discovery_paths = [
@@ -360,6 +399,10 @@ def command_plugin_list(args):
 
 
 def command_plugin_install(args):
+    """
+    @intent:responsibility
+      ローカルフォルダまたは Git リポジトリから ~/.fbb/plugins 配下へプラグインを導入する。
+    """
     target_repo = args.source
     dest_base = os.path.join(os.path.expanduser("~"), ".fbb/plugins")
     os.makedirs(dest_base, exist_ok=True)
@@ -387,6 +430,10 @@ def command_plugin_install(args):
 
 
 def command_plugin_remove(args):
+    """
+    @intent:responsibility
+      インストール済みの PPA プラグインディレクトリを安全に削除する。
+    """
     plugin_name = args.name
     dest_dir = os.path.join(os.path.expanduser("~"), ".fbb/plugins", plugin_name)
 

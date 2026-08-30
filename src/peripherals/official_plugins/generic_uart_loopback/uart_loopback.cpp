@@ -1,8 +1,23 @@
+/**
+ * @file src/peripherals/official_plugins/generic_uart_loopback/uart_loopback.cpp
+ * @intent:responsibility
+ *   汎用 UART ループバックテスト用エミュレーションデーモン。
+ *   PTY スレーブから受信した全バイト列をそのまま transmit() でオウム返し（エコーバック）送信する。
+ * @intent:rationale
+ *   マルチ UART シナリオ（シナリオ 08 等）において、実機の対向シリアル端末やループバックコネクタを
+ *   外部ハードウェア不要で机上再現する。
+ */
+
 #include "../../common/uart_device.hpp"
 #include <iostream>
 #include <cstring>
 #include <csignal>
 
+/**
+ * @class UartLoopback
+ * @intent:responsibility
+ *   受信データをそのまま送信バッファへ折り返すエコーバック動作を実装。
+ */
 class UartLoopback : public UartDevice {
 public:
     UartLoopback() : UartDevice() {}
@@ -10,8 +25,8 @@ public:
 protected:
     /**
      * @brief データ受信時のコールバックハンドラ
-     * 受信したデータをそのままオウム返し (ループバック) して送信します。
      * @param data 受信したデータバイト列
+     * @intent:responsibility 受信したバイト列をそのまま PTY スレーブへ即時送出する。
      */
     void onReceive(const std::vector<uint8_t>& data) override {
         if (data.empty()) return;

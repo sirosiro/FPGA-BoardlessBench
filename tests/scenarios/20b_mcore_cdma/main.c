@@ -1,3 +1,10 @@
+/**
+ * @file main.c
+ * @intent:responsibility Mコアから物理アドレス直接アクセスによる AXI CDMA 転送を検証する。
+ * @intent:rationale      Mコアの決定論的物理メモリ空間からの DMA 転送トリガーと転送完了をテストする。
+ * @intent:pre-condition  FBB_MCORE=1 マッピングが有効であること。
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

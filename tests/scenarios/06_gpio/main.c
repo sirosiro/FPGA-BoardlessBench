@@ -1,3 +1,10 @@
+/**
+ * @file main.c
+ * @intent:responsibility AXI GPIO コントローラ（/dev/uio1）の入出力ピン制御および TRI 方向レジスタ設定を検証する。
+ * @intent:rationale      118 ピン仮想 GPIO バスの双方向ピン切り替えおよびデータ読み出しをテストする。
+ * @intent:pre-condition  GPIO デバイスノード（xlnx,xps-gpio）が定義されていること。
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>

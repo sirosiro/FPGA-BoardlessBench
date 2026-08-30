@@ -1,3 +1,10 @@
+/**
+ * @file main.cpp
+ * @intent:responsibility 単一 SPI バス上の複数 CS（Flash: CS0, ADC: CS1）に対する全二重 SPI 通信を検証する。
+ * @intent:rationale      チップセレクト切り替えと SPI_IOC_MESSAGE による全二重送受信プロトコルをテストする。
+ * @intent:pre-condition  /dev/spidev0.0 および /dev/spidev0.1 が有効であること。
+ */
+
 #include <iostream>
 #include <fcntl.h>
 #include <unistd.h>

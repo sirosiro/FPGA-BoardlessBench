@@ -1,3 +1,10 @@
+/**
+ * @file main.cpp
+ * @intent:responsibility C++ 擬似乱数 LFSR（Linear Feedback Shift Register）シーケンサと RTL 間のデータ照合を検証する。
+ * @intent:rationale      ソフトウェアアルゴリズムと Verilog ハードウェアロジックのサイクル精度での結果一致をテストする。
+ * @intent:pre-condition  LFSR ハードウェアレジスタが定義されていること。
+ */
+
 #include <iostream>
 #include <fcntl.h>
 #include <sys/mman.h>

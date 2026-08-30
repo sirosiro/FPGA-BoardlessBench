@@ -1,3 +1,10 @@
+/**
+ * @file main.c
+ * @intent:responsibility Remoteproc sysfs エミュレーション（firmware / state）経由での Mコア FW 起動・停止を検証する。
+ * @intent:rationale      Aコア（Linux）から JTAG デバッガ不要で Mコア FW をライフサイクル制御できることをテストする。
+ * @intent:pre-condition  /sys/class/remoteproc/remoteproc0/ インターセプトが有効であること。
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>

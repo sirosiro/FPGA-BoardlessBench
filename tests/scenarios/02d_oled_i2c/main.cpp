@@ -1,3 +1,10 @@
+/**
+ * @file main.cpp
+ * @intent:responsibility SSD1306 128x64 モノクロ OLED へのグラフィック描画（チェッカーボード、テキスト）を検証する。
+ * @intent:rationale      大量の GDDRAM ピクセルデータ転送と共有メモリ（/dev/shm/fbb_display_0）同期をテストする。
+ * @intent:pre-condition  SSD1306 デバイスエミュレータ（0x3C）が起動していること。
+ */
+
 #include <iostream>
 #include <vector>
 #include <fcntl.h>

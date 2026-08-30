@@ -1,3 +1,10 @@
+/**
+ * @file main.c
+ * @intent:responsibility 複数 UART（ttyPS1, ttyPS2）の同時オープンと独立ループバック通信を検証する。
+ * @intent:rationale      複数 PTY インスタンスのディスクリプタ管理およびマルチチャネルシリアル通信をテストする。
+ * @intent:pre-condition  config.dts に複数の uart ノードが定義されていること。
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>

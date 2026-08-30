@@ -1,3 +1,10 @@
+/**
+ * @file main.c
+ * @intent:responsibility Rust ベアメタル Mコア（no_std）と Aコア間の共有メモリ協調を検証する。
+ * @intent:rationale      Rust PAC を用いた型安全な MMIO アクセスと C/Rust 異種言語協調をテストする。
+ * @intent:pre-condition  Rust Mコアバイナリが起動していること。
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>

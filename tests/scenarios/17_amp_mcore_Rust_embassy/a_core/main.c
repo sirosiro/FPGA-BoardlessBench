@@ -1,3 +1,10 @@
+/**
+ * @file main.c
+ * @intent:responsibility Rust 非同期ランタイム（Embassy）駆動 Mコアと Aコア間の協調動作を検証する。
+ * @intent:rationale      Rust async/await による非同期タスク処理とハードウェアレジスタ同期をテストする。
+ * @intent:pre-condition  Rust Embassy Mコアバイナリが起動していること。
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>

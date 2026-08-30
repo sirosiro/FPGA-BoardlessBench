@@ -1,3 +1,10 @@
+/**
+ * @file main.c
+ * @intent:responsibility 単一 I2C バス上に接続された複数 I2C スレーブ（OLED, 7seg, EEPROM）への連続アクセスを検証する。
+ * @intent:rationale      I2C バスのアドレスデコードおよび異なるデバイスアドレスへのマルチスレーブ調停をテストする。
+ * @intent:pre-condition  I2C バス（/dev/i2c-1）配下に複数のスレーブノードが定義されていること。
+ */
+
 #include <stdio.h>
 #include <fcntl.h>
 #include <unistd.h>

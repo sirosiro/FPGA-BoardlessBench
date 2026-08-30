@@ -1,3 +1,10 @@
+/**
+ * @file main.cpp
+ * @intent:responsibility NXP FRDM-IMX 互換 HAL レジスタアクセスおよび GPIO ピンマッピングを検証する。
+ * @intent:rationale      SoC/ベンダー非依存設計に基づき、NXP SoC 向けファームウェアの透過的机上テストを可能にする。
+ * @intent:pre-condition  NXP 互換 DTS 定義がロードされていること。
+ */
+
 #include "hal/imx_hal.hpp"
 #include <atomic>
 #include <chrono>

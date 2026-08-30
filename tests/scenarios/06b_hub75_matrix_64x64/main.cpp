@@ -1,3 +1,10 @@
+/**
+ * @file main.cpp
+ * @intent:responsibility 64x64 RGB LED マトリクスへのフルカラーピクセルデータ書き込みを検証する。
+ * @intent:rationale      HUB75 共有メモリ（/dev/shm/fbb_hub75_0）へのフレームバッファ一括転送をテストする。
+ * @intent:pre-condition  HUB75 エミュレータデーモンが起動していること。
+ */
+
 #include <iostream>
 #include <vector>
 #include <cmath>

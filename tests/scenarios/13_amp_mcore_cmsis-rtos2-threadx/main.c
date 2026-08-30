@@ -1,3 +1,10 @@
+/**
+ * @file main.c
+ * @intent:responsibility CMSIS-RTOS2 (ThreadX) 駆動 Mコアと Aコア間の共有メモリ協調を検証する。
+ * @intent:rationale      標準 CMSIS-RTOS2 API で記述された ThreadX FW の動作をテストする。
+ * @intent:pre-condition  CMSIS-RTOS2 ThreadX バイナリが起動していること。
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>

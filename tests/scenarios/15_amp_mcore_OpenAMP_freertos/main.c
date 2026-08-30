@@ -1,3 +1,10 @@
+/**
+ * @file main.c
+ * @intent:responsibility FreeRTOS Mコアと OpenAMP RPMsg メッセージパッシング通信を検証する。
+ * @intent:rationale      RTOS タスクコンテキストでの OpenAMP RPMsg 送受信をテストする。
+ * @intent:pre-condition  FreeRTOS OpenAMP バイナリが起動していること。
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

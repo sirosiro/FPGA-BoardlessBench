@@ -1,3 +1,12 @@
+/**
+ * @file src/peripherals/common/uart_device.cpp
+ * @intent:responsibility
+ *   擬似端末（PTY）スレーブパスをポーリング解決し、双方向 UART 通信監視ループを実行する実装。
+ * @intent:rationale
+ *   C-Shim が生成する PTY マスタ/スレーブペアとの間で非同期・ブロッキング read/write を行い、
+ *   ボーレートやフロー制御に依存しない堅牢なプロセス間シリアル通信を提供する。
+ */
+
 #include "uart_device.hpp"
 #include <iostream>
 #include <fstream>
@@ -13,6 +22,13 @@ UartDevice::~UartDevice() {
     stop();
 }
 
+/**
+ * @intent:responsibility
+ *   pty_map_path からスレーブ PTY デバイス名（/dev/pts/X）をポーリング取得し、
+ *   O_RDWR | O_NOCTTY でオープンして eventLoop() を開始する。
+ * @intent:pre-condition
+ *   pty_map_path が指すファイルがコントローラにより生成されること（最大15秒ポーリング）。
+ */
 bool UartDevice::start(const std::string& pty_map_path) {
     pty_map_path_ = pty_map_path;
     running_ = true;
@@ -65,6 +81,10 @@ bool UartDevice::start(const std::string& pty_map_path) {
     return true;
 }
 
+/**
+ * @intent:responsibility
+ *   デーモン停止時に PTY ファイルディスクリプタを安全にクローズする。
+ */
 void UartDevice::stop() {
     running_ = false;
     if (pty_fd_ != -1) {
@@ -73,6 +93,10 @@ void UartDevice::stop() {
     }
 }
 
+/**
+ * @intent:responsibility
+ *   PTY スレーブへ指定されたバイト列を全量送信する。
+ */
 void UartDevice::transmit(const std::vector<uint8_t>& data) {
     if (pty_fd_ == -1 || data.empty()) return;
     
@@ -90,6 +114,10 @@ void UartDevice::transmit(const std::vector<uint8_t>& data) {
     }
 }
 
+/**
+ * @intent:responsibility
+ *   PTY スレーブからのブロッキング read() ループを実行し、受信バイト列を onReceive() ハンドラへ渡す。
+ */
 void UartDevice::eventLoop() {
     std::vector<uint8_t> buffer(1024);
 

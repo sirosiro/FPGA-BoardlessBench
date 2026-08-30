@@ -1,3 +1,10 @@
+/**
+ * @file main.c
+ * @intent:responsibility Aコア Linux と Eclipse ThreadX 駆動 Mコア間の共有メモリデータ交換を検証する。
+ * @intent:rationale      ThreadX リアルタイムカーネルと Linux アプリケーションの協調動作をテストする。
+ * @intent:pre-condition  ThreadX Mコアバイナリが起動していること。
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>

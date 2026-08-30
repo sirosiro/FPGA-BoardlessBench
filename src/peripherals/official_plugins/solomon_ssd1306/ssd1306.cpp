@@ -1,3 +1,14 @@
+/**
+ * @file src/peripherals/official_plugins/solomon_ssd1306/ssd1306.cpp
+ * @intent:responsibility
+ *   Solomon Systech SSD1306 128x64 モノクロ OLED ディスプレイコントローラのエミュレーションデーモン。
+ *   I2C 通信経由で受信したコマンド/データバイト列を解析し、1024 バイトの GDDRAM（Graphic Display Data RAM）を
+ *   更新して POSIX 共有メモリ（/fbb_display_0）へ同期する。
+ * @intent:rationale
+ *   データシートに定義されたアドレッシングモード（Page / Horizontal / Vertical）を忠実に再現し、
+ *   Web ダッシュボードの OLED ウィジェットが共有メモリから 60FPS で非侵襲に描画データを取得できるようにする。
+ */
+
 #include "../../common/i2c_slave.hpp"
 #include <iostream>
 #include <vector>
@@ -11,8 +22,18 @@ constexpr size_t DISPLAY_WIDTH = 128;
 constexpr size_t DISPLAY_HEIGHT = 64;
 constexpr size_t GDDRAM_SIZE = (DISPLAY_WIDTH * DISPLAY_HEIGHT) / 8; // 1024 bytes
 
+/**
+ * @class I2cSsd1306
+ * @intent:responsibility
+ *   SSD1306 コマンドステートマシン、GDDRAM 更新、および共有メモリマッピングライフサイクルを管理。
+ */
 class I2cSsd1306 : public I2cSlave {
 public:
+    /**
+     * @brief コンストラクタ
+     * @param dev_addr I2C 7-bit アドレス（通常 0x3C）
+     * @intent:responsibility GDDRAM 初期化および /fbb_display_0 共有メモリの作成・mmap を行う。
+     */
     I2cSsd1306(uint8_t dev_addr)
         : I2cSlave(dev_addr),
           gddram_(GDDRAM_SIZE, 0),
@@ -36,6 +57,10 @@ public:
         }
     }
 
+    /**
+     * @brief デストラクタ
+     * @intent:responsibility 共有メモリの munmap/shm_unlink を行いリソースを安全に回収する。
+     */
     ~I2cSsd1306() override {
         if (shm_data_) {
             munmap(shm_data_, GDDRAM_SIZE);
@@ -47,6 +72,11 @@ public:
     }
 
 protected:
+    /**
+     * @brief I2C 書き込みハンドラ
+     * @param data 先頭バイトがコントロールバイト（0x00=コマンド, 0x40=データ）
+     * @intent:responsibility コントロールバイトに応じてコマンドデコードまたはピクセルデータ書き込みへ分岐。
+     */
     void onWrite(const std::vector<uint8_t>& data) override {
         if (data.empty()) return;
 
@@ -61,8 +91,7 @@ protected:
             }
             sync_shm();
         } else {
-            // コマンドの解析
-            // SSD1306は複数コマンドを連続して送ることが可能
+            // コマンドの解析（複数コマンドの連続送信に対応）
             size_t idx = 1;
             while (idx < data.size()) {
                 parse_command(data, idx);
@@ -70,12 +99,19 @@ protected:
         }
     }
 
+    /**
+     * @brief I2C 読み出しハンドラ
+     */
     std::vector<uint8_t> onRead(size_t length) override {
         // 通常、SSD1306のI2C読み込みはダミー応答
         return std::vector<uint8_t>(length, 0x00);
     }
 
 private:
+    /**
+     * @brief 現在のアドレッシングモードに従って GDDRAM に 1 バイトを書き込み、ポインタを進める。
+     * @intent:responsibility Page / Horizontal / Vertical 各モードの境界ラップアラウンドを処理。
+     */
     void write_data_byte(uint8_t val) {
         size_t ram_addr = 0;
         if (addressing_mode_ == 0x02) { // Page Addressing Mode
@@ -117,6 +153,10 @@ private:
         }
     }
 
+    /**
+     * @brief SSD1306 コマンドバイト列をデコードする。
+     * @intent:responsibility 0x20(アドレッシング設定), 0x21(列範囲), 0x22(ページ範囲), 0x81(コントラスト)等を解析。
+     */
     void parse_command(const std::vector<uint8_t>& data, size_t& idx) {
         if (idx >= data.size()) return;
         uint8_t cmd = data[idx++];
@@ -166,6 +206,9 @@ private:
         }
     }
 
+    /**
+     * @brief ローカル GDDRAM の内容を共有メモリへ全量コピーする。
+     */
     void sync_shm() {
         if (shm_data_) {
             std::memcpy(shm_data_, gddram_.data(), GDDRAM_SIZE);

@@ -1,3 +1,10 @@
+/**
+ * @file main.c
+ * @intent:responsibility Aコア Linux と FreeRTOS 駆動 Mコア間の共有メモリデータ交換を検証する。
+ * @intent:rationale      RTOS タスクと Linux プロセス間のメモリ同期・セマフォ調停をテストする。
+ * @intent:pre-condition  FreeRTOS Mコアバイナリが起動していること。
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>

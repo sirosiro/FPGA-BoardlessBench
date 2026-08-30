@@ -1,3 +1,8 @@
+//! @file main.rs
+//! @intent:responsibility RTIC 割り込みタスクから PAC 経由でハードウェアレジスタを安全に操作する。
+//! @intent:rationale      ロックフリーな優先度ベース排他制御をテストする。
+//! @intent:pre-condition  RTIC アプリケーションマクロが有効であること。
+
 mod fbb_pac;
 mod host_bsp;
 

@@ -1,3 +1,13 @@
+/**
+ * @file src/peripherals/official_plugins/microchip_at24c02c/i2c_eeprom.cpp
+ * @intent:responsibility
+ *   Microchip AT24C02C 2Kbit (256 バイト) I2C シリアル EEPROM のエミュレーションデーモン。
+ *   I2C 経由で受信したアドレスポインタ設定、シーケンシャル読み出し、バイト/ページ書き込みを処理する。
+ * @intent:rationale
+ *   256 バイトのメモリ空間に対するオートインクリメント読み書きと、オプションのバッキングファイル（--file）による
+ *   電源遮断（再起動）を跨ぐ不揮発ストレージ永続化機能を提供する。
+ */
+
 #include "../../common/i2c_slave.hpp"
 #include <iostream>
 #include <fstream>
@@ -7,13 +17,19 @@
 
 constexpr size_t EEPROM_SIZE = 256;
 
+/**
+ * @class I2cEeprom
+ * @intent:responsibility
+ *   256 バイト EEPROM アレイの管理、現在アドレスポインタの追跡、およびファイル同期。
+ */
 class I2cEeprom : public I2cSlave {
 public:
     /**
      * @brief EEPROMエミュレータコンストラクタ
-     * @param dev_addr I2Cデバイスアドレス
+     * @param dev_addr I2Cデバイスアドレス（通常 0x50）
      * @param init_val メモリセルのデフォルト初期値
      * @param mock_file 不揮発状態を保存するファイルパス (空の場合は不揮発保存を行わない)
+     * @intent:responsibility メモリを初期値で埋め、mock_file が存在すればデータを復元する。
      */
     I2cEeprom(uint8_t dev_addr, uint8_t init_val, const std::string& mock_file)
         : I2cSlave(dev_addr), 
@@ -36,8 +52,8 @@ public:
 protected:
     /**
      * @brief I2C書き込み処理のシミュレーション
-     * 1バイト目: メモリアドレスポインタのセット
-     * 2バイト目以降: アドレスポインタからの連続データ書き込み
+     * @param data 1バイト目: メモリアドレスポインタ, 2バイト目以降: 連続データ書き込み
+     * @intent:responsibility アドレスポインタを更新し、続くペイロードバイトをオートインクリメントで書き込む。
      */
     void onWrite(const std::vector<uint8_t>& data) override {
         if (data.empty()) return;
@@ -59,7 +75,9 @@ protected:
 
     /**
      * @brief I2C読み出し処理のシミュレーション
-     * 現在のアドレスポインタからデータを読み出し、読み出し毎にポインタをオートインクリメントします。
+     * @param length 要求バイト数
+     * @return 現在のアドレスポインタから読み出したバイト列
+     * @intent:responsibility 現在のアドレスポインタから length バイトを返し、ポインタをオートインクリメントする。
      */
     std::vector<uint8_t> onRead(size_t length) override {
         std::vector<uint8_t> buf(length);
@@ -72,7 +90,7 @@ protected:
 
 private:
     /**
-     * @brief メモリの状態をファイルに書き出す
+     * @brief メモリの状態をファイルに書き出す。
      */
     void saveToFile() {
         if (mock_file_.empty()) return;

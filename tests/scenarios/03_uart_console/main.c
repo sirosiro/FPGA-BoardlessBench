@@ -1,3 +1,10 @@
+/**
+ * @file main.c
+ * @intent:responsibility 仮想 UART（/dev/ttyPS1）を介したシリアルコンソール入出力を検証する。
+ * @intent:rationale      PTY マスター/スレーブペアを介したボーレート設定および双方向テキスト通信をテストする。
+ * @intent:pre-condition  UART デバイスノードが config.dts に定義されていること。
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>

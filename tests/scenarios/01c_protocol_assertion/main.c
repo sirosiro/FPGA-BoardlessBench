@@ -1,3 +1,10 @@
+/**
+ * @file main.c
+ * @intent:responsibility レジスタアクセス権限（RO への書き込み、WO からの読み出し）違反の動的検知（Protocol Assertion）を検証する。
+ * @intent:rationale      ハードウェア仕様に反する不正なファームウェアアクセスを実機投入前に 100% 捕捉し、ログファイルへ出力する防御機能をテストする。
+ * @intent:pre-condition  reg_perms 配列に RO/WO/RW 属性が登録された config.dts がロードされていること。
+ */
+
 #define _GNU_SOURCE
 #include <stdio.h>
 #include <stdlib.h>

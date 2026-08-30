@@ -1,3 +1,12 @@
+/**
+ * @file src/peripherals/common/spi_slave.cpp
+ * @intent:responsibility
+ *   UNIX ドメインソケットを用いた仮想 SPI スレーブデバイスのサーバー通信ループおよび全二重送受信処理の実装。
+ * @intent:rationale
+ *   SPI_IOC_MESSAGE ioctl 要求の全二重バッファ（tx/rx）と厳密に長さを一致させ、
+ *   クロック同期通信のハードウェア挙動をソフトウェアプロセス間で忠実に再現する。
+ */
+
 #include "spi_slave.hpp"
 #include <iostream>
 #include <unistd.h>
@@ -11,6 +20,10 @@ SpiSlave::~SpiSlave() {
     stop();
 }
 
+/**
+ * @intent:responsibility
+ *   UNIX ドメインソケットの作成、bind、listen、および SPI クライアントの accept ループを実行する。
+ */
 bool SpiSlave::start(const std::string& socket_path) {
     socket_path_ = socket_path;
     running_ = true;
@@ -62,6 +75,10 @@ bool SpiSlave::start(const std::string& socket_path) {
     return true;
 }
 
+/**
+ * @intent:responsibility
+ *   デーモン停止時にソケットディスクリプタを閉じ、UNIX ソケットファイルをアンリンクする。
+ */
 void SpiSlave::stop() {
     running_ = false;
     if (server_fd_ != -1) {
@@ -74,6 +91,13 @@ void SpiSlave::stop() {
     }
 }
 
+/**
+ * @intent:responsibility
+ *   クライアントから 2 バイトの転送長（len）を受信し、tx_data を完全受信した上で派生クラスの
+ *   onTransfer(tx_data) を呼び出し、得られた rx_data をクライアントへ同期返送する。
+ * @intent:rationale
+ *   受信バイト数が要求長と異なる場合はサイズを自動補正（ゼロ埋め）して安全性を担保する。
+ */
 void SpiSlave::handleClient(int client_fd) {
     while (running_) {
         uint16_t len = 0;

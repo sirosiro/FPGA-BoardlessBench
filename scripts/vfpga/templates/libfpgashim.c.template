@@ -1,3 +1,18 @@
+/**
+ * @file libfpgashim.c.template
+ * @intent:responsibility 
+ *   Linux システムコール（open, mmap, munmap, ioctl, socket, bind, setsockopt, read, write, mount 等）を
+ *   ユーザー空間（LD_PRELOAD）で透過的に横取り（インターセプト）し、実機バイナリ・FW を一切修正することなく
+ *   仮想 FPGA / SoC ペリフェラル（UIO, I2C, SPI, UART, SocketCAN, SD, Remoteproc）へルーティングする。
+ * @intent:rationale
+ *   QEMU や専用カーネルモジュール方式を排除し、一般権限・Docker 上で即座に動作する Zero-Host 依存性と、
+ *   ホスト CPU ネイティブの実行速度（実機同等〜超高速）を両立するため、動的リンク横取りを採用（ADR #001）。
+ *   未定義 MMIO 領域へのアクセスは CPU の MMU ガードページ（PROT_NONE）を用いてゼロオーバーヘッドで捕捉する（ADR #004）。
+ * @intent:pre-condition
+ *   DTS から導出されたルート情報（routes[]）、レジスタアクセス権限（reg_perms[]）がビルド時に展開されていること。
+ *   ターゲットプロセスは LD_PRELOAD="libfpgashim.so" で起動されること。
+ */
+
 #define _GNU_SOURCE
 #ifndef __clang__
 #pragma GCC diagnostic ignored "-Wnonnull-compare"
@@ -19,7 +34,6 @@
 #include <linux/i2c.h>
 #include <linux/spi/spidev.h>
 #include <sys/ioctl.h>
-#include <sys/ioctl.h>
 #include <errno.h>
 #include <stdint.h>
 #include <sys/socket.h>
@@ -34,7 +48,6 @@
 #include <linux/can/raw.h>
 #include <net/if.h>
 #include <dirent.h>
-
 
 #ifndef MAP_FIXED_NOREPLACE
 #define MAP_FIXED_NOREPLACE 0x100000
@@ -101,6 +114,15 @@ __attribute__((visibility("default"))) void fbb_check_protocol_assertion_addr(un
 __attribute__((visibility("default"))) void fbb_write_reg(void *base_addr, unsigned long offset, uint32_t val);
 __attribute__((visibility("default"))) uint32_t fbb_read_reg(void *base_addr, unsigned long offset);
 
+/**
+ * @intent:responsibility
+ *   ハードウェアプロトコルアサーションの検証を実行し、リードオンリー（RO）レジスタへの書き込みや
+ *   ライトオンリー（WO）レジスタからの読み出しといった不正アクセスを検知・記録する。
+ * @intent:rationale
+ *   実機投入前にハードウェア仕様書（DTS定義）に違反するファームウェアの誤アクセスを100%%検出する。
+ * @intent:pre-condition
+ *   addr が物理レジスタアドレス空間に位置し、reg_perms 配列に登録されていること。
+ */
 __attribute__((visibility("default"))) void fbb_check_protocol_assertion_addr(unsigned long addr, int is_write, unsigned long val) {
     if (num_reg_perms == 0) return;
     for (int i = 0; i < num_reg_perms; i++) {
@@ -144,6 +166,12 @@ struct active_mapping {
 static struct active_mapping active_mappings[MAX_ACTIVE_MAPPINGS];
 static int num_active_mappings = 0;
 
+/**
+ * @intent:responsibility
+ *   仮想メモリアドレス（mmapされたポインタ）から、対応する実機物理アドレスを逆引き解決する。
+ * @intent:rationale
+ *   プロトコルアサーション検証時、FW が操作している論理ポインタを DTS 上の絶対物理アドレスへ変換するために使用。
+ */
 static unsigned long resolve_physical_addr(void *base_addr, unsigned long offset) {
     if ((uintptr_t)base_addr >= 0x10000000 && (uintptr_t)base_addr < 0x80000000) {
         return (unsigned long)(uintptr_t)base_addr + offset;
@@ -168,12 +196,20 @@ static unsigned long resolve_physical_addr(void *base_addr, unsigned long offset
     return 0x40000000 + offset;
 }
 
+/**
+ * @intent:responsibility
+ *   プロトコルアサーション検証付きでレジスタへ32ビット値を書き込む。
+ */
 __attribute__((visibility("default"))) void fbb_write_reg(void *base_addr, unsigned long offset, uint32_t val) {
     unsigned long abs_addr = resolve_physical_addr(base_addr, offset);
     fbb_check_protocol_assertion_addr(abs_addr, 1, val);
     *(volatile uint32_t *)((char *)base_addr + offset) = val;
 }
 
+/**
+ * @intent:responsibility
+ *   プロトコルアサーション検証付きでレジスタから32ビット値を読み出す。
+ */
 __attribute__((visibility("default"))) uint32_t fbb_read_reg(void *base_addr, unsigned long offset) {
     unsigned long abs_addr = resolve_physical_addr(base_addr, offset);
     uint32_t val = *(volatile uint32_t *)((char *)base_addr + offset);
@@ -192,6 +228,13 @@ struct uio_irq_args {
     int efd;
 };
 
+/**
+ * @intent:responsibility
+ *   UIO 割り込み通知を受け取る UNIX ドメインソケットサーバーをバックグラウンドスレッドで実行し、
+ *   外部シミュレータからの IRQ 発行を eventfd への書き込みへ変換する。
+ * @intent:rationale
+ *   標準 Linux UIO ドライバの割り込みブロッキング待機（read(uio_fd)）をユーザー空間で完全再現する。
+ */
 static void* uio_irq_listener_thread(void *arg) {
     struct uio_irq_args *args = (struct uio_irq_args *)arg;
     int route_idx = args->route_idx;
@@ -245,6 +288,10 @@ static void setup_uio_irq_listener(int route_idx, int efd) {
     }
 }
 
+/**
+ * @intent:responsibility
+ *   オープン要求されたファイルパスが /dev/mem または DTS 定義の UIO デバイスパスに一致するか判定。
+ */
 static int find_route_by_path(const char *pathname, int *out_route_idx) {
     if (pathname == NULL) return 0;
     if (strcmp(pathname, "/dev/mem") == 0) { if (out_route_idx) *out_route_idx = -1; return 1; }
@@ -261,6 +308,12 @@ static int is_i2c_device(const char *pathname, int *out_bus_id) { (void)pathname
 static int is_uart_device(const char *pathname, int *out_uart_id) { (void)pathname; (void)out_uart_id; %s return 0; }
 static int is_spi_device(const char *pathname, int *out_spi_code) { (void)pathname; (void)out_spi_code; %s return 0; }
 
+/**
+ * @intent:responsibility
+ *   SPI メッセージ（SPI_IOC_MESSAGE）要求を UNIX ドメインソケット経由で外部 C++ エミュレータへ全二重送信・受信する。
+ * @intent:rationale
+ *   PS 内蔵 SPI コントローラおよび外付け SPI デバイス（ADC, Flash）のリアルタイムエミュレーションを実現。
+ */
 static int transfer_spi_msg_via_socket(int bus_id, int cs, struct spi_ioc_transfer *xfer) {
     char socket_path[128];
     snprintf(socket_path, sizeof(socket_path), "/tmp/fbb_spi_b%%d_c%%d", bus_id, cs);
@@ -333,6 +386,10 @@ static int transfer_spi_msg_via_socket(int bus_id, int cs, struct spi_ioc_transf
     return 0;
 }
 
+/**
+ * @intent:responsibility
+ *   I2C メッセージ（I2C_RDWR）要求を UNIX ドメインソケット経由で外部 I2C スレーブエミュレータへ中継する。
+ */
 static int transfer_i2c_msg_via_socket(int bus_id, struct i2c_msg *msg) {
     char socket_path[128];
     snprintf(socket_path, sizeof(socket_path), "/tmp/fbb_i2c_b%%d_a%%02x", bus_id, msg->addr);
@@ -398,8 +455,6 @@ static void ensure_dir(void) {
     mkdir("/tmp/fbb/sys/class/remoteproc/remoteproc0", 0777);
 }
 
-#include <pthread.h>
-
 #define MAX_TRACKED_TERMIOS 64
 static const struct termios *tracked_termios[MAX_TRACKED_TERMIOS];
 static int tracked_count = 0;
@@ -463,6 +518,10 @@ static void init_uart_state_file(int uart_id) {
     }
 }
 
+/**
+ * @intent:responsibility
+ *   UART 通信のボーレート・データビット・パリティ設定をインターセプトし、ダッシュボード監視用状態ファイルへ反映する。
+ */
 int tcsetattr(int fd, int optional_actions, const struct termios *termios_p) {
     if (!original_tcsetattr) original_tcsetattr = dlsym(RTLD_NEXT, "tcsetattr");
     if (!original_open) original_open = dlsym(RTLD_NEXT, "open");
@@ -533,6 +592,11 @@ int tcsetattr(int fd, int optional_actions, const struct termios *termios_p) {
     return original_tcsetattr(fd, optional_actions, termios_p);
 }
 
+/**
+ * @intent:responsibility
+ *   open() システムコールを横取りし、/dev/uio*, /dev/mem, /dev/i2c-*, /dev/spidev*, /dev/ttyPS*,
+ *   /sys/class/remoteproc/ 配下（remoteproc0/firmware, state等）への要求を仮想デバイスコンテキスト（FbbDeviceContext）へ関連付ける。
+ */
 int open(const char *pathname, int flags, ...) {
     mode_t mode = 0; if (flags & O_CREAT) { va_list arg; va_start(arg, flags); mode = (mode_t)va_arg(arg, int); va_end(arg); }
     if (!original_open) original_open = dlsym(RTLD_NEXT, "open");
@@ -852,6 +916,10 @@ int openat64(int dirfd, const char *pathname, int flags, ...) {
     return original_openat64(dirfd, pathname, flags, mode);
 }
 
+/**
+ * @intent:responsibility
+ *   ファイル記述子の解放時に、F-BB の仮想コンテキスト（eventfd, SocketCAN ソケット等）をクリーンアップする。
+ */
 int close(int fd) {
     if (!original_close) original_close = dlsym(RTLD_NEXT, "close");
     if (fd >= 0 && fd < MAX_FDS) {
@@ -872,6 +940,14 @@ int close(int fd) {
     return original_close(fd);
 }
 
+/**
+ * @intent:responsibility
+ *   MMIO マッピング要求（/dev/uio*, /dev/mem）を共有メモリファイル（SHM）へリダイレクトし、
+ *   マッピング領域終端に PROT_NONE ガードページを付与して境界外アクセス防御を構成する。
+ * @intent:rationale
+ *   ソフトウェア的なアドレス境界判定ループによる実行時オーバーヘッドを排除し、
+ *   MMU のハードウェア保護例外（SIGSEGV）を用いてゼロコストで不正アクセスを捕捉する（ADR #004）。
+ */
 void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset) {
     if (!original_mmap) original_mmap = dlsym(RTLD_NEXT, "mmap");
     if (fd >= 0 && fd < MAX_FDS && fd_contexts[fd].type != FBB_DEV_NONE) {
@@ -935,6 +1011,11 @@ void *mmap(void *addr, size_t length, int prot, int flags, int fd, off_t offset)
     return original_mmap(addr, length, prot, flags, fd, offset);
 }
 
+/**
+ * @intent:responsibility
+ *   ガードページへの不正アクセスによる SIGSEGV を捕捉し、違反アドレス・デバイス名・サイズを
+ *   JSON 形式で /tmp/fbb_memory_violation に記録して安全に終了する。
+ */
 static void sigsegv_handler(int sig, siginfo_t *info, void *context) {
     (void)sig;
     (void)context;
@@ -1042,6 +1123,10 @@ struct can_ring_buffer {
     struct can_ring_entry entries[CAN_RING_CAPACITY];
 };
 
+/**
+ * @intent:responsibility
+ *   送信された CAN フレームを Web ダッシュボード監視用の POSIX 共有メモリリングバッファへ追記する。
+ */
 static void push_can_frame_to_shm_ring(int bus_id, const struct can_frame *frame) {
     char shm_path[64];
     snprintf(shm_path, sizeof(shm_path), "/fbb_can_ring%%d", bus_id);
@@ -1083,6 +1168,11 @@ static void push_can_frame_to_shm_ring(int bus_id, const struct can_frame *frame
     munmap(ring, sizeof(struct can_ring_buffer));
 }
 
+/**
+ * @intent:responsibility
+ *   同一バスにアタッチされているすべての仮想 CAN ピアソケット（/tmp/fbb_can_p{bus_id}/）へ
+ *   UNIX ドメインデータグラムでマルチキャスト配信を行う。
+ */
 static ssize_t broadcast_can_frame(int fd, const struct can_frame *frame) {
     if (fd < 0 || fd >= MAX_FDS || fd_contexts[fd].type != FBB_DEV_CAN) return -1;
     int bus_id = fd_contexts[fd].sub_id;
@@ -1124,6 +1214,11 @@ static ssize_t broadcast_can_frame(int fd, const struct can_frame *frame) {
     return sizeof(struct can_frame);
 }
 
+/**
+ * @intent:responsibility
+ *   socket(AF_CAN, SOCK_RAW, CAN_RAW) 要求をインターセプトし、root 権限・カーネルモジュール不要の
+ *   UNIX ドメインデータグラムソケット（AF_UNIX, SOCK_DGRAM）を割り当てる。
+ */
 int socket(int domain, int type, int protocol) {
     if (!original_socket) original_socket = dlsym(RTLD_NEXT, "socket");
     if (domain == AF_CAN && (type & SOCK_RAW) && (protocol == CAN_RAW || protocol == 0)) {
@@ -1143,6 +1238,11 @@ int socket(int domain, int type, int protocol) {
     return original_socket(domain, type, protocol);
 }
 
+/**
+ * @intent:responsibility
+ *   CAN ソケットの bind() をインターセプトし、指定された can_ifindex（can0/can1）に応じた
+ *   仮想 CAN バスのピアディレクトリ（/tmp/fbb_can_p{bus_id}/）へ自身のアドレスをバインドする。
+ */
 int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
     if (!original_bind) original_bind = dlsym(RTLD_NEXT, "bind");
     if (sockfd >= 0 && sockfd < MAX_FDS && fd_contexts[sockfd].type == FBB_DEV_CAN && addr && addr->sa_family == AF_CAN) {
@@ -1170,6 +1270,11 @@ int bind(int sockfd, const struct sockaddr *addr, socklen_t addrlen) {
     return original_bind(sockfd, addr, addrlen);
 }
 
+/**
+ * @intent:responsibility
+ *   CAN フィルタ（CAN_RAW_FILTER）、ループバック（CAN_RAW_LOOPBACK）、自メッセージ受信（CAN_RAW_RECV_OWN_MSGS）を
+ *   仮想 CAN ソケットコンテキストへ保持・適用する。
+ */
 int setsockopt(int sockfd, int level, int optname, const void *optval, socklen_t optlen) {
     if (!original_setsockopt) original_setsockopt = dlsym(RTLD_NEXT, "setsockopt");
     if (sockfd >= 0 && sockfd < MAX_FDS && fd_contexts[sockfd].type == FBB_DEV_CAN && level == SOL_CAN_RAW) {
@@ -1210,6 +1315,11 @@ int getsockopt(int sockfd, int level, int optname, void *optval, socklen_t *optl
     return original_getsockopt(sockfd, level, optname, optval, optlen);
 }
 
+/**
+ * @intent:responsibility
+ *   ライブラリロード時に libc の実システムコールポインタを dlsym(RTLD_NEXT) で解決し、
+ *   ガードページ捕捉用の SIGSEGV シグナルハンドラを初期化する。
+ */
 static void __attribute__((constructor)) init_fbb_core(void) {
     original_open = dlsym(RTLD_NEXT, "open");
     original_open64 = dlsym(RTLD_NEXT, "open64");
@@ -1230,6 +1340,11 @@ static void __attribute__((constructor)) init_fbb_core(void) {
     init_segv_handler();
 }
 
+/**
+ * @intent:responsibility
+ *   ioctl() を横取りし、I2C（I2C_RDWR）、SPI（SPI_IOC_MESSAGE）、SocketCAN（SIOCGIFINDEX）、
+ *   RPMsg の各制御コマンドをエミュレータ層へディスパッチする。
+ */
 int ioctl(int fd, unsigned long request, ...) {
     va_list args; va_start(args, request); void *argp = va_arg(args, void *); va_end(args);
     if (!original_ioctl) original_ioctl = dlsym(RTLD_NEXT, "ioctl");
@@ -1300,6 +1415,10 @@ int ioctl(int fd, unsigned long request, ...) {
     return original_ioctl(fd, request, argp);
 }
 
+/**
+ * @intent:responsibility
+ *   write() を横取りし、UIO IRQ アンマスク応答や SocketCAN フレーム送信を適切に処理する。
+ */
 ssize_t write(int fd, const void *buf, size_t count) {
     if (!original_write) original_write = dlsym(RTLD_NEXT, "write");
     if (fd >= 0 && fd < MAX_FDS) {
@@ -1316,6 +1435,10 @@ ssize_t write(int fd, const void *buf, size_t count) {
     return original_write(fd, buf, count);
 }
 
+/**
+ * @intent:responsibility
+ *   read() を横取りし、UIO 割り込みの eventfd 待機や SocketCAN の受信フィルタリング処理を実行する。
+ */
 ssize_t read(int fd, void *buf, size_t count) {
     if (!original_read) original_read = dlsym(RTLD_NEXT, "read");
     if (fd >= 0 && fd < MAX_FDS) {
@@ -1354,6 +1477,10 @@ ssize_t read(int fd, void *buf, size_t count) {
     return original_read(fd, buf, count);
 }
 
+/**
+ * @intent:responsibility
+ *   AMP 協調動作におけるコア間割り込み（IPI）を発行し、相手プロセスの PID へシグナル（SIGUSR1/SIGUSR2）を送出する。
+ */
 void fbb_ipi_notify(int dest_cpu) {
     if (!original_open) original_open = dlsym(RTLD_NEXT, "open");
     char path[256];
@@ -1614,6 +1741,13 @@ static int handle_rpmsg_open(void) {
 }
 #endif
 
+/**
+ * @intent:responsibility
+ *   Mコア（ベアメタル/RTOS/Rust）プロセス起動時に、実機物理アドレス（0x40000000等）と
+ *   1:1 に一致する仮想メモリアドレスへ共有メモリを MAP_FIXED_NOREPLACE でマッピングする。
+ * @intent:rationale
+ *   Mコアのバイナリがポインタ再配置なしで実機物理アドレスを直接読み書きできるようにする（ADR #007）。
+ */
 static void __attribute__((constructor)) init_mcore_mapping(void) {
     char *fbb_mcore = getenv("FBB_MCORE");
     if (fbb_mcore && strcmp(fbb_mcore, "1") == 0) {
@@ -1682,6 +1816,10 @@ static void __attribute__((constructor)) init_mcore_mapping(void) {
     }
 }
 
+/**
+ * @intent:responsibility
+ *   プロセス終了時に OpenAMP/RPMsg の各種リソースおよびプロキシ PID 登録ファイルを安全に解放する。
+ */
 static void __attribute__((destructor)) cleanup_shim(void) {
     char *fbb_mcore = getenv("FBB_MCORE");
     if (!fbb_mcore || strcmp(fbb_mcore, "1") != 0) {
@@ -1709,6 +1847,13 @@ static int (*original_mount)(const char *source, const char *target,
 static int (*original_umount)(const char *target) = NULL;
 static int (*original_umount2)(const char *target, int flags) = NULL;
 
+/**
+ * @intent:responsibility
+ *   mount() システムコールを横取りし、/dev/mmcblk0（仮想 SD カード）のマウント要求を
+ *   ホスト側 sd_card ディレクトリへのシンボリックリンク操作として透過エミュレーションする。
+ * @intent:rationale
+ *   一般ユーザー権限（非 root）環境で Linux mount/umount を実行可能にし、SD カードファイルシステムを即座に操作できるようにする。
+ */
 int mount(const char *source, const char *target,
           const char *filesystemtype, unsigned long mountflags,
           const void *data) {

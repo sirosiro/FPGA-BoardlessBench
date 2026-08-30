@@ -1,3 +1,12 @@
+/**
+ * @file src/peripherals/common/i2c_slave.cpp
+ * @intent:responsibility
+ *   UNIX ドメインソケットを用いた仮想 I2C スレーブデバイスのサーバー通信ループおよびクライアント同期処理の実装。
+ * @intent:rationale
+ *   I2C_RDWR ioctl メッセージとの 1:1 対応を保証し、可変長パケットの完全受信・応答サイズ補正を行って
+ *   通信切断や部分受信によるバッファオーバーランを防止する。
+ */
+
 #include "i2c_slave.hpp"
 #include <iostream>
 #include <unistd.h>
@@ -11,6 +20,12 @@ I2cSlave::~I2cSlave() {
     stop();
 }
 
+/**
+ * @intent:responsibility
+ *   UNIX ドメインソケットの初期化、bind、listen、およびクライアント待機ループ（accept）を実行する。
+ * @intent:pre-condition
+ *   socket_path が有効なファイルパスであること。
+ */
 bool I2cSlave::start(const std::string& socket_path) {
     socket_path_ = socket_path;
     running_ = true;
@@ -62,6 +77,10 @@ bool I2cSlave::start(const std::string& socket_path) {
     return true;
 }
 
+/**
+ * @intent:responsibility
+ *   デーモン停止時にソケットをクローズし、ファイルシステム上の UNIX ドメインソケットファイルを削除する。
+ */
 void I2cSlave::stop() {
     running_ = false;
     if (server_fd_ != -1) {
@@ -74,6 +93,13 @@ void I2cSlave::stop() {
     }
 }
 
+/**
+ * @intent:responsibility
+ *   接続クライアントから 3 要素のヘッダー（addr, flags, len）を受信し、
+ *   I2C 読み出し要求（flags & I2C_M_RD）と書き込み要求を判定して派生クラスのハンドラを呼出し、応答を送信する。
+ * @intent:rationale
+ *   通信途絶や不完全なバイト受信を厳格にチェックし、エラー発生時は安全に接続をクローズして次を待つ。
+ */
 void I2cSlave::handleClient(int client_fd) {
     while (running_) {
         uint16_t i2c_addr = 0;

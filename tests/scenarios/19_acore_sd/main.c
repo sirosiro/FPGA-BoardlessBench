@@ -1,3 +1,10 @@
+/**
+ * @file main.c
+ * @intent:responsibility 仮想 SD カード（/dev/mmcblk0）のマウントおよびファイルシステム読み書きを検証する。
+ * @intent:rationale      一般ユーザー権限での mount/umount インターセプトとホスト側 sd_card ディレクトリ同期をテストする。
+ * @intent:pre-condition  FBB_SD_DIR または scenario_dir/sd_card が利用可能であること。
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

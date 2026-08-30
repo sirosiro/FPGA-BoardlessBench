@@ -1,3 +1,16 @@
+/**
+ * @file dashboard/server.js
+ * @intent:responsibility
+ *   F-BB Web ダッシュボードのバックエンド Node.js サーバー。
+ *   WebSocket（Socket.IO）を介して、POSIX 共有メモリ・ファイル監視（Chokidar）・PTY シリアル・CAN リングバッファ・
+ *   GPIO ピンオーバーライド等のリアルタイムハードウェア状態を Web フロントエンドへ双方向配信する。
+ * @intent:rationale
+ *   ブラウザ上で FPGA ハードウェアの波形、レジスタ、OLED/HUB75 画面、7seg、CAN バス、UART ターミナルを
+ *   実機同等の操作感でリアルタイム視覚化・インタラクション可能にする。
+ * @intent:pre-condition
+ *   Node.js 16+ が利用可能であり、必要な npm パッケージ（express, socket.io, cors, chokidar）がインストールされていること。
+ */
+
 const express = require('express');
 const http = require('http');
 const { Server } = require('socket.io');

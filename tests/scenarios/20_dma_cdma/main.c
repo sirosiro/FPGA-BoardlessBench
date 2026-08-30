@@ -1,3 +1,10 @@
+/**
+ * @file main.c
+ * @intent:responsibility Aコア Linux から AXI CDMA（Central DMA）を用いたメモリ間高速ブロック転送を検証する。
+ * @intent:rationale      CDMA の Simple モード転送、ステータスレジスタ監視、およびデータ整合性をテストする。
+ * @intent:pre-condition  AXI CDMA デバイスノード（xlnx,axi-cdma）が定義されていること。
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

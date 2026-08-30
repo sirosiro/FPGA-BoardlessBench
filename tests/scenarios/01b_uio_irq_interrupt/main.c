@@ -1,3 +1,10 @@
+/**
+ * @file main.c
+ * @intent:responsibility Linux UIO ドライバの非同期割り込み（eventfd 駆動のブロッキング read）と ACK 処理を検証する。
+ * @intent:rationale      ポーリングによる CPU 浪費を避け、ハードウェアタイマー割り込み通知メカニズムを実機同等の read() ブロッキング API でテストする。
+ * @intent:pre-condition  UIO デバイスノード（/dev/uio0）およびタイマー割り込み生成ロジックが有効であること。
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>

@@ -1,3 +1,10 @@
+/**
+ * @file main.c
+ * @intent:responsibility ベアメタル Mコアと OpenAMP RPMsg メッセージパッシング通信を検証する。
+ * @intent:rationale      VirtIO vring を用いたゼロコピーメッセージングをテストする。
+ * @intent:pre-condition  OpenAMP RPMsg 仮想エンドポイントが有効であること。
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

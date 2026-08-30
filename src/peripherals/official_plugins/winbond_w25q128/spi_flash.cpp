@@ -1,3 +1,14 @@
+/**
+ * @file src/peripherals/official_plugins/winbond_w25q128/spi_flash.cpp
+ * @intent:responsibility
+ *   Winbond W25Q128 16MB (128Mbit) SPI NOR Flash メモリのエミュレーションデーモン。
+ *   JEDEC ID 読み出し、ステータスレジスタ、ライトイネーブル、データ読み出し、ページプログラム、
+ *   および 4KB セクタ消去を完全エミュレートする。
+ * @intent:rationale
+ *   実機データシート準拠のコマンドセット（0x9F, 0x05, 0x06, 0x04, 0x03, 0x02, 0x20）を実装し、
+ *   オプションのバッキングファイル（--file）によって電源切断（プロセス再起動）を跨ぐ不揮発ストレージの永続化を実現する。
+ */
+
 #include "../../common/spi_slave.hpp"
 #include <iostream>
 #include <fstream>
@@ -8,12 +19,18 @@
 constexpr size_t FLASH_SIZE_16MB = 16 * 1024 * 1024; // 16MB (W25Q128)
 constexpr size_t SECTOR_SIZE_4KB = 4 * 1024;         // 4KB セクタ
 
+/**
+ * @class SpiFlash
+ * @intent:responsibility
+ *   W25Q128 コマンドデコード、16MB メモリアレイ管理、Write Enable Latch（WEL）管理、ファイル永続化。
+ */
 class SpiFlash : public SpiSlave {
 public:
     /**
      * @brief SPI Flashエミュレータコンストラクタ
      * @param cs チップセレクト番号
      * @param mock_file 不揮発状態を保存するファイルパス (空の場合は不揮発保存を行わない)
+     * @intent:responsibility メモリを 0xFF (消去状態) で初期化し、mock_file が存在すればデータを復元する。
      */
     SpiFlash(uint8_t cs, const std::string& mock_file)
         : SpiSlave(cs), 
@@ -33,7 +50,9 @@ public:
 protected:
     /**
      * @brief SPI全二重転送のシミュレーション
-     * コマンドの1バイト目を読み取り、W25Q128のコマンド体系を模倣します。
+     * @param tx_data 先頭バイトが W25Q128 コマンド
+     * @return 読み出しデータを含む同期応答
+     * @intent:responsibility 0x9F(JEDEC ID), 0x05(Status), 0x06(WREN), 0x04(WRDI), 0x03(Read), 0x02(Program), 0x20(Erase) を処理。
      */
     std::vector<uint8_t> onTransfer(const std::vector<uint8_t>& tx_data) override {
         std::vector<uint8_t> rx_data(tx_data.size(), 0);
@@ -42,7 +61,7 @@ protected:
         uint8_t cmd = tx_data[0];
 
         switch (cmd) {
-            case 0x9F: // Read JEDEC ID (Winbond Manufacturer ID: 0xEF, Device ID: 0x4018)
+            case 0x9F: // Read JEDEC ID (Winbond Manufacturer ID: 0xEF, Memory Type: 0x40, Capacity: 0x18)
                 if (tx_data.size() > 1) rx_data[1] = 0xEF; // Manufacturer ID
                 if (tx_data.size() > 2) rx_data[2] = 0x40; // Memory Type
                 if (tx_data.size() > 3) rx_data[3] = 0x18; // Capacity ID (W25Q128)
@@ -108,7 +127,7 @@ protected:
 
 private:
     /**
-     * @brief メモリの状態をファイルに書き出す
+     * @brief メモリの状態をファイルに書き出す。
      */
     void saveToFile() {
         if (mock_file_.empty()) return;

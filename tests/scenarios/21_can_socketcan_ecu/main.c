@@ -1,3 +1,10 @@
+/**
+ * @file main.c
+ * @intent:responsibility Linux SocketCAN（AF_CAN, SOCK_RAW）による車載テレメトリ配信および OBD-II 診断要求応答を検証する。
+ * @intent:rationale      UNIX ドメインデータグラムによる SocketCAN エミュレーションとマルチスレッド ECU 協調をテストする。
+ * @intent:pre-condition  can0 インターフェースおよび CAN フィルタリングが有効であること。
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

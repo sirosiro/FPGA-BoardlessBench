@@ -1,13 +1,34 @@
+"""
+@file scripts/vfpga/generator_rtl.py
+@intent:responsibility
+    DTS モデル（BoardModel）を受け取り、RTL スケルトン（Verilog）、Verilator シミュレータラッパー（C++）、
+    Web ダッシュボード用マニフェスト（board_manifest.json）、および Rust PAC（Peripheral Access Crate）を生成する。
+@intent:rationale
+    Single Source of Truth 原則に基づき、Verilog・C++ シミュレータ・Rust PAC・Web UI メタデータの全階層を
+    DTS から 100% 自動同期させることで、異種言語・異種ドメイン間でのアドレス・ビット幅の食い違いを完全に防止する。
+"""
+
 import os
 import sys
 import json
 from vfpga.models import BoardModel
 from vfpga.generator_base import BaseGenerator, SystemConfigGenerator
 
+
 class RTLGenerator(BaseGenerator):
+    """
+    @class RTLGenerator
+    @intent:responsibility
+        DTS のレジスタ定義から Verilog RTL トップモジュール（vfpga_top.v）のスケルトンを生成。
+    @intent:rationale
+        クロック同期、リセット解除、アドレスデコード、w_en/w_data 書き込み、r_data 読み出しロジックを
+        DTS から自動生成し、RTL 設計者がカスタムロジックに集中できるようにする。
+    """
+
     def generate(self, model: BoardModel):
         devs = model.get_uio_devices()
-        if not devs: return """module vfpga_top (
+        if not devs:
+            return """module vfpga_top (
     /* verilator lint_off UNUSED */
     input wire clk, input wire rst_n, input wire [31:0] addr, 
     input wire [31:0] w_data, input wire w_en, output reg [31:0] r_data
@@ -22,8 +43,8 @@ endmodule"""
                 phys_addr = dev.base_addr + int(r.offset, 0)
                 all_regs.append((r.name, phys_addr))
 
-        reg_ports = ",\n".join(['    output reg [31:0] %s' % name for name, _ in all_regs])
-        reset_logic = "\n".join(['            %s <= 32\'h0;' % name for name, _ in all_regs])
+        reg_ports = ",\n".join(["    output reg [31:0] %s" % name for name, _ in all_regs])
+        reset_logic = "\n".join(["            %s <= 32'h0;" % name for name, _ in all_regs])
         write_cases = "\n".join(["                32'h%08x: %s <= w_data;" % (addr, name) for name, addr in all_regs])
         read_cases = "\n".join(["            32'h%08x: r_data = %s;" % (addr, name) for name, addr in all_regs])
         return """/* Auto-generated RTL Skeleton */
@@ -61,9 +82,24 @@ module vfpga_top (
         endcase
     end
 endmodule
-""" % (("," + reg_ports) if reg_ports else "", reset_logic, write_cases, read_cases)
+""" % (
+            ("," + reg_ports) if reg_ports else "",
+            reset_logic,
+            write_cases,
+            read_cases,
+        )
+
 
 class SimulatorGenerator(BaseGenerator):
+    """
+    @class SimulatorGenerator
+    @intent:responsibility
+        Verilator C++ シミュレータの駆動メインループ（main.cpp）を生成する。
+    @intent:rationale
+        共有メモリ（SHM）と Verilated RTL トップモジュール間の高速ポーリング同期、
+        PL SPI ブリッジ通信、UIO 割り込みソケット通知、および VCD 波形ダンプを一括管理する。
+    """
+
     def generate(self, model: BoardModel):
         devs = model.get_uio_devices()
         # 全UIO/GPIOデバイスのレジスタを物理アドレスで集約
@@ -384,9 +420,25 @@ int main(int argc, char** argv) {
     delete[] old_shm;
     return 0;
 }
-""" % (min_base, ", ".join(reg_defs), len(reg_defs), len(reg_defs))
+""" % (
+            min_base,
+            ", ".join(reg_defs),
+            len(reg_defs),
+            len(reg_defs),
+        )
+
 
 class ManifestGenerator(BaseGenerator):
+    """
+    @class ManifestGenerator
+    @intent:responsibility
+        Web ダッシュボード（React/Express）が使用する board_manifest.json を出力する。
+    @intent:rationale
+        PPA プラグイン（OLED, 7seg, ADC, Flash, HUB75 等）の UI ウィジェット設定、
+        共有メモリパス、UART ポート番号、レジスタリストを単一 JSON に集約し、
+        ダッシュボードが外部設定なしで自動的にリアルタイム可視化 UI を構成できるようにする。
+    """
+
     # @intent:rationale Webダッシュボードのバックエンドが、現在ロードされているシナリオのディレクトリ（config.dtsの配置場所）を特定し、そこにレイアウトファイルを保存・復元できるようにするため、メタデータに scenario_dir を追加します。
     def generate(self, model: BoardModel):
         shm_name = model.name
@@ -401,18 +453,23 @@ class ManifestGenerator(BaseGenerator):
             "scenario_dir": getattr(model, "scenario_dir", ""),
             "hdmi_output_path": "/tmp/hdmi_output.bmp",
             "devices": [],
-            "uarts": [{"name": d.name, "port": int(d.extra_props.get("port", 2000 + idx))} for idx, d in enumerate(model.get_uart_devices())]
+            "uarts": [
+                {"name": d.name, "port": int(d.extra_props.get("port", 2000 + idx))}
+                for idx, d in enumerate(model.get_uart_devices())
+            ],
         }
         # Discover PPA plugin UI widgets (ADR #005)
         sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "../../src/controller")))
         try:
             from vlogic_controller import discover_plugins
+
             discovered_plugins = discover_plugins(getattr(model, "scenario_dir", ""))
         except Exception:
             discovered_plugins = {}
 
         def find_plugin_for_compat(compat_str):
             import re
+
             if not compat_str or not discovered_plugins:
                 return None
             if compat_str in discovered_plugins:
@@ -420,14 +477,14 @@ class ManifestGenerator(BaseGenerator):
             for k, v in discovered_plugins.items():
                 if compat_str in k or k in compat_str:
                     return v
-            items = re.findall(r'[a-zA-Z0-9_-]+,[a-zA-Z0-9_-]+', compat_str)
+            items = re.findall(r"[a-zA-Z0-9_-]+,[a-zA-Z0-9_-]+", compat_str)
             for item in items:
                 if item in discovered_plugins:
                     return discovered_plugins[item]
                 for k, v in discovered_plugins.items():
                     if item in k or k in item:
                         return v
-            for item in re.findall(r'[a-zA-Z0-9_-]+', compat_str):
+            for item in re.findall(r"[a-zA-Z0-9_-]+", compat_str):
                 if item in discovered_plugins:
                     return discovered_plugins[item]
             return None
@@ -439,10 +496,27 @@ class ManifestGenerator(BaseGenerator):
                 "path": dev.path,
                 "base_addr": dev.base_addr,
                 "base_reg": dev.base_reg,
-                "registers": [{"name": r.name, "logical_name": r.logical_name or r.name, "offset": r.offset, "direction_mode": getattr(r, 'direction_mode', None)} for r in dev.registers],
-                "extra": dev.extra_props
+                "registers": [
+                    {
+                        "name": r.name,
+                        "logical_name": r.logical_name or r.name,
+                        "offset": r.offset,
+                        "direction_mode": getattr(r, "direction_mode", None),
+                    }
+                    for r in dev.registers
+                ],
+                "extra": dev.extra_props,
             }
-            compat_str = (dev.extra_props.get("compatible") if hasattr(dev, "extra_props") and isinstance(dev.extra_props, dict) else getattr(dev, "compatible", None)) or "generic,hub75-matrix" if "matrix" in dev.name else None
+            compat_str = (
+                (
+                    dev.extra_props.get("compatible")
+                    if hasattr(dev, "extra_props") and isinstance(dev.extra_props, dict)
+                    else getattr(dev, "compatible", None)
+                )
+                or "generic,hub75-matrix"
+                if "matrix" in dev.name
+                else None
+            )
             if compat_str:
                 plugin_info = find_plugin_for_compat(compat_str)
                 if plugin_info:
@@ -488,7 +562,7 @@ class ManifestGenerator(BaseGenerator):
                     if plugin_info.get("shm_path") and "shm_path" not in dev_info:
                         dev_info["shm_path"] = plugin_info.get("shm_path")
 
-            if dev.type == 'i2c' and hasattr(dev, 'i2c_slaves'):
+            if dev.type == "i2c" and hasattr(dev, "i2c_slaves"):
                 slaves = []
                 for s in dev.i2c_slaves:
                     s_info = {"name": s.name, "addr": s.addr, "compatible": s.compatible}
@@ -500,7 +574,7 @@ class ManifestGenerator(BaseGenerator):
                         s_info["ui_widget"] = ui_w
                     slaves.append(s_info)
                 dev_info["i2c_slaves"] = slaves
-            if dev.type == 'spi' and hasattr(dev, 'spi_slaves'):
+            if dev.type == "spi" and hasattr(dev, "spi_slaves"):
                 slaves = []
                 for s in dev.spi_slaves:
                     s_info = {"name": s.name, "cs": s.cs, "compatible": s.compatible}
@@ -515,25 +589,35 @@ class ManifestGenerator(BaseGenerator):
             manifest["devices"].append(dev_info)
         return json.dumps(manifest, indent=4)
 
+
 class RustPACGenerator(BaseGenerator):
+    """
+    @class RustPACGenerator
+    @intent:responsibility
+        Rust ファームウェア用の PAC (Peripheral Access Crate) ソースコードを生成する。
+    @intent:rationale
+        Rust の所有権モデルおよび volatile アクセス API に適合したレジスタ抽象構造体を提供し、
+        Peripherals::take() シングルトンパターンによる安全なハードウェアアクセスを実現する。
+    """
+
     def generate(self, model: BoardModel) -> str:
         devs = model.get_uio_devices()
         if not devs:
             return "// No UIO/GPIO devices defined in DTS for PAC generation.\n"
-        
+
         struct_fields = []
         reg_instantiations = []
-        
+
         for dev in devs:
             for r in dev.registers:
                 phys_addr = dev.base_addr + int(r.offset, 0)
                 field_name = r.name.lower()
                 struct_fields.append(f"    pub {field_name}: Register<u32>,")
                 reg_instantiations.append(f"            {field_name}: Register::new(0x{phys_addr:08x}),")
-                
+
         struct_fields_str = "\n".join(struct_fields)
         reg_instantiations_str = "\n".join(reg_instantiations)
-        
+
         return f"""// Auto-generated PAC (Peripheral Access Crate)
 #![allow(unused)]
 

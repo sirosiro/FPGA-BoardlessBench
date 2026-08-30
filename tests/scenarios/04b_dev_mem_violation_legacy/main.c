@@ -1,3 +1,10 @@
+/**
+ * @file main.c
+ * @intent:responsibility /dev/mem マッピング境界外（Guard Page）への不正アクセスに対する SIGSEGV 捕捉を検証する。
+ * @intent:rationale      MMU ハードウェア例外を用いたゼロオーバーヘッドの不正メモリアクセス防御をテストする。
+ * @intent:pre-condition  mmap 領域直後に PROT_NONE ガードページが配置されていること。
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>

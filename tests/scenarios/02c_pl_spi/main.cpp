@@ -1,3 +1,10 @@
+/**
+ * @file main.cpp
+ * @intent:responsibility PL（FPGA）側に実装されたカスタム SPI コントローラと外部 C++ エミュレータの通信を検証する。
+ * @intent:rationale      PS 内蔵コントローラに依存せず、PL 内の HDL 実装 SPI IP コアの動作をテストする。
+ * @intent:pre-condition  PL SPI レジスタ（0x40000000）および PlSpiBridge ソケットが有効であること。
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>

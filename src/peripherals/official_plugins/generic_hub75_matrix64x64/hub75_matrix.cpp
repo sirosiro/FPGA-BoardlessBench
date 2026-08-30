@@ -1,3 +1,13 @@
+/**
+ * @file src/peripherals/official_plugins/generic_hub75_matrix64x64/hub75_matrix.cpp
+ * @intent:responsibility
+ *   HUB75 規格 64x64 RGB フルカラー LED マトリクスディスプレイの共有メモリフレームバッファ管理デーモン。
+ *   幅 x 高さ x 3 (RGB24) バイトの POSIX 共有メモリ（/dev/shm/fbb_hub75_0）を確保・ゼロ初期化し、常駐する。
+ * @intent:rationale
+ *   Verilog RTL ロジック（DMA/UIO）または C++ エミュレータから直接フレームバッファへ高速書き込みを行い、
+ *   Web ダッシュボードの HUB75 Canvas ウィジェットへゼロコピー・60FPS でリアルタイムレンダリングを可能にする。
+ */
+
 #include <iostream>
 #include <vector>
 #include <string>
@@ -25,6 +35,11 @@ void signal_handler(int sig) {
     g_running = false;
 }
 
+/**
+ * @brief HUB75 エミュレータデーモンエントリポイント
+ * @param argc [1: shm_path, 2: width, 3: height]
+ * @intent:responsibility コマンドライン引数から解像度と共有メモリパスを取得し、フレームバッファを初期化する。
+ */
 int main(int argc, char** argv) {
     signal(SIGINT, signal_handler);
     signal(SIGTERM, signal_handler);

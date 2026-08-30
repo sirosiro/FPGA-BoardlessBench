@@ -1,3 +1,10 @@
+/**
+ * @file main.c
+ * @intent:responsibility レガシーな /dev/mem 直接 mmap アクセスによる物理アドレス空間のレジスタ操作を検証する。
+ * @intent:rationale      UIO ドライバ非対応の古いファームウェアやベアメタル移行用コードの互換性をテストする。
+ * @intent:pre-condition  C-Shim による /dev/mem インターセプトが有効であること。
+ */
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <fcntl.h>
