@@ -1,49 +1,82 @@
-# Scenario 18: AMP M-Core Rust RTIC
+# 18_amp_mcore_Rust_rtic: 割り込みで瞬時に動く「Rust RTIC」
 
-F-BB（FPGA-BoardlessBench）環境において、リアルタイム割り込み駆動型組み込み Rust フレームワークである **RTIC** の動作を検証するシナリオです。
+組み込みシステムにおいて、最も応答速度が求められるのは「割り込み（センサーの検知や異常信号）」が発生した瞬間です。
 
-## 概要
+**RTIC（Real-Time Interrupt-driven Concurrency）** は、割り込み駆動に特化した組み込みRustフレームワークです。
+タスク同士が資源を取り合ってフリーズする「デッドロック」をコンパイル時に完全に排除する驚異的な安全設計を持っています。
 
-本シナリオは、Aコア（Linuxアプリ/C）からMコア（RTICランタイム/Rust）に対してデータを送信し、仮想割り込み（`SIGUSR1` シグナル）をトリガーにしてMコアがタスクを優先度起動して処理を行う仕組みをシミュレートします。
+---
 
-Mコア側（Rust）は `SIGUSR1` のシグナルハンドラをトラップし、RTICのスケジューラへ通知して割り込みハンドラに対応する優先タスクをディスパッチします。
+## このシナリオのゴール
+**「Aコア（Linux）からの割り込み通知を受け取り、RTICの優先度タスクで即座に応答処理を行う」**
 
+---
 
-## ディレクトリ構成（対称設計）
-
-本シナリオは、Aコア（C言語）とMコア（Rust）の対等な協調関係を明示するため、双方のソースコードを対称的に整理しています。
-
-* **[a_core/](file:///workspaces/FPGA-BoardlessBench/tests/scenarios/18_amp_mcore_Rust_rtic/a_core)**: Aコア側のC言語アプリケーション (`main.c`)
-* **[m_core/](file:///workspaces/FPGA-BoardlessBench/tests/scenarios/18_amp_mcore_Rust_rtic/m_core)**: Mコア側のRustアプリケーションとモジュール (`Cargo.toml`, `src/`)
-
-## アーキテクチャ
+## 直感イメージ：CPUとFPGAのやり取り
+Linuxからの割り込み合図が入ると、RTICのディスパッチャが優先タスクを瞬時に起動します。
 
 ```mermaid
-graph TD
-    App["A-Core (C)\n(test_bin)"]
-    VFPGA["fbb_pac::Vfpga\n(Virtual Registers & IPI Signal)"]
-    Timer["RTL Timer\n(Verilator/vfpga)"]
-    MCore["M-Core (Rust)\n(mcore_rtic)\n[RTIC Dispatcher]"]
+flowchart LR
+    subgraph A_Core ["Aコア (Linux: C言語)"]
+        LinuxApp["割り込み通知 (IPI) を送信"]
+    end
 
-    App -->|"Write & Notify"| VFPGA
-    VFPGA -->|"Read Output"| App
-    Timer <-->|"Sync"| VFPGA
-    VFPGA --> MCore
+    subgraph M_Core ["Mコア (Rust RTIC)"]
+        Dispatcher["RTIC 割り込みディスパッチャ"]
+        Task["最優先ハンドラタスク\n(優先度2: 即座に応答！)"]
+    end
+
+    LinuxApp -->|"割り込み信号"| Dispatcher
+    Dispatcher --> Task
+    Task -->|"結果を返信"| LinuxApp
 ```
 
-### 1. 単一の情報源 (DTS)
-本シナリオは以下の DTS 定義に基づき、自動生成された PAC（Peripheral Access Crate）および C Shim を使用します。
+---
 
-* **割り込みレジスタ**: `fbb_ipi_notify` 関数による `SIGUSR1` 通知。
-* **通信用レジスタ**: `cmd`, `status`, `data_in`/`data_out`
+## 3つの基本ステップ（コードの読み方）
 
-### 2. 割り込みエミュレーション
-ホスト環境上での割り込みを模擬するため、Aコアがレジスタアクセス等を通じて通知を行うと、F-BBの仮想割り込み層（Shim）によってMコアプロセスに `SIGUSR1` が送信されます。
-Mコアの `host_bsp.rs` はこのシグナルをハンドリングし、RTICのタスクディスパッチを実行します。
+1. **優先度付きタスクを定義する (`#[task]`)**
+   - `#[task(priority = 2, binds = SIGUSR1)]` で割り込みに直結したタスクを定義します。
+2. **割り込み発生時に自動ディスパッチされる**
+   - 割り込みシグナルを検知した瞬間、通常処理を中断（プリエンプト）して優先タスクが即座に実行されます。
+3. **安全に共有リソースを更新する**
+   - ロック待ちのデッドロックなしに安全に結果レジスタを更新して完了します。
 
-## ビルドと実行
+---
+
+## 1. まずは動かしてみよう！
+
+ターミナルで以下のコマンドを実行します。
 
 ```bash
-# シナリオ単体での実行
 ./run.sh
 ```
+
+**期待される出力例：**
+```text
+=== Scenario 18: Rust RTIC on M-Core Test Start ===
+[A-Core] Booting RTIC M-Core firmware...
+[M-Core RTIC] RTIC Dispatcher Started! Waiting for interrupt signals...
+[A-Core] Triggering IPI Interrupt...
+[M-Core RTIC] Interrupt Handled in Priority Task: Result = 0x00000200
+[A-Core] Received Result: DATA_OUT = 0x00000200
+[A-Core] SUCCESS: Rust RTIC interrupt handling verified!
+=== Scenario 18 Test Result: SUCCESS ===
+```
+
+---
+
+## 2. ちょこっと改造チャレンジ！
+
+- **実験:** `m_core/src/main.rs` 内のタスク処理を変更して `./run.sh` を実行してみてください。割り込みに対して安全に処理が実行されることが確認できます！
+
+---
+
+## 次のステップへ
+- **次のシナリオ [S01_cpp_lfsr_sequencer](../S01_cpp_lfsr_sequencer/README.md)**:  
+  ロードマップの最終シナリオとして、**「C++を用いた高度なシミュレーション検証」**に進みましょう。
+
+---
+
+## さらに詳しく知りたい方へ
+Stack Resource Policy (SRP) によるデッドロックフリー保証の詳細は、**[ADVANCED.md](ADVANCED.md)** を参照してください。

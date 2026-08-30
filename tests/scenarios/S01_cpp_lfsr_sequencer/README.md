@@ -1,135 +1,85 @@
-# Scenario S01: C++ LFSR シーケンサー・ショーケース
+# S01_cpp_lfsr_sequencer: ハードとソフトを束ねる「C++システム統合」
 
-このシナリオは、FPGA-BoardlessBench (F-BB)の主要なエミュレーション機能（レジスタI/O、UART通信、GPIO操作、およびRTL統合シミュレーション）を組み合わせた「システム統合ショーケース」です。標準的なペリフェラルに加え、独自に設計された「カスタムRTLモジュール」をC++アプリケーションから統合的に制御する、実機さながらのシステム開発を体験します。
+おめでとうございます！いよいよステップアップ学習ロードマップの最終シナリオです。
+
+このシナリオは、F-BBの主要機能（レジスタMMIO、UARTシリアル通信、GPIO LED制御、そして自分で書いたVerilog回路）をすべて組み合わせた **「システム統合ショーケース」** です。
+
+C++のオブジェクト指向プログラミングを使って、ハードウェア全体をエレガントに制御します。
 
 ![FPGA-BoardlessBench (F-BB) AroundView Dashboard](assets/dashboard.gif)
 
-## システムアーキテクチャ概念図
+---
+
+## このシナリオのゴール
+**「C++クラスでハードウェアを抽象化し、乱数生成回路（LFSR）とLED/UARTを連動させた総合対話システムを動かす」**
+
+---
+
+## 直感イメージ：CPUとFPGAのやり取り
+C++アプリケーションが、UARTからのコマンドに応じてカスタムFPGA回路（LFSR乱数エンジン）を動かし、結果をLEDに点灯させます。
 
 ```mermaid
-graph TD
-    subgraph "Application Layer (C++)"
-        App["main.cpp (System Shell)"]
-        RegClass["Register Classes (OOA/OOD)"]
+flowchart TD
+    subgraph UI ["ユーザー対話"]
+        Terminal["UART コンソール (メニュー選択)"]
     end
 
-    subgraph "Interception Layer"
-        Shim["libfpgashim.so (Shim)"]
+    subgraph CppApp ["C++ アプリケーション (main.cpp)"]
+        OOP["ハードウェア制御クラス\n(UioDevice / LfsrEngine)"]
     end
 
-    subgraph "Hardware Layer (RTL / Shared Memory)"
-        subgraph "Standard IP"
-            UART["UART (PTY/TCP Bridge)"]
-            GPIO["AXI GPIO (LED Panel)"]
-        end
-        subgraph "Original IP (Custom Verilog)"
-            Engine["Pattern Engine (State Machine)"]
-            LFSR["LFSR (Pseudo Random Generator)"]
-        end
+    subgraph FPGA ["FPGA ハードウェア回路"]
+        LFSR["LFSR 乱数発生回路\n(pattern_engine.v)"]
+        GPIO["GPIO LEDパネル"]
     end
 
-    subgraph "Observation Layer"
-        Dash["Web Dashboard (Real-time View)"]
-        Wave["GTKWave (vfpga.vcd)"]
-    end
-
-    App --> RegClass
-    RegClass -->|"mmap access"| Shim
-    Shim -->|"Physical Address Routing"| Hardware
-    Hardware <--> Dash
-    Hardware <--> Wave
+    Terminal <-->|"コマンド送受信"| OOP
+    OOP -->|"乱数生成指示"| LFSR
+    LFSR -->|"乱数パターン"| GPIO
 ```
 
-## ファームウェア設計（C++ クラス図）
+---
 
-ファームウェアは、ハードウェアの依存関係を抽象化した疎結合な設計を採用しています。
+## 3つの基本ステップ（コードの読み方）
 
-```mermaid
-classDiagram
-    class MemoryMappedDevice {
-        <<abstract>>
-        -uintptr_t base_addr
-        -size_t size
-        +write32(offset, value)*
-        +read32(offset)*
-    }
+[main.cpp](main.cpp) で行っていることは、以下の3ステップです。
 
-    class UioDevice {
-        -int fd
-        +mmap()
-    }
+1. **C++クラスでデバイスを安全に開く (RAIIパターン)**
+   - `UioDevice` クラスがコンストラクタで `mmap` し、スコープを抜けると自動で `munmap` します。
+2. **カスタム回路（LFSRパターンエンジン）にパラメータを設定する**
+   - シード値や点滅モード（チェイス・ストロボ・乱数）をレジスタに書き込みます。
+3. **対話メニューからハードウェアをリアルタイム操作する**
+   - UARTから `1`〜`5` のキーを押すことで、LEDの光り方を自在に切り替えます。
 
-    class Peripheral {
-        <<abstract>>
-        #MemoryMappedDevice& dev
-        +Peripheral(MemoryMappedDevice& dev)
-    }
+---
 
-    class UartPeripheral {
-        +send_char(char c)
-        +recv_char() char
-        +print(string s)
-    }
+## 1. まずは動かしてみよう！
 
-    class GpioPeripheral {
-        +set_direction(mask)
-        +write_data(val)
-    }
+Webダッシュボードでフル機能の統合体験を楽しむため、以下を実行します。
 
-    class LfsrEngine {
-        +set_mode(mode)
-        +set_speed(speed)
-        +get_status() status
-    }
-
-    class SystemShell {
-        -UartPeripheral& uart
-        -GpioPeripheral& gpio
-        -LfsrEngine& engine
-        +run_loop()
-        +parse_command(string cmd)
-    }
-
-    MemoryMappedDevice <|-- UioDevice
-    Peripheral <|-- UartPeripheral
-    Peripheral <|-- GpioPeripheral
-    Peripheral <|-- LfsrEngine
-    Peripheral o-- MemoryMappedDevice
-    SystemShell --> UartPeripheral
-    SystemShell --> GpioPeripheral
-    SystemShell --> LfsrEngine
+```bash
+./start_lab.sh tests/scenarios/S01_cpp_lfsr_sequencer/
 ```
 
-## このシナリオの見どころ
+ブラウザで **`http://localhost:8080`** を開くと、**「LEDパネル」「レジスタモニタ」「UARTコンソール」** がすべて同時に連動して動く大迫力の統合システムを体験できます！
 
-### 1. モダン C++ によるハードウェア抽象化
-FW側を C++17 で実装します。低レイヤなアドレス操作をクラスとしてカプセル化し、`engine.set_mode(Mode::LFSR)` や `engine.set_speed(5)` のような直感的なコードでハードウェアを操作する、プロフェッショナルな組み込みソフトウェアの設計パターンを示します。
+*(※CLIで自動テストだけ実行したい場合は `./run.sh` を実行します)*
 
-### 2. 自律型カスタムRTL「Pattern Engine」
-単なる「値の保持」ではない、独自のロジックを持つVerilogモジュールを搭載しています。
-- **Autonomous Sequencer**: CPUからの指示を受けると、ハードウェア側のステートマシンが独立してLEDパターンを生成します。
-    - **Sequential**: LEDが流れるように点灯します。
-    - **Binary Count**: 8bitバイナリカウンタとして動作します。
-    - **LFSR Random**: **線形帰還シフトレジスタ（LFSR）**を用いた擬似乱数生成を行い、回路ロジックのみでランダムな点滅パターンを作り出します。
-- **Observation Focus**: GTKWaveを用いることで、LFSRのフィードバック回路（XOR）がクロックごとにビットを変化させる「ハードウェアの計算」を目の当たりにできます。
+---
 
-### 3. UART 対話型シェル
-TCPブリッジ（ポート2000）を介して、実行中のシステムと対話できます。
-- `help`: コマンド一覧を表示。
-- `status`: システム稼働時間と現在のステート（LFSR値など）を取得。
-- `mode [seq/bin/lfsr/off]`: 動作モードをリアルタイムに切り替え。
-- `speed [1-10]`: ハードウェア側の更新速度をレジスタ経由で変更します。内部的には、シミュレーションサイクル（~10kHz）に対して `(11-speed) * 1000` サイクルごとに RTL の状態を更新する設計になっており、スピード「10」で最も速く点滅します。
+## 2. ちょこっと改造チャレンジ！
 
-## 構成ファイル
+- **実験:** [pattern_engine.v](pattern_engine.v) のVerilog回路コードを開き、乱数の計算式やシフトパターンを書き換えて `./run.sh` を実行してみてください。自分が改造したハードウェアがC++アプリから直ちに呼び出される感動を味わえます！
 
-- **`config.dts`**: UART, GPIO, およびカスタムエンジン（Pattern Engine）の定義。
-- **`vfpga_top.v`**: 全体のバス配線。
-- **`pattern_engine.v`**: ステートマシン、LFSR、分周器を実装したオリジナルモジュール。
-- **`main.cpp`**: C++による統合制御アプリケーション。
+---
 
-## 学習のポイント
+## ロードマップ完走！次のステップへ
+これで **FPGA & 組み込みLinux ステップアップ学習ロードマップ（全5ステージ）** の全課程を修了しました！
 
-1.  **システム統合**: 複数の異なるデバイスを一つのアドレス空間で同時に扱う方法。
-2.  **HW/SWの責務分離**: 「複雑なシーケンス生成」や「ロジックによる乱数生成」をハードウェア（RTL）に任せ、ソフトウェアは管理（モード切替）を行う設計思想。
-3.  **シミュレーションの力**: LFSRのような物理的なビット操作を、GTKWaveで1クロック単位でデバッグ・観察する体験。
-4.  **118ピン標準インターフェースへの刷新**: RTL トップの IO を 118 ピン (`l_pins_i/o/t`) に標準化。カスタム回路の出力を AXI GPIO の入力へ接続するといった、複雑な SoC 内部配線のシミュレーションを現実的なピン数で体験できます。
+- **自作シナリオへの挑戦 [07_minimum_template](../07_minimum_template/README.md)**:  
+  これまでに身につけた知識を武器に、自分だけのオリジナルFPGA回路やデバイスドライバを自由に作成・検証してみましょう！
+
+---
+
+## さらに詳しく知りたい方へ
+C++ クラス階層設計や Galois LFSR 回路の数学的仕様は、**[ADVANCED.md](ADVANCED.md)** を参照してください。

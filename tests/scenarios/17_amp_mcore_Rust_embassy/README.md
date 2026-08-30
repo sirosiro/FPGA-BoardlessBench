@@ -1,64 +1,79 @@
-# Scenario 17: AMP M-Core Rust Embassy
+# 17_amp_mcore_Rust_embassy: 非同期で省電力な「Rust Embassy」
 
-F-BB（FPGA-BoardlessBench）環境において、モダンな非同期駆動型組み込み Rust OS/ランタイムである **Embassy** の動作を検証するシナリオです。
+RTOS（FreeRTOS等）では、タスクごとに「スタックメモリ」という専用のメモリ領域を確保する必要があり、マイコンの貴重なメモリ（RAM）をたくさん消費してしまいます。
 
-## 概要
-
-本シナリオは、Aコア（Linuxアプリ/C）からMコア（Embassyランタイム/Rust）に対してデータ処理要求を送り、Mコア側が非同期エグゼキュータ上で効率的に要求を処理して応答を返す様子をシミュレートします。
-
-Mコア側（Rust）は `embassy-executor` の `arch-std` 機能を使用し、ホストOS上でマルチタスク非同期動作（`async/await`）をエミュレートします。
+そこで最新の組み込みRust開発で大注目されているのが **「Embassy（エンバシー）」** です。
+Rust言語標準の **「非同期処理（async / await）」** を使うことで、メモリをほとんど消費せずに複数のタスクを超省電力で並行処理できます。
 
 ---
 
-## シナリオの仕組みと特徴
-
-1. **POSIX 機能による実行基盤の切り替え (std フィーチャ)**:
-   - Embassy の非同期エグゼキュータは、タスク管理を純粋なポインタとビット演算で行っているため、Linux上でもそのまま動作します。
-   - タスクが待機状態に入りCPUを眠らせる処理（実機なら `wfi` 命令など）のみを、Linux環境下では **`std::thread::park`** や **条件変数（`Condvar`）** に透過的に差し替えることで、ホストPC上でのマルチタスク動作を実現しています。
-   - `Cargo.toml` で `features = ["std"]` を有効にするだけで、コンパイラが自動的にこのPOSIX実行基盤へとスイッチします。
-
-2. **実機 HAL の隠蔽と抽象化境界の確保 (ダミーモック)**:
-   - 実機のペリフェラルを直接制御する HAL クレート（例: `embassy-stm32` など）はホストPC上ではビルドできません。
-   - そのため、シミュレーション（Linux）ビルド時は実機 HAL の読み込みをスキップし、F-BB 用のダミーモック（レジスタ生ポインタアクセスに置き換えるラッパー）へ切り替える構成を採用しています。これにより、非同期ロジック本体は共通化されたままでコンパイルを可能にしています。
-
-3. **時間精度に関する注意点 (ジッタ)**:
-   - `embassy-time` によるタイマー（例: `Timer::after_millis(10).await`）は、ホスト Linux 上のタイマー精度に依存するためジッタが発生する可能性があります。
-   - 本環境は論理的な非同期シーケンスの整合性を検証する場であり、厳密なマイクロ秒精度のタイミング測定は対象外とすることを前提としています。
+## このシナリオのゴール
+**「Rust Embassyの非同期エグゼキュータ上でタスクを動かし、Linux（Aコア）からの要求をasync/awaitで処理する」**
 
 ---
 
-## ディレクトリ構成（対称設計）
-
-本シナリオは、Aコア（C言語）とMコア（Rust）の対等な協調関係を明示するため、双方のソースコードを対称的に整理しています。
-
-* **[a_core/](file:///workspaces/FPGA-BoardlessBench/tests/scenarios/17_amp_mcore_Rust_embassy/a_core)**: Aコア側のC言語アプリケーション (`main.c`)
-* **[m_core/](file:///workspaces/FPGA-BoardlessBench/tests/scenarios/17_amp_mcore_Rust_embassy/m_core)**: Mコア側のRustアプリケーションとモジュール (`Cargo.toml`, `src/`)
-
-## アーキテクチャ
+## 直感イメージ：CPUとFPGAのやり取り
+タスクが「待機中（await）」になると、CPUは自動的に完全に休止（省電力スリープ）に入ります。
 
 ```mermaid
-graph TD
-    App["A-Core (C)\n(test_bin)"]
-    VFPGA["fbb_pac::Vfpga\n(Virtual Registers in SHM)"]
-    Timer["RTL Timer\n(Verilator/vfpga)"]
-    MCore["M-Core (Rust)\n(mcore_embassy)\n[Embassy Executor (std)]"]
+flowchart LR
+    subgraph A_Core ["Aコア (Linux: C言語)"]
+        LinuxApp["計算リクエストを送信"]
+    end
 
-    App --> VFPGA
-    Timer <-->|"Sync"| VFPGA
-    VFPGA --> MCore
+    subgraph M_Core ["Mコア (Rust Embassy)"]
+        Task["非同期タスク (async fn)\n① 要求が来るまで await で休止\n② 届いたら起床して計算！"]
+    end
+
+    LinuxApp -->|"レジスタ書き込み"| Task
+    Task -->|"計算結果を返す"| LinuxApp
 ```
 
-### 1. 単一の情報源 (DTS)
-本シナリオは以下の DTS 定義に基づき、自動生成された PAC（Peripheral Access Crate）および C Shim を使用します。
+---
 
-* **Timer レジスタ**: `timer_target`, `timer_current`, `timer_irq`
-* **通信用レジスタ**: `cmd` (Aコアからのコマンド), `status` (Mコアの処理状態), `data_in`/`data_out` (データ入出力)
+## 3つの基本ステップ（コードの読み方）
 
-## ビルドと実行
+1. **非同期タスクを定義する (`async fn`)**
+   - `#[embassy_executor::task]` を付けた非同期関数を定義します。
+2. **待機処理を `await` で書く**
+   - `Timer::after_millis(100).await` のように書くと、待っている間CPUを1%も使わずに休止します。
+3. **エグゼキュータで並行タスクを起動する**
+   - `spawner.spawn(worker_task(...))` で複数のタスクを同時に走らせます。
 
-ホストPC上の `cargo` を使用して依存関係を自動的にダウンロードし、ファームウェアをコンパイルします。依存ライブラリのソースはホスト側の Cargo キャッシュに格納され、本プロジェクトのリポジトリには混入しません。
+---
+
+## 1. まずは動かしてみよう！
+
+ターミナルで以下のコマンドを実行します。
 
 ```bash
-# シナリオ単体での実行
 ./run.sh
 ```
+
+**期待される出力例：**
+```text
+=== Scenario 17: Rust Embassy on M-Core Test Start ===
+[A-Core] Booting Embassy M-Core firmware...
+[M-Core Embassy] Embassy Executor Started! Spawning async tasks...
+[A-Core] Sending Task Request: DATA_IN = 0x00000100...
+[M-Core Embassy] Async Task executed: Result = 0x00000200
+[A-Core] SUCCESS: Rust Embassy async coordination verified!
+=== Scenario 17 Test Result: SUCCESS ===
+```
+
+---
+
+## 2. ちょこっと改造チャレンジ！
+
+- **実験:** `m_core/src/main.rs` 内の非同期タイマー値や演算処理を変更して `./run.sh` を実行してみてください。モダンな非同期Rustが即座にビルドされて動く様子が体験できます！
+
+---
+
+## 次のステップへ
+- **次のシナリオ [18_amp_mcore_Rust_rtic](../18_amp_mcore_Rust_rtic/README.md)**:  
+  次は、優先度付き並行処理でデッドロックを完全に排除するもう一つの注目フレームワーク**「RTIC」**に進みましょう。
+
+---
+
+## さらに詳しく知りたい方へ
+Embassy arch-std POSIX実行基盤やメモリスタック削減の仕組みは、**[ADVANCED.md](ADVANCED.md)** を参照してください。

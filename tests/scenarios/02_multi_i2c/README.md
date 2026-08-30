@@ -1,97 +1,102 @@
-# 02_multi_i2c: 複数I2Cバスの制御と識別
+# 02_multi_i2c: 2本の線で会話する「I2C通信」
 
-このシナリオでは、Linux標準のI2Cサブシステムを使用して、システムに存在する複数のI2Cバスを制御する方法を学習します。
-実在する代表的な I2C EEPROM デバイスである **[Microchip AT24C02C](https://www.microchip.com/en-us/product/AT24C02C)** の仕様に基づいた仮想ペリフェラルエミュレータと同期してテストが実行されます。
+これまでの Stage 1 では、メモリやピンを直接読み書きしていましたが、実際の電子回路では **「センサー」や「ディスプレイ」** など無数のチップが基板上に並んでいます。
+すべてのチップと1本ずつ線を繋ぐと線が何百本にもなってしまうため、わずか **2本の線（クロック線 SCL ＋ データ線 SDA）** だけでたくさんの部品と通信できる規格が使われます。
 
-## アーキテクチャ概念図
+その代表格が **「I2C（アイ・スクエアド・シー）」** です。
+
+このシナリオでは、Linuxの標準的なI2C機能を使って、基板上のデバイスと通信する基本を体験します。
+
+---
+
+## このシナリオのゴール
+**「Linux標準のI2Cインターフェースを使い、アドレスを指定して複数のI2Cデバイスからデータを読み取る」**
+
+---
+
+## 直感イメージ：CPUとFPGAのやり取り
+I2Cでは、1本の通信線に複数のデバイスがぶら下がっており、**「電話番号（スレーブアドレス：例 0x50）」** を呼び出すことで特定の相手とだけ会話します。
 
 ```mermaid
-graph TD
-    subgraph "Processor (ARM / Linux)"
-        App["main.c (FWアプリケーション)"]
-        Driver["I2C Core Driver"]
+flowchart LR
+    subgraph CPU ["CPU (C言語: main.c)"]
+        C_App["プログラム"]
     end
-    
-    subgraph "I2C Controllers"
-        I2C1["I2C Controller 1<br/>(0xe0004000)"]
-        I2C2["I2C Controller 2<br/>(0xe0005000)"]
+
+    subgraph Linux ["Linux I2C ドライバ"]
+        Bus0["/dev/i2c-0 (バス1)"]
+        Bus1["/dev/i2c-1 (バス2)"]
     end
-    
-    App -->|ioctl| Driver
-    Driver -->|/dev/i2c-0| I2C1
-    Driver -->|/dev/i2c-1| I2C2
-    
-    I2C1 --- Slave1["I2C Slave (Addr: 0x50)"]
-    I2C2 --- Slave2["I2C Slave (Addr: 0x36)"]
+
+    subgraph Devices ["基板上のデバイス"]
+        DevA["メモリチップ (アドレス: 0x50)"]
+        DevB["センサー (アドレス: 0x36)"]
+    end
+
+    C_App -->|"① バス0を開く"| Bus0
+    Bus0 -->|"0x50番さん、データちょうだい！"| DevA
+    DevA -->|"0x10 です！"| C_App
+
+    C_App -->|"② バス1を開く"| Bus1
+    Bus1 -->|"0x36番さん、データちょうだい！"| DevB
+    DevB -->|"0x20 です！"| C_App
 ```
 
-## Learning Points
+---
 
-1. **Identification of Buses by Device Nodes:**
-   In Linux, each I2C bus is abstracted as an individual device file, such as `/dev/i2c-0` or `/dev/i2c-1`. The application controls devices connected to physically different buses by using these nodes appropriately.
-2. **I2C_RDWR ioctl:**
-   Instead of using `read()` or `write()` directly, using `I2C_RDWR` ioctl allows complex I2C sequences including start/stop conditions to be executed atomically in a single system call.
-3. **Bus Definition in DTS:**
-   By defining `bus_id` inside `config.dts`, you determine which controller on the emulator corresponds to which `/dev/i2c-X`.
+## 3つの基本ステップ（コードの読み方）
 
-## なぜ Verilog (.v) ファイルがないのか？
+[main.c](main.c) で行っていることは、以下の3ステップです。
 
-このシナリオを `01_standard_uio` と比較すると、Verilogファイルが存在しないことに気づくかもしれません。これにはハードウェア構造上の重要な理由があります。
+1. **I2Cバスを開く (`open`)**
+   - `open("/dev/i2c-0", O_RDWR);` で通信したいI2Cバスのポートを開きます。
+2. **手紙（メッセージ）の宛先と内容を詰める (`struct i2c_msg`)**
+   - 相手のアドレス（`0x50`）と、「データを1バイト読みたいよ（`I2C_M_RD`）」という注文書を作成します。
+3. **通信を実行して結果を受け取る (`ioctl`)**
+   - `ioctl(fd, I2C_RDWR, &msgset);` を呼ぶと、Linuxがハードウェアを通じてI2C通信を自動実行し、相手から返ってきたデータ（`buf[0]`）が手に入ります。
 
-### 1. ハードIP (PS) と ソフトIP (PL)
-*   **01_standard_uio (PL側):** FPGAの回路（Programmable Logic）の中に、ユーザーが自分でロジックを配置した「自作回路」です。そのため、回路の設計図である Verilog が必要でした。
-*   **02_multi_i2c (PS側):** ZynqなどのSoCにおいて、ARMプロセッサと同じシリコン上に最初から組み込まれている**「ハードIP（既製品）」**を想定しています。これは **PS (Processing System)** 側に属し、ユーザーが回路を設計・変更することはできません。
+---
 
-### 2. 実機開発での扱い
-実際の開発でも、PS内のI2Cコントローラを使う場合は Verilog を書きません。Vivado等のツールで「I2Cを有効にする」という設定を行い、デバイスツリー（DTS）を記述するだけで、Linuxから利用可能になります。
+## 1. まずは動かしてみよう！
 
-### 3. 本プロジェクトでのシミュレーション
-FPGA-BoardlessBench (F-BB)において、ハードIP（既製品）は Verilator による RTL シミュレーションを通さず、Python バックエンド側の **擬似デバイスモデル（モック）** が応答を担当しています。これにより、低負荷かつ高速に標準的なバス動作をエミュレートしています。
-
-## 実行方法
-
-本ディレクトリに移動して、以下のスクリプトを実行してください。シミュレーション環境の立ち上げからアプリケーションのビルド・実行までが自動的に行われます。
+ターミナルで以下のコマンドを実行します。
 
 ```bash
-./run.sh          # ビルドと実行
-./run.sh --clean  # 成果物とログの削除
+./run.sh
 ```
+
+**期待される出力例：**
+```text
+--- Multi-I2C Test Start ---
+[App] Bus 1 (0x50) returned: 0x10
+[App] Bus 2 (0x36) returned: 0x20
+[App] SUCCESS: Multiple I2C buses identified correctly!
+--- Multi-I2C Test End ---
+```
+異なる2つのI2Cバスに接続されたデバイスから、それぞれ正しいデータが返ってきたことが確認できます！
 
 ---
 
-## デバイスツリー (DTS) の読み方と設計の明示化
+## 2. ちょこっと改造チャレンジ！
 
-本シナリオで使用する `config.dts` は、初学者の学習用にハードウェアの物理接続が完全に自己記述（セルフ・ドキュメンティング）されるように設計されています。
+理解を深めるために、コードを1箇所だけ変えてみましょう。
 
-### 1. DTS の構成要素の解説
-
-```dts
-eeprom_dev1: eeprom@50 {
-    compatible = "atmel,24c02";
-    reg = <0x50>;
-    fbb,mock-data = <0x10>;
-};
-```
-
-* **`eeprom_dev1:` (ラベル - Label)**:
-  DTSの他の場所からこのデバイスノードを簡単に参照（エイリアス）するためのシンボル名です。ソースコードでいう変数名のようなものです。
-* **`eeprom@50` (ノード名 @ ユニットアドレス - Node Name & Unit Address)**:
-  ハードウェアを表現する「ノード」の正式名称です。`@` の後は通常、そのバス上の物理配置アドレス（I2Cスレーブアドレス `0x50`）を16進数で記述します。
-* **`compatible = "atmel,24c02"` (互換性記述 - Compatibility)**:
-  Linuxカーネルに対して「どのデバイスドライバをロードすべきか」を教える最も重要な文字列です。本シナリオでは、実在する代表的な I2C EEPROM デバイスである **[Microchip AT24C02C](https://www.microchip.com/en-us/product/AT24C02C)**（旧Atmel製AT24C02）の仕様をベースにテストが構成されています。実機でもこの名前が一致する EEPROM 用の標準カーネルドライバが自動的にバインドされます。
-* **`reg = <0x50>` (レジスタ/アドレス定義 - Register Property)**:
-  このスレーブデバイスの物理的なI2Cアドレスを指定します。
-* **`fbb,mock-data = <0x10>` (独自プロパティ - Custom Property)**:
-  F-BB (FPGA-BoardlessBench) 独自の拡張定義です。頭に **`fbb,` (F-BB用ベンダープレフィックス)** を付けることで、Linux標準の仕様と衝突させずにシミュレータ用のデータを記述しています。実機（本物のLinux）では、カーネルはこの `fbb,` プレフィックスの属性を安全に無視するため、**「実機透過性 (Hardware Transparency)」** が完全に維持されます。
+- **実験:** [main.c](main.c#L66) の 66行目を見てみてください。
+  ```c
+  int val1 = read_from_bus(FBB_DEV_PATH_I2C_0, 0x50);
+  ```
+  このアドレス `0x50` を、存在しない宛先 `0x77` に書き換えて `./run.sh` を実行してみてください。  
+  相手がいないため、通信エラー（`ioctl: ...`）になることが確認できます！
 
 ---
 
-## ソケット中継アーキテクチャ
+## 次のステップへ
+これで「I2C通信の基本手順」が分かりました！
 
-本プラットフォームのジェネレータは、DTS に上記のスレーブノードを検出すると、デバイスの振る舞い（EEPROMのロジック）をエミュレータ自体にハードコードするのではなく、**UNIX ドメインソケット `/tmp/fbb_i2c_b1_a50` を介した外部プロセスである共有ペリフェラル・ライブラリ（`fbb_i2c_eeprom` デーモン）への中継** に処理を逃がします。
+- **次のシナリオ [02e_ht16k33_7seg_i2c](../02e_ht16k33_7seg_i2c/README.md)**:  
+  次は、I2Cを使って実際に **7セグメントLED** に数字を表示する、視覚的にも楽しいシナリオに進みましょう。
 
-この `fbb_i2c_eeprom` デーモンは、実在する EEPROM（**[Microchip AT24C02C](https://www.microchip.com/en-us/product/AT24C02C)**）のメモリ動作仕様を忠実にエミュレートして応答します。
+---
 
-これによって：
-1. プラットフォームのコアである `gen_vfpga.py` が肥大化せず、クリーンに保たれます。
-2. 他のセンサや独自デバイスを追加したい場合も、`src/peripherals/` 配下に新しいC言語やPythonモジュールを追加するだけで簡単に入れ替えることができ、設計の柔軟性が最大化されます。
+## さらに詳しく知りたい方へ
+I2Cコントローラの内部アーキテクチャ、PS（ハードIP）とPL（ソフトIP）の違い、アトミック通信（Repeated Start）の詳細仕様は、**[ADVANCED.md](ADVANCED.md)** を参照してください。

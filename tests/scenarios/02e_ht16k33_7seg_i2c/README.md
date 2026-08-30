@@ -1,57 +1,94 @@
-# シナリオ 02e: 多重 I2C ペリフェラル制御 (SSD1306 OLED & Adafruit HT16K33 7セグメントLED)
+# 02e_ht16k33_7seg_i2c: I2Cで画面と数字を光らせる「ディスプレイ制御」
 
-本シナリオでは、実世界の IoT 組込み端末（スマートステーション）を模し、同一 I2C バス（`/dev/i2c-0`）上に **モノクロ OLED ディスプレイ (SSD1306)** と **4桁 7セグメントLEDモジュール (Adafruit HT16K33 Backpack)** の 2 つのペリフェラルを混在マウントして並列制御・動作検証します。
+前回の [02_multi_i2c](../02_multi_i2c/README.md) ではI2C通信の基本手順を学びました。
+このシナリオでは、I2C通信の実践編として **「4桁7セグメントLED」** と **「OLEDグラフィック画面」** の2つの表示デバイスを同時に光らせてみます！
+
+Webダッシュボードを開くと、実際に画面上でLEDの数字がカウントアップしたり、OLEDにグラフィックが描画される様子がリアルタイムに確認できます。
 
 ![FPGA-BoardlessBench (F-BB) AroundView Dashboard](assets/dashboard.gif)
 
 ---
 
-## 1. 使用するデバイス仕様およびデータシートへのリンク
-
-### ① Adafruit 0.56" 4-Digit 7-Segment Display w/ HT16K33 Backpack
-* **デバイス名**: Adafruit 0.56" 4-Digit 7-Segment LED (Holtek HT16K33 コントローラ内蔵)
-* **接続方法**: I2C バス (デフォルトスレーブアドレス: `0x70`)
-* **データシートおよび公式リンク**:
-  * **[Adafruit 0.56" 4-Digit 7-Segment Display 製品ページ (Product ID: 879)](https://www.adafruit.com/product/879)**
-  * **[Adafruit LED Backpack Downloads & Datasheets Page](https://learn.adafruit.com/adafruit-led-backpack/downloads)**
-  * **[Holtek HT16K33 Datasheet (PDF)](https://cdn-shop.adafruit.com/datasheets/ht16K33v110.pdf)**
-
-### ② Solomon Systech SSD1306
-* **デバイス名**: Solomon Systech SSD1306 (128x64ドット モノクロOLEDコントローラ)
-* **接続方法**: I2C バス (デフォルトスレーブアドレス: `0x3C`)
-* **データシートへのリンク**:
-  * **[Solomon Systech SSD1306 Datasheet (Adafruit PDF)](https://cdn-shop.adafruit.com/datasheets/SSD1306.pdf)**
+## このシナリオのゴール
+**「1本のI2Cバスから2つの異なるディスプレイ（7セグLEDとOLED）にデータを送り、同時に文字や数字を表示する」**
 
 ---
 
-## 2. システム構成と複数ペリフェラルの連動
+## 直感イメージ：CPUとFPGAのやり取り
+同じ1本の通信線（`/dev/i2c-0`）を使って、宛先アドレスを切り替えながら交互に表示データを送信します。
 
-本シナリオを実行すると、以下のコンポーネントが協調して動作します：
+```mermaid
+flowchart LR
+    subgraph CPU ["CPU (C++: main.cpp)"]
+        C_App["プログラム"]
+    end
 
-1. **テストアプリケーション (`test_bin` / `main.cpp`)**:
-   単一の `/dev/i2c-0` を介して、アドレス `0x3C` (OLED) と `0x70` (7セグLED) へ交互に通信フレームを送信。
-2. **システムコールShim (`libfpgashim.so`)**:
-   アプリケーションからの I2C システムコール（`ioctl(I2C_RDWR)`）をフックし、宛先スレーブアドレスに応じてそれぞれのペリフェラルデーモンへ動的にルーティング。
-3. **独立ペリフェラルデーモン**:
-   - **`fbb_i2c_oled`**: SSD1306 描画データをパースし `/dev/shm/fbb_display_0` へ同期。
-   - **`fbb_i2c_ht16k33`**: HT16K33 コマンド・表示RAMをパースし `/dev/shm/fbb_display_7seg_0` へ同期。
-4. **Webダッシュボード (React UI)**:
-   Dockview レイアウト上で **`SSD1306 OLED Display`** ペインと **`Adafruit 4-Digit 7-Segment LED`** ペインの 2 つを独立マウントし、タイマーカウントアップおよび診断 Hex コード（`dEAd` / `bEEF`）の点滅をリアルタイム同期表示。
+    subgraph I2C_Bus ["1本のI2Cバス (/dev/i2c-0)"]
+        Line["SCL (クロック) / SDA (データ)"]
+    end
 
----
+    subgraph Displays ["Webダッシュボード上の画面"]
+        LED7["7セグLED (アドレス 0x70)\n「12:34」「dEAd」を表示"]
+        OLED["OLED画面 (アドレス 0x3C)\n図形やテキストを描画"]
+    end
 
-## 3. 実行方法
+    C_App -->|"① 0x70へ数字データを送信"| Line
+    Line --> LED7
 
-プロジェクトルート、またはこのディレクトリ配下で起動スクリプトを実行します。
-
-```bash
-./run.sh
+    C_App -->|"② 0x3Cへ描画コマンドを送信"| Line
+    Line --> OLED
 ```
 
-ブラウザで `http://localhost:8080` を開くと、OLED ペインと 7セグLED ペインが並列マウントされ、時刻タイマーおよび 16進数診断コードの明滅アニメーションを確認できます。
+---
+
+## 3つの基本ステップ（コードの読み方）
+
+[main.cpp](main.cpp) で行っていることは、以下の3ステップです。
+
+1. **7セグLED（アドレス `0x70`）の初期化と数字送信**
+   - HT16K33チップに「発振器ON（`0x21`）」「表示ON（`0x81`）」コマンドを送り、数字パターン（0〜9のビットマップ）を送信して数字を表示します。
+2. **OLED画面（アドレス `0x3C`）の初期化とグラフィック描画**
+   - SSD1306チップへ描画フレームバッファを転送し、ボックスやタイトル文字列を表示します。
+3. **ループでカウントアップ**
+   - タイマーを1秒ずつ進めながら、7セグLEDとOLEDの両方を同時に更新します。
 
 ---
 
-## 4. 実機（Zynq / Linux）透過性
+## 1. まずは動かしてみよう！
 
-本シナリオの `main.cpp` は、Linux 標準の `ioctl(I2C_RDWR)` を使用して記述されているため、実機 Zynq や Raspberry Pi などの Linux ボード上でも 1 行のコード変更もなくそのままコンパイル・動作します。
+Webダッシュボードで視覚的に楽しむため、プロジェクトルートから以下のコマンドを実行します。
+
+```bash
+./start_lab.sh tests/scenarios/02e_ht16k33_7seg_i2c/
+```
+
+ブラウザで **`http://localhost:8080`** を開いてみてください！  
+画面上に **「7セグLED」** と **「OLEDディスプレイ」** が現れ、数字がカウントアップしたり診断メッセージ（`dEAd` / `bEEF`）が点滅する様子が確認できます。
+
+*(※CLIで自動テストだけ実行したい場合は `./run.sh` を実行します)*
+
+---
+
+## 2. ちょこっと改造チャレンジ！
+
+理解を深めるために、7セグLEDに表示する文字列を変えてみましょう。
+
+- **実験:** [main.cpp](main.cpp#L120) の 120行目付近を見てみてください。
+  ```cpp
+  display_7seg_hex(fd, 0xdEAd);
+  ```
+  この `0xdEAd` を `0x1234` や `0xbEEF` に書き換えて、もう一度 `./run.sh`（または `./start_lab.sh`）を実行してみてください。  
+  7セグLEDの表示文字が変わることが確認できます！
+
+---
+
+## 次のステップへ
+これで「I2Cを使った実践的なデバイス制御」が身につきました！
+
+- **次のシナリオ [02b_multi_spi](../02b_multi_spi/README.md)**:  
+  次は、I2Cよりもさらに高速に大量のデータを送受信できる**「SPI通信」**に進みましょう。
+
+---
+
+## さらに詳しく知りたい方へ
+SSD1306 / HT16K33 の詳細データシートや、C-Shim による共有メモリ（`/dev/shm`）描画バッファ同期の内部構造は、**[ADVANCED.md](ADVANCED.md)** を参照してください。

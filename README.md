@@ -11,6 +11,9 @@ FPGA-BoardlessBench (F-BB)は、FPGAを搭載した実機や評価ボードが�
 **企業・技術研修での活用提案（F-BBのCore Value）**  
 評価ボード・オシロスコープ・JTAG機器なしで、実機Linux/RTOS/FPGA協調設計の製品レベル開発技術を修得できる **[組み込み・FPGA技術研修ソリューション提案書](./docs/architecture/AddInfo_Technical_Training_Proposal.md)** を公開しています。
 
+**初学者向けステップアップ学習ロードマップ**  
+「まずはレジスタを動かしてみる」から「周辺機器通信」「高速DMA」「マルチコア・RTOS」まで、全33本のテストシナリオを通して無理なく段階的に学べる **[ステップアップ学習プラン](./docs/architecture/AddInfo_Learning_Roadmap.md)** を用意しています。
+
 ---
 [Scenario S01: C++ LFSR シーケンサー・ショーケース](tests/scenarios/S01_cpp_lfsr_sequencer/)
 ![FPGA-BoardlessBench Demo](tests/scenarios/S01_cpp_lfsr_sequencer/assets/dashboard.gif)
