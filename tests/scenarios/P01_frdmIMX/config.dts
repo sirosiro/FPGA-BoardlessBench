@@ -11,8 +11,8 @@
         reg = <0x47400000 0x1000>;
         label = "/dev/uio0";
         registers = 
-            "PDOR(DATA) @ 0x00",
-            "PDIR(DATA) @ 0x04",
+            "PDOR(DATA_OUT) @ 0x00",
+            "PDIR(DATA_IN) @ 0x04",
             "PDDR(INV_TRI) @ 0x08";
     };
 

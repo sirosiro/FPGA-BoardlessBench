@@ -501,7 +501,7 @@ graph TD
 - **実物理アドレスの強制マッピング（Mコア/MAP_FIXED_NOREPLACE）**: ベアメタルやRTOSファームウェアで用いられる直接のポインタ操作（物理アドレス直書き）に対し、`libfpgashim.so` の起動コンストラクタが `mmap(MAP_FIXED_NOREPLACE)`（および `MAP_FIXED` への自動フォールバック）を実行することで、ホストLinuxのプロセス仮想空間上に実機と同じアドレスマップを安全に構築し、セグメンテーション違反や他マッピングの意図しない上書きを防止しつつ仮想FPGAへルーティングします。
 - **マルチデバイス・マルチバス対応**: 複数のI2Cバスの個別識別や、UART通信のPTYリダイレクト（TCPブリッジ経由でのコンソール対話）、SoC規模（最大118チャネル）の双方向GPIOエミュレーション、および車載 SocketCAN 透過通信をサポートします。
 - **RTL統合シミュレーション**: [Verilator](./docs/architecture/AddInfo_verilator.md) を用いた高速なRTLシミュレーションをサポートし、共有メモリ経由でレジスタ値を同期します。
-- **Webダッシュボード**: Webベースのインターフェース（ポート 8080）を介して、レジスタやGPIOの入出力状態をリアルタイムで監視・操作できます。VS Codeライクなドッキングレイアウト（Dockview）を採用し、閉じたペインを個別復元できる **`+ Add Pane` プルダウンメニュー** や、ペリフェラル未接続時の **`Virtual Peripheral View` スタンバイ画面**、レジスタの変化履歴を可視化する **Register State Tracer**、車載通信を可視化・操作する **CAN Bus Analyzer**、および `fbb-plugin.json` / `board.svg` に基づく **汎用ペリフェラルビュー (`GenericPeripheralPane`)** を備えています。デフォルトで 1:1 実基板ベクター画像 (`[PCB Board]`) を表示し、50%〜400% のズーム操作時にマウスのクリック＆ドラッグによる自由な視点移動（パンニング）に対応しています。
+- **Webダッシュボード**: Webベースのインターフェース（ポート 8080）を介して、レジスタやGPIOの入出力状態をリアルタイムで監視・操作できます（他レジスタと競合しないアトミックな4バイト局所書き込みにより、ファームウェア実行中も非侵襲にGPIO入力注入が可能）。VS Codeライクなドッキングレイアウト（Dockview）を採用し、閉じたペインを個別復元できる **`+ Add Pane` プルダウンメニュー** や、ペリフェラル未接続時の **`Virtual Peripheral View` スタンバイ画面**、レジスタの変化履歴を可視化する **Register State Tracer**、車載通信を可視化・操作する **CAN Bus Analyzer**、および `fbb-plugin.json` / `board.svg` に基づく **汎用ペリフェラルビュー (`GenericPeripheralPane`)** を備えています。デフォルトで 1:1 実基板ベクター画像 (`[PCB Board]`) を表示し、50%〜400% のズーム操作時にマウスのクリック＆ドラッグによる自由な視点移動（パンニング）に対応しています。
   * **標準レジスタ/GPIO監視画面 (例: `S01_cpp_lfsr_sequencer` シナリオ)**
     ![FPGA-BoardlessBench (F-BB) Dashboard](docs/assets/dashboard.png)
 - **HDMI プレビュー出力エミュレーション**: DRM/KMS 経由での物理モニターへの出力と、ダンプファイル（`/tmp/hdmi_output.bmp`）を介したダッシュボード上へのリアルタイムプレビューに対応しています。ホスト環境と実機評価ボード環境を同一コードで透過的にサポートし、ダッシュボード上でピクセル等倍〜1600%のズーム・スクロール操作が可能です。
@@ -532,28 +532,28 @@ F-BBは、ハードウェア記述言語（RTL）から、低レイヤーのシ�
 
 ビルド成果物（`build`, `dist`）、外部パッケージ（`node_modules`）、および一時ファイルを除外したリポジトリ全体の静的ソースコードを `cloc` (Count Lines of Code v1.90) にて正確に計測した結果です。
 
-F-BB 独自のプロジェクトコードのみ（`--cleanall` 時）で**純プログラムステップ数（Pure Code） 39,927 行 (39.9k+ LOC)**、総行数 **50,602 行**（全 372 ファイル）で構成されています。また、シナリオ 10〜15 で動的ロードされる外部 RTOS カーネル（FreeRTOS, ThreadX, CMSIS_5）のソース群を含むフル状態では **87,500 行 (87.5k+ LOC)** / **全 164,800 行**（全 751 ファイル）の規模となります。
+F-BB 独自のプロジェクトコードのみ（`--cleanall` 時）で**純プログラムステップ数（Pure Code） 39,985 行 (約 40.0k LOC)**、総行数 **50,729 行**（全 372 ファイル）で構成されています。また、シナリオ 10〜15 で動的ロードされる外部 RTOS カーネル（FreeRTOS, ThreadX, CMSIS_5）のソース群を含むフル状態では **87,500 行 (87.5k+ LOC)** / **全 164,800 行**（全 751 ファイル）の規模となります。
 
 > **Project Scale Summary (`cloc` 計測値):**
-> - **Pure F-BB Code (F-BB独自コードのみ):** **39,927 Lines of Code** *(総行数 50,602行 / 372ファイル / コメント 3,198行 / 空行 7,477行)*
+> - **Pure F-BB Code (F-BB独自コードのみ):** **39,985 Lines of Code** *(総行数 50,729行 / 372ファイル / コメント 3,255行 / 空行 7,489行)*
 > - **Full Environment (外部RTOSカーネル同梱時):** **87,500 Lines of Code** *(総行数 164,800行 / 751ファイル)*
-> - **主要言語構成:** *(Markdown/Doc: ~10.8k LOC, JSON: ~6.9k LOC, C/C++: ~11.5k LOC (全シナリオFW/Shim/PPA), React/JSX/JS/CSS: ~5.4k LOC, Python: ~2.2k LOC)*
+> - **主要言語構成:** *(Markdown/Doc: ~10.9k LOC, JSON: ~6.9k LOC, C/C++: ~11.5k LOC (全シナリオFW/Shim/PPA), React/JSX/JS/CSS: ~5.4k LOC, Python: ~2.2k LOC)*
 
 | 言語分類 (cloc) | 拡張子 | ファイル数 | 空行 (Blank) | コメント (Comment) | 純コード (Pure LOC) | 総行数 (Total Lines) | 主な構成要素と役割 |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **Markdown** | `.md` | 120 | 4,249 | 0 | **10,836行** | **15,085行** | システム仕様書、ADR、初学者学習ロードマップ、全34シナリオREADME/ADVANCED仕様書、PPA 5.1 開発ガイド |
-| **JSON / Manifest** | `.json` | 33 | 0 | 0 | **6,901行** | **6,901行** | PPAペリフェラルマニフェスト (`fbb-plugin.json`)、ボード構造メタデータ |
+| **Markdown** | `.md` | 120 | 4,254 | 0 | **10,855行** | **15,109行** | システム仕様書、ADR、初学者学習ロードマップ、全34シナリオREADME/ADVANCED仕様書、PPA 5.1 開発ガイド |
+| **JSON / Manifest** | `.json` | 33 | 0 | 0 | **6,906行** | **6,906行** | PPAペリフェラルマニフェスト (`fbb-plugin.json`)、ボード構造メタデータ |
 | **C** | `.c` | 35 | 835 | 701 | **5,373行** | **6,909行** | システムコール横取り Shim、エミュレータデーモン、カオス障害注入エンジン、全シナリオ FW |
 | **C++** | `.cpp` | 20 | 814 | 847 | **5,354行** | **7,015行** | Verilator シミュレーションコア、PPA ペリフェラルプラグイン実装 |
-| **JSX** | `.jsx` | 15 | 331 | 55 | **3,829行** | **4,215行** | Vite + React 19 UI（Dockview, Recharts, `CanAnalyzerPane`, `ChaosPanel`, `GenericPeripheralPane`, `TransactionLoggerPane`） |
-| **Python** | `.py` / CLI | 14 | 408 | 779 | **2,192行** | **3,379行** | DTSパース・診断エンジン (`DTSParserError`)、コード自動生成、統一 CLI (`bin/fbb`), PPA |
-| **JavaScript** | `.js` | 3 | 153 | 50 | **1,240行** | **1,443行** | ダッシュボード WebSockets サーバー（`dashboard/server.js`）、マルチコアライフサイクル API |
+| **JSX** | `.jsx` | 15 | 332 | 75 | **3,839行** | **4,246行** | Vite + React 19 UI（Dockview, Recharts, `CanAnalyzerPane`, `ChaosPanel`, `GenericPeripheralPane`, `TransactionLoggerPane`） |
+| **Python** | `.py` / CLI | 14 | 408 | 794 | **2,192行** | **3,394行** | DTSパース・診断エンジン (`DTSParserError`)、コード自動生成、統一 CLI (`bin/fbb`), PPA |
+| **JavaScript** | `.js` | 3 | 159 | 72 | **1,272行** | **1,503行** | ダッシュボード WebSockets サーバー（`dashboard/server.js`）、マルチコアライフサイクル API |
 | **Bourne Shell** | `.sh` | 38 | 200 | 187 | **952行** | **1,339行** | 自動検証ランナー（`run_tests.sh`）、ラボ起動スクリプト（`start_lab.sh`） |
-| **Other / Rust** | `.rs` / `.css` / 他 | 21 | 160 | 104 | **859行** | **1,123行** | UIスタイルシート (CSS), Mコア Rust FW, 各種設定メタデータ |
-| **Verilog** | `.v` | 18 | 93 | 147 | **802行** | **1,042行** | シミュレーション対象の FPGA ハードウェア記述 (RTL) |
+| **Other / Rust** | `.rs` / `.css` / 他 | 21 | 159 | 105 | **859行** | **1,123行** | UIスタイルシート (CSS), Mコア Rust FW, 各種設定メタデータ |
 | **C/C++ Header** | `.h` / `.hpp` | 33 | 121 | 260 | **801行** | **1,182行** | 統一 CLI パーサー (`cli_helper.hpp`)、デバイス共通ヘッダー、レジスタ定義、Shimマクロ |
+| **Verilog** | `.v` | 18 | 93 | 147 | **794行** | **1,034行** | シミュレーション対象の FPGA ハードウェア記述 (RTL) |
 | **CMake** | `CMakeLists.txt` / `.cmake` | 22 | 114 | 67 | **788行** | **969行** | マルチターゲットビルド設定（シナリオ・PPA・カーネル） |
-| **合計 (SUM Total)** | **-** | **372** | **7,477** | **3,198** | **39,927行** | **50,602行** | **F-BB プラットフォーム全体の静的ソースコード総数** |
+| **合計 (SUM Total)** | **-** | **372** | **7,489** | **3,255** | **39,985行** | **50,729行** | **F-BB プラットフォーム全体の静的ソースコード総数** |
 
 
 > **コード生成エンジンによる動的コード**

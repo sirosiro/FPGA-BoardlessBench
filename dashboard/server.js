@@ -338,60 +338,119 @@ function loadManifest() {
 // 手動注入された GPIO ピン入力状態の保持マップ { deviceName: { bitIndex: boolean } }
 const injectedPinOverrides = {};
 
-function applyInjectedGpioOverrides() {
-    if (!shmBuffer || !manifest.devices) return;
+// =============================================================================
+// [CRITICAL SECTION] 単一 GPIO ピンの 4 バイト局所アトミック書き込み (Regression Guard)
+// =============================================================================
+// @intent:responsibility
+//   フロントエンドからのトグル操作を受け、共有メモリ (SHM) 内の対象レジスタの 4 バイト領域のみを
+//   pwrite によりアトミックに更新する。
+// @intent:historical-context (過去のエンバグと修正の意図)
+//   - 旧実装では全SHMバッファをループで上書きしていたため、並行して走るDMA転送やMMIOレジスタの値を
+//     破壊する重大な競合問題（GPIOピン上書き問題）が発生していた。
+//   - 局所4バイト書き込みへ改善した際、対象レジスタの特定が極めて重要となった。
+//   - 入力ピンへの値注入時に対象レジスタを誤って出力レジスタ（PDOR等）に設定してしまうと、
+//     実機/RTLシミュレータ上でファームウェアがポーリング監視している入力レジスタ（PDIR等）に
+//     値が伝達されず、擬似割り込みや入力検知が完全に沈黙する。
+// @intent:invariant
+//   1. 局所書き込みの徹底: 共有メモリファイル全体の上書きは絶対に行わず、対象4バイトのみを更新する。
+//   2. 入力レジスタ優先解決: 入力ピン注入において、明示指定されたレジスタまたは論理名/物理名が
+//      'IN' / 'DATA_IN' / 'IDR' / 'DIN' を含む入力用レジスタを最優先で特定すること。
+// =============================================================================
+function injectGpioPin(deviceName, bitIndex, value, dataRegName = 'DATA') {
+    if (!manifest || !manifest.devices || !manifest.shm_path) {
+        return false;
+    }
+    if (!fs.existsSync(manifest.shm_path)) {
+        return false;
+    }
+
     const uioGpioDevs = manifest.devices.filter(d => d.type === 'uio' || d.type === 'gpio');
-    if (uioGpioDevs.length === 0) return;
+    if (uioGpioDevs.length === 0) return false;
     const shmBaseAddr = Math.min(...uioGpioDevs.map(d => d.base_addr || 0));
 
-    let shmModified = false;
-    for (const [deviceName, bits] of Object.entries(injectedPinOverrides)) {
-        const dev = manifest.devices.find(d => d.name === deviceName || d.name.startsWith(deviceName) || d.name.includes(deviceName) || d.type === deviceName);
-        if (!dev || !dev.registers) continue;
+    const dev = manifest.devices.find(d => d.name === deviceName || d.name.startsWith(deviceName) || d.name.includes(deviceName) || d.type === deviceName);
+    if (!dev || !dev.registers || dev.registers.length === 0) return false;
 
-        // Apply overrides to all matching data/input/output registers
-        const targetRegs = dev.registers.filter(r => {
+    // 対象レジスタの特定: 明示指定された dataRegName または入力レジスタ (DATA_IN, IN, IDR, DIN) を優先
+    const upperReq = (dataRegName || '').toUpperCase();
+    let targetReg = null;
+
+    if (upperReq && upperReq !== 'DATA') {
+        targetReg = dev.registers.find(r => {
             const pName = r.name.toUpperCase();
             const lName = (r.logical_name || r.name).toUpperCase();
-            return pName.includes('PDIR') || pName.includes('PDOR') || pName.includes('IN') || lName.startsWith('DATA');
-        });
-
-        const activeRegs = targetRegs.length > 0 ? targetRegs : [dev.registers[0]];
-
-        activeRegs.forEach(reg => {
-            const regOffset = typeof reg.offset === 'string' ? parseInt(reg.offset, 16) : (reg.offset || 0);
-            if (isNaN(regOffset)) return;
-
-            const physAddr = (dev.base_addr || 0) + regOffset;
-            const shmOffset = physAddr - shmBaseAddr;
-
-            if (shmOffset >= 0 && shmOffset + 4 <= shmBuffer.length) {
-                let currentVal = shmBuffer.readUInt32LE(shmOffset);
-                let newVal = currentVal;
-                for (const [bitStr, state] of Object.entries(bits)) {
-                    const bit = parseInt(bitStr, 10);
-                    if (state) newVal |= (1 << bit);
-                    else newVal &= ~(1 << bit);
-                }
-                if (newVal !== currentVal) {
-                    shmBuffer.writeUInt32LE(newVal, shmOffset);
-                    shmModified = true;
-                }
-            }
+            return pName === upperReq || lName === upperReq;
         });
     }
 
-    if (manifest.shm_path && fs.existsSync(manifest.shm_path)) {
-        try {
-            const fd = fs.openSync(manifest.shm_path, 'r+');
-            fs.writeSync(fd, shmBuffer, 0, shmBuffer.length, 0);
+    if (!targetReg) {
+        // 入力レジスタ (DATA_IN, IN, IDR, DIN) を優先探索
+        targetReg = dev.registers.find(r => {
+            const pName = r.name.toUpperCase();
+            const lName = (r.logical_name || r.name).toUpperCase();
+            return lName.includes('IN') || pName.includes('IN') || pName.includes('IDR') || pName.includes('DIN');
+        });
+    }
+
+    if (!targetReg) {
+        // フォールバック: データレジスタ
+        targetReg = dev.registers.find(r => {
+            const pName = r.name.toUpperCase();
+            const lName = (r.logical_name || r.name).toUpperCase();
+            return lName.includes('DATA') || pName.includes('DATA') || pName.includes('DR');
+        }) || dev.registers[0];
+    }
+
+    const regOffset = typeof targetReg.offset === 'string' ? parseInt(targetReg.offset, 16) : (targetReg.offset || 0);
+    if (isNaN(regOffset)) return false;
+
+    const physAddr = (dev.base_addr || 0) + regOffset;
+    const shmOffset = physAddr - shmBaseAddr;
+
+    let fd;
+    try {
+        const stats = fs.statSync(manifest.shm_path);
+        if (shmOffset < 0 || shmOffset + 4 > stats.size) {
+            console.warn(`[Backend] Cannot inject GPIO: offset ${shmOffset} out of range (file size ${stats.size})`);
+            return false;
+        }
+
+        fd = fs.openSync(manifest.shm_path, 'r+');
+        const regBuf = Buffer.alloc(4);
+        fs.readSync(fd, regBuf, 0, 4, shmOffset);
+        const currentVal = regBuf.readUInt32LE(0);
+        let newVal = currentVal;
+        const bit = parseInt(bitIndex, 10);
+        if (value) {
+            newVal |= (1 << bit);
+        } else {
+            newVal &= ~(1 << bit);
+        }
+        newVal = newVal >>> 0;
+
+        if (newVal !== currentVal) {
+            regBuf.writeUInt32LE(newVal, 0);
+            fs.writeSync(fd, regBuf, 0, 4, shmOffset);
             try { fs.fdatasyncSync(fd); } catch (e) {}
-            fs.closeSync(fd);
-        } catch (e) {}
+            console.log(`[Backend] Injected GPIO: ${dev.name}.${targetReg.name} (offset 0x${shmOffset.toString(16)}) bit ${bit}=${value ? 1 : 0} (0x${currentVal.toString(16)} -> 0x${newVal.toString(16)})`);
+        }
+
+        // メモリ内キャッシュも即座に同期
+        if (shmBuffer && shmOffset + 4 <= shmBuffer.length) {
+            shmBuffer.writeUInt32LE(newVal, shmOffset);
+        }
+        return true;
+    } catch (e) {
+        console.error(`[Backend Error] Failed to inject GPIO pin into ${manifest.shm_path}: ${e.message}`);
+        return false;
+    } finally {
+        if (fd !== undefined) {
+            try { fs.closeSync(fd); } catch (e) {}
+        }
     }
 }
 
-// 共有メモリの読み取り
+// 共有メモリの読み取り (Pure Read-Only: 非侵襲的な観測)
 function updateShm() {
     if (!manifest.shm_path) return;
     try {
@@ -399,7 +458,6 @@ function updateShm() {
             const stats = fs.statSync(manifest.shm_path);
             if (stats.size > 0) {
                 shmBuffer = fs.readFileSync(manifest.shm_path);
-                applyInjectedGpioOverrides();
                 broadcastRegisters();
             }
         }
@@ -719,7 +777,9 @@ io.on('connection', (socket) => {
             // Directly set injected state to passed value
             injectedPinOverrides[deviceName][bitIndex] = !!value;
             console.log(`[BACKEND-DEBUG] Current injectedPinOverrides for ${deviceName}:`, JSON.stringify(injectedPinOverrides[deviceName]));
-            applyInjectedGpioOverrides();
+
+            // Atomic 4-byte register pwrite
+            injectGpioPin(deviceName, bitIndex, value, dataRegName);
             broadcastRegisters(true);
         } catch (e) {
             console.error(`[Backend Error] Safe caught gpio-inject exception: ${e.message}`);

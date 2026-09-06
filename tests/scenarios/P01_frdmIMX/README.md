@@ -81,7 +81,7 @@ F-BBの設計哲学である**「シミュレーションと実機で完全に�
 本環境では、実機レジスタ構成のみで極性の違いを吸収するため、DTSでの論理マッピング機能とダッシュボードの汎用反転ロジックを組み合わせて解決します。
 
 * **DTSでの論理マッピングの定義:**  
-  [imx95_config.dts](imx95_config.dts) では `PDDR(INV_TRI) @ 0x08`、[imx8mp_config.dts](imx8mp_config.dts) では `GDIR(INV_TRI) @ 0x04` のように、方向レジスタの論理名を **`INV_TRI`**（Inverted TRI / 反転方向レジスタ）としてマッピングします。
+  [imx95_config.dts](imx95_config.dts) では `PDOR(DATA_OUT) @ 0x00`, `PDIR(DATA_IN) @ 0x04`, `PDDR(INV_TRI) @ 0x08`、[imx8mp_config.dts](imx8mp_config.dts) では `DR(DATA) @ 0x00`, `GDIR(INV_TRI) @ 0x04` のように、入出力が分離したデータレジスタの論理名（`DATA_OUT`/`DATA_IN`）および方向レジスタの論理名（**`INV_TRI`**：Inverted TRI / 反転方向レジスタ）としてマッピングします。
 * **ダッシュボード側の自動極性反転:**  
   Webダッシュボード（`GpioPanel.jsx`）は、方向レジスタの論理名が `INV`（Inverted）を含む場合、SoC依存コードを一切持たずに汎用的な「アクティブロー入力方向レジスタ」として扱い、極性を反転（`0` = 出力/LED、`1` = 入力/スイッチ）して判定します。
 * **RTLとHALの整合性:**  

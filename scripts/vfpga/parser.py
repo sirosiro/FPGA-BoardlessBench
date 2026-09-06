@@ -565,6 +565,21 @@ class DTSParser:
                             l_upper = (logical_name or reg_name).upper()
                             r_upper = reg_name.upper()
 
+                            # =============================================================================
+                            # [CRITICAL SECTION] GPIO 方向・データレジスタ分類と論理名マッピング (Regression Guard)
+                            # =============================================================================
+                            # @intent:responsibility
+                            #     DTSの registers プロパティから論理名 (DATA_IN, DATA_OUT, INV_TRI 等) と
+                            #     方向モード (direction_mode: active_low_input / active_high_input) を抽出・分類する。
+                            # @intent:historical-context (過去のエンバグの教訓)
+                            #     かつて PDIR / PDOR が 'DIR' を部分文字列として含むため、誤って方向レジスタ (is_dir_reg) と
+                            #     判定されてしまい、UIの描画や制御が破綻するエンバグが発生した。
+                            #     そのため r_upper.startswith('PDIR') や startswith('PDOR') を明示的に除外している。
+                            # @intent:invariant
+                            #     - 括弧記法 (例: "PDIR(DATA_IN) @ 0x04"):
+                            #       第一要素が物理レジスタ名、括弧内が論理名 (logical_name) となる。
+                            #     - 入出力分離型GPIO (i.MX95等) では DATA_OUT と DATA_IN を区別して付与する。
+                            # =============================================================================
                             is_dir_reg = (
                                 "INV" in l_upper
                                 or "TRI" in l_upper
