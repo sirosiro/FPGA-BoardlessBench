@@ -304,7 +304,22 @@ def command_test(args):
             run_script = os.path.join(s_dir, "run.sh")
             scenario_name = os.path.basename(s_dir)
             print(f"🧪 Running scenario '{scenario_name}'...")
-            res = subprocess.run([run_script], cwd=s_dir)
+            run_cmd = [run_script]
+            env = os.environ.copy()
+            if getattr(args, "chaos", False):
+                run_cmd.append("--chaos")
+                env["FBB_CHAOS_MODE"] = "1"
+            if getattr(args, "seed", None):
+                run_cmd.append(f"--seed={args.seed}")
+                env["FBB_CHAOS_SEED"] = str(args.seed)
+            if getattr(args, "chaos_rate", None):
+                run_cmd.append(f"--chaos-rate={args.chaos_rate}")
+                env["FBB_CHAOS_RATE"] = str(args.chaos_rate)
+            if getattr(args, "chaos_targets", None):
+                run_cmd.append(f"--chaos-targets={args.chaos_targets}")
+                env["FBB_CHAOS_TARGETS"] = str(args.chaos_targets)
+
+            res = subprocess.run(run_cmd, cwd=s_dir, env=env)
             sys.exit(res.returncode)
         else:
             print("🧪 Running full F-BB automated regression test suite via regression_test.py...")
@@ -450,6 +465,7 @@ def main():
   fbb test                                Run all test scenarios
   fbb test 01_standard_uio                Run scenario by name
   fbb test tests/scenarios/01_standard_uio/  Run scenario by relative or absolute path
+  fbb test 01d --chaos --seed=12345       Run scenario with deterministic chaos fault injection
   fbb inspect 01_standard_uio             Inspect 32-bit MMIO address map of scenario
   fbb plugin list                         List all discovered PPA 5.1 peripheral plugins
   fbb new my_scenario --target zynq7000   Scaffold a new scenario workspace
@@ -481,14 +497,22 @@ def main():
   fbb test 01_standard_uio                Run specific scenario by name
   fbb test tests/scenarios/01_standard_uio/  Run specific scenario by directory path
   fbb test 01b                            Run scenario matching fuzzy prefix
+  fbb test 01d --chaos                    Run scenario with automated chaos mode (random seed)
+  fbb test 01d --chaos --seed=12345       Run scenario with deterministic chaos reproduction
+  fbb test 01d --chaos --chaos-rate=0.30  Run scenario with 30% fault injection probability
+  fbb test 01d --chaos --chaos-targets=i2c,spi Restrict chaos injection to specific interfaces
 """
     parser_test = subparsers.add_parser(
         "test",
-        help="Run scenario tests",
+        help="Run scenario tests (supports --chaos, --seed, etc.)",
         epilog=test_epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser_test.add_argument("scenario", nargs="?", help="Scenario name (e.g. 01_standard_uio), path (e.g. tests/scenarios/01_standard_uio/), or omit to run all")
+    parser_test.add_argument("--chaos", action="store_true", help="Enable automated chaos & fault injection engine")
+    parser_test.add_argument("--seed", type=str, default=None, help="Deterministic 64-bit seed for chaos injection")
+    parser_test.add_argument("--chaos-rate", type=str, default=None, help="Fault injection probability (0.0 - 1.0 or percentage)")
+    parser_test.add_argument("--chaos-targets", type=str, default=None, help="Target interfaces (i2c, spi, uio, can, cdma, all)")
 
     # 3. inspect
     inspect_epilog = """Examples:

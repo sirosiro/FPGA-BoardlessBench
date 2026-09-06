@@ -17,24 +17,46 @@ SCENARIO_PATH=""
 CLEAN=false
 CLEAN_TARGETS=""
 
+SCENARIO_ARGS=()
+
 # --- 引数解析 ---
-for arg in "$@"; do
-    case $arg in
-        --clean|-c) 
+while [[ $# -gt 0 ]]; do
+    case "$1" in
+        --clean*|--distclean|-c) 
             CLEAN=true 
-            if [[ ! " $CLEAN_TARGETS " =~ " clean " ]]; then
-                CLEAN_TARGETS="$CLEAN_TARGETS clean"
-            fi
-            ;;
-        --*) 
-            target=${arg#--}
-            CLEAN=true
+            target=${1#--}
             CLEAN_TARGETS="$CLEAN_TARGETS $target"
+            shift
+            ;;
+        --chaos)
+            export FBB_CHAOS_MODE=1
+            shift
+            ;;
+        --seed=*)
+            export FBB_CHAOS_MODE=1
+            export FBB_CHAOS_SEED="${1#--seed=}"
+            shift
+            ;;
+        --seed)
+            export FBB_CHAOS_MODE=1
+            export FBB_CHAOS_SEED="$2"
+            shift 2
+            ;;
+        --chaos-rate=*)
+            export FBB_CHAOS_RATE="${1#--chaos-rate=}"
+            shift
+            ;;
+        --chaos-targets=*)
+            export FBB_CHAOS_TARGETS="${1#--chaos-targets=}"
+            shift
             ;;
         *) 
-            if [ -d "$arg" ]; then 
-                SCENARIO_PATH="$arg"; 
+            if [ -d "$1" ]; then 
+                SCENARIO_PATH="$1"
+            else
+                SCENARIO_ARGS+=("$1")
             fi 
+            shift
             ;;
     esac
 done
@@ -42,7 +64,7 @@ done
 CLEAN_TARGETS=$(echo "$CLEAN_TARGETS" | xargs)
 
 if [ -z "$SCENARIO_PATH" ] && [ "$CLEAN" = false ]; then
-    echo "Usage: $0 <scenario_directory_path> [--clean|-c]"
+    echo "Usage: $0 <scenario_directory_path> [--clean|-c] [--chaos] [--seed=<seed>]"
     exit 1
 fi
 
@@ -89,13 +111,16 @@ cleanup() {
     pkill -f vlogic_controller || true
     pkill -f vfpga_sim || true
     
-    # remoteproc M-core processes cleanup
-    if [ -f "/tmp/fbb/sys/class/remoteproc/remoteproc0/pid" ]; then
-        MCORE_PID=$(cat /tmp/fbb/sys/class/remoteproc/remoteproc0/pid 2>/dev/null)
-        if [ -n "$MCORE_PID" ]; then
-            kill -9 $MCORE_PID 2>/dev/null
+    # remoteproc M-core processes cleanup (supports multiple M-cores)
+    for pid_file in /tmp/fbb/sys/class/remoteproc/*/pid; do
+        if [ -f "$pid_file" ]; then
+            MCORE_PID=$(cat "$pid_file" 2>/dev/null)
+            if [ -n "$MCORE_PID" ]; then
+                kill -9 $MCORE_PID 2>/dev/null
+            fi
         fi
-    fi
+    done
+    pkill -f "mcore_.*\.elf" 2>/dev/null || true
     rm -rf /tmp/fbb /tmp/fbb_can_* /dev/shm/fbb_can_* 2>/dev/null
     rm -f /tmp/vring0 /tmp/vfpga_reg /tmp/fbb_compatible /tmp/fbb_model /tmp/uio* /tmp/fbb_uart_* /tmp/vfpga_uart_* /tmp/fbb_spi_* /tmp/fbb_i2c_* 2>/dev/null
 }
@@ -167,7 +192,7 @@ fi
 
 export LD_BIND_NOW=1
 export FBB_ACTIVE=1
-./run.sh
+./run.sh "${SCENARIO_ARGS[@]}"
 RESULT=$?
 unset FBB_ACTIVE
 unset LD_PRELOAD
@@ -177,6 +202,14 @@ if [ $RESULT -eq 0 ]; then
     echo -e "\n[Runner] RESULT: SUCCESS"
 else
     echo -e "\n[Runner] RESULT: FAILURE (Exit Code: $RESULT)"
+    if [ "$FBB_CHAOS_MODE" = "1" ]; then
+        CHAOS_SEED_SAVED=$(cat /tmp/fbb_chaos_seed.txt 2>/dev/null)
+        echo -e "\033[1;33m[Runner] ======================================================================\033[0m"
+        echo -e "\033[1;33m[Runner] [CHAOS FAILURE DETECTED]\033[0m"
+        echo -e "\033[1;33m[Runner] To reproduce this exact failure sequence deterministically, run:\033[0m"
+        echo -e "\033[1;33m[Runner]   ./run.sh --chaos --seed=${CHAOS_SEED_SAVED}\033[0m"
+        echo -e "\033[1;33m[Runner] ======================================================================\033[0m"
+    fi
     echo "[Runner] Check controller.log and simulator.log in the scenario directory for details."
 fi
 

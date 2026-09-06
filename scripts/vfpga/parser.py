@@ -162,7 +162,12 @@ class DTSParser:
             if in_block_comment or stripped.startswith("//") or stripped.startswith("#"):
                 continue
 
-            if re.match(r'^[a-zA-Z0-9_,-]+\s*=', stripped) and not stripped.endswith('{'):
+            # Strip inline trailing comments (// ...) for syntax validation
+            code_line = re.sub(r'//.*$', '', stripped).strip()
+            if not code_line:
+                continue
+
+            if re.match(r'^[a-zA-Z0-9_,-]+\s*=', code_line) and not code_line.endswith('{'):
                 if in_property:
                     raise DTSParserError(
                         "Missing terminating ';' in property definition",
@@ -175,9 +180,9 @@ class DTSParser:
                 prop_start_line = line_num
 
             if in_property:
-                if stripped.endswith(';'):
+                if code_line.endswith(';'):
                     in_property = False
-                elif stripped.endswith('{') or (re.match(r'^[a-zA-Z0-9_@:-]+\s*\{', stripped) and not stripped.startswith('registers')):
+                elif code_line.endswith('{') or (re.match(r'^[a-zA-Z0-9_@:-]+\s*\{', code_line) and not code_line.startswith('registers')):
                     raise DTSParserError(
                         "Missing terminating ';' before new node definition",
                         file_path=file_path,

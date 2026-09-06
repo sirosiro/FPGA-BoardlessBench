@@ -50,6 +50,7 @@ flowchart TD
 | **3-1** | [01c_protocol_assertion](../../tests/scenarios/01c_protocol_assertion/README.md) | ハードウェアの自動検証 | 回路がプロトコル違反（おかしな動き）をしていないかを自動で検知するテスト手法。 |
 | **3-2** | [20_dma_cdma](../../tests/scenarios/20_dma_cdma/README.md) | DMA転送 (AXI CDMA) | CPUが1個ずつコピーするのではなく、専用ハードウェア（DMA）にメモリ間転送を丸投げする超高速化技術を学ぶ。 |
 | **3-3** | [21_can_socketcan_ecu](../../tests/scenarios/21_can_socketcan_ecu/README.md) | 車載CAN通信 & OBD-II | 自動車や産業機械の標準ネットワーク（CAN）と、LinuxのSocketCANスタックを体験する。 |
+| **3-4** | [01d_chaos_fault_injection](../../tests/scenarios/01d_chaos_fault_injection/README.md) | 決定論的カオス・障害注入 | 通信エラーやビット化けなどの偶発的異常に対するファームウェアの耐障害性と自動復旧ロジックを検証する。 |
 
 ---
 

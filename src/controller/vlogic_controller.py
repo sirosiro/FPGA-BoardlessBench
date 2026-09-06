@@ -193,43 +193,129 @@ def get_shm_info_from_dts(dts_path):
     return regions
 
 
-def uart_bridge_thread(pts_path, port):
-    print(f"[Python] Starting UART bridge for {pts_path} on port {port}...")
+def uart_bridge_thread(uart_file, port):
+    print(f"[Python] Starting persistent UART bridge for {uart_file} on port {port}...")
     
-    pts_fd = -1
-    # 起動直後の極小のレースコンディションを回避するため、数回リトライする
-    for i in range(10):
-        try:
-            pts_fd = os.open(pts_path, os.O_RDWR | os.O_NOCTTY)
-            break
-        except Exception as e:
-            if i == 9:
-                print(f"[Python] UART Bridge Final Error: {e}")
-                return
-            time.sleep(0.2)
-
     server_sock = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     server_sock.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    server_sock.bind(('0.0.0.0', port))
-    server_sock.listen(1)
-    
+    try:
+        server_sock.bind(('0.0.0.0', port))
+        server_sock.listen(5)
+        server_sock.setblocking(False)
+    except Exception as e:
+        print(f"[Python] Error binding UART port {port}: {e}")
+        return
+
+    clients = []
+    current_pts_path = None
+    pts_fd = -1
+    history_buffer = bytearray()
+    MAX_HISTORY = 65536
+
     while True:
+        # 1. Non-blocking accept for new TCP clients
         try:
             conn, addr = server_sock.accept()
+            conn.setblocking(False)
+            clients.append(conn)
             print(f"[Python] UART {port} connected from {addr}")
-            while True:
-                r, w, e = select.select([pts_fd, conn], [], [])
-                if pts_fd in r:
-                    data = os.read(pts_fd, 1024)
-                    if not data: break
-                    conn.sendall(data)
-                if conn in r:
-                    data = conn.recv(1024)
-                    if not data: break
-                    os.write(pts_fd, data)
-            conn.close()
+            if history_buffer:
+                try:
+                    conn.sendall(history_buffer)
+                except Exception:
+                    pass
+        except (BlockingIOError, socket.error):
+            pass
+
+        # 2. Check if PTS path in file changed or needs opening
+        if os.path.exists(uart_file):
+            try:
+                with open(uart_file, 'r') as fp:
+                    new_pts = fp.read().strip()
+                if new_pts and new_pts != current_pts_path:
+                    if pts_fd >= 0:
+                        try: os.close(pts_fd)
+                        except Exception: pass
+                        pts_fd = -1
+                    current_pts_path = new_pts
+                    history_buffer.clear()
+                    try:
+                        pts_fd = os.open(current_pts_path, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+                        print(f"[Python] UART {port} attached to PTY {current_pts_path}")
+                    except Exception:
+                        pts_fd = -1
+            except Exception:
+                pass
+
+        # If pts_fd is not open, try to reopen current_pts_path if it exists
+        if pts_fd < 0 and current_pts_path and os.path.exists(current_pts_path):
+            try:
+                pts_fd = os.open(current_pts_path, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
+                history_buffer.clear()
+            except Exception:
+                pts_fd = -1
+
+        # 3. Multiplex I/O between PTY and all TCP clients
+        read_fds = []
+        if pts_fd >= 0:
+            read_fds.append(pts_fd)
+        read_fds.extend(clients)
+
+        if not read_fds:
+            time.sleep(0.05)
+            continue
+
+        try:
+            r, _, _ = select.select(read_fds, [], [], 0.05)
         except Exception:
-            break
+            time.sleep(0.02)
+            continue
+
+        # Forward PTY data to all TCP clients
+        if pts_fd in r:
+            try:
+                data = os.read(pts_fd, 1024)
+                if data:
+                    history_buffer.extend(data)
+                    if len(history_buffer) > MAX_HISTORY:
+                        history_buffer = history_buffer[-MAX_HISTORY:]
+                    dead_clients = []
+                    for c in clients:
+                        try:
+                            c.sendall(data)
+                        except Exception:
+                            dead_clients.append(c)
+                    for dc in dead_clients:
+                        if dc in clients:
+                            clients.remove(dc)
+                else:
+                    # EOF: process closed master PTY
+                    try: os.close(pts_fd)
+                    except Exception: pass
+                    pts_fd = -1
+            except (OSError, IOError):
+                try: os.close(pts_fd)
+                except Exception: pass
+                pts_fd = -1
+
+        # Forward TCP client data to PTY
+        for c in list(clients):
+            if c in r:
+                try:
+                    cdata = c.recv(1024)
+                    if cdata:
+                        if pts_fd >= 0:
+                            try: os.write(pts_fd, cdata)
+                            except Exception: pass
+                    else:
+                        clients.remove(c)
+                        try: c.close()
+                        except Exception: pass
+                except Exception:
+                    if c in clients:
+                        clients.remove(c)
+                    try: c.close()
+                    except Exception: pass
 
 def update_uart_map(active_bridges):
     import json
@@ -242,7 +328,7 @@ def update_uart_map(active_bridges):
         print(f"[Python] Error updating UART map: {e}")
 
 def uart_discovery_thread():
-    # key: uart_file_path -> (pts_path, thread, port)
+    # key: uart_file_path -> (thread, port)
     active_bridges = {}
     base_port_env = os.getenv("FBB_UART_BASE_PORT")
     if base_port_env:
@@ -267,27 +353,19 @@ def uart_discovery_thread():
             except Exception:
                 pass
 
-            try:
-                with open(f, 'r') as f_ptr:
-                    pts_path = f_ptr.read().strip()
-            except Exception:
-                continue
-
             existing = active_bridges.get(f)
-            # PTSパスが変わった、またはスレッドが終了していたら再起動
-            if existing is None or existing[0] != pts_path or not existing[1].is_alive():
-                port = existing[2] if existing else next_port
+            if existing is None or not existing[0].is_alive():
+                port = existing[1] if existing else next_port
                 if existing is None:
                     next_port += 1
-                t = threading.Thread(target=uart_bridge_thread, args=(pts_path, port), daemon=True)
+                t = threading.Thread(target=uart_bridge_thread, args=(f, port), daemon=True)
                 t.start()
-                active_bridges[f] = (pts_path, t, port)
-                print(f"[Python] UART Found: {f} -> {pts_path} (TCP Port {port})")
+                active_bridges[f] = (t, port)
                 changed = True
 
         if changed:
-            update_uart_map({f: v[2] for f, v in active_bridges.items()})
-        time.sleep(1)
+            update_uart_map({f: v[1] for f, v in active_bridges.items()})
+        time.sleep(0.1)
 
 import subprocess
 import signal

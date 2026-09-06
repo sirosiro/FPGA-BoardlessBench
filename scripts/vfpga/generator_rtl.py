@@ -346,14 +346,12 @@ void run_sim_loop(T* top, volatile uint32_t* shm, uint32_t* old_shm, VerilatedVc
                 }
             }
 
-            // UI Injection Handling for Input Pins
+            // UI Injection Handling for Input Pins (Verilator 32bit array support)
             // If TRI bit is 1, apply SHM value to l_pins_i
-            // (Assuming last 4 words of SHM are injection area)
-            for (int b = 0; b < 118; b++) {
-                int word = b / 32;
-                int bit = b %% 32;
-                // Simplified: Mapping logic should match Dashboard's gpio-inject
-                // top->l_pins_i[b] = (shm[SHM_SIZE/4 - 4 + word] >> bit) & 0x1;
+            if constexpr (has_l_pins_i<T>::value) {
+                for (int w = 0; w < 4; w++) {
+                    top->l_pins_i[w] = shm[SHM_SIZE/4 - 4 + w];
+                }
             }
 
             // Synchronize Read from RTL to SHM

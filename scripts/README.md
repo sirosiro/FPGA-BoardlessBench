@@ -47,14 +47,14 @@ scripts/
   * **`Register`**: メモリマップドレジスタの名前、オフセット、方向、論理名などを定義。
   * **`I2CSlave`**: I2Cバス上にネスト定義されたスレーブデバイス（EEPROM等）のエミュレーション属性を保持。
   * **`BoardModel`**: ボード全体のデバイスリストとメタデータを包括する最上位モデル。
-* **`vfpga/parser.py`**: DTS ファイルを読み込んで構文解析を行い、`BoardModel` を動的に構築する解析器です。ルートノードのパース、ネストされた子ノード（I2Cスレーブ）の再帰的パース、プロパティのマスク処理（親プロパティの上書き防止）などのパーサー論理がここに集中しています。
+* **`vfpga/parser.py`**: DTS ファイルを読み込んで構文解析を行い、`BoardModel` を動的に構築する解析器です。ルートノードのパース、ネストされた子ノード（I2Cスレーブ）の再帰的パース、プロパティのマスク処理（親プロパティの上書き防止）などのパーサー論理がここに集中しています。また、構文事前検証（`validate_syntax_precheck`）により、C言語スタイルコメント（`// ...`）を安全に除去した上でプロパティ末尾のセミコロン欠落や波括弧の不整合を行番号・スニペット付きで事前検出し、開発者に親切な `DTSParserError` を出力します。
 * **`vfpga/generator_base.py`**: すべてのコード生成クラスの基底となる `BaseGenerator` と、共有メモリの最適サイズ計算および構成ヘッダー（`vfpga_system_config.h`）の生成を担当する `SystemConfigGenerator`、およびデバイスパス定義ヘッダー（`vfpga_device_config.h`）の生成を担当する `DeviceConfigGenerator` が定義されています。
 * **`vfpga/generator_rtl.py`**: ハードウェア設計・検証に密接に関連するコード生成器群です。
   * **`RTLGenerator`**: DTSからレジスタ読み書きロジック（`case`文など）を備えた Verilog の最上位スケルトン（`vfpga_top.v`）を生成します。
-  * **`SimulatorGenerator`**: Verilator モデルを実行し、共有メモリとRTLレジスタ間で双方向同期を行うC++シミュレータメインコード（`sim_main.cpp`）を生成します。
+  * **`SimulatorGenerator`**: Verilator モデルを実行し、共有メモリとRTLレジスタ間で双方向同期を行うC++シミュレータメインコード（`sim_main.cpp`）を生成します。118 ピン標準インターフェースに対しては C++17 SFINAE トレイト `has_l_pins_i<T>` を介して型安全な 4 ワード一括代入コードを出力します。
   * **`ManifestGenerator`**: ダッシュボード UI が動的にデバイス構成やレジスタ情報をリロードして描画するために必要な JSON マニフェスト（`board_manifest.json`）を生成します。
   * **`RustPACGenerator`**: Embedded Rust で検証を行うシナリオ向けに、DTS定義と同期した安全なアクセスライブラリ（`fbb_pac.rs`）を自動生成します。
-* **`vfpga/generator_shim.py` & `templates/libfpgashim.c.template`**: Aコアアプリケーション（ファームウェア）のシステムコール（`open`, `mmap`, `ioctl` 等）をインターセプトし、仮想的なデバイスファイルへのアクセスを共有メモリや UNIX ソケットへ安全にルーティングする C Shim（`libfpgashim.c`）の生成を行います。C言語としての約700行に及ぶ複雑なロジック記述は、`templates/libfpgashim.c.template` として外出しされているため、**C言語のシンタックスハイライト、コード補完、フォーマッタが有効な状態で安全に Shim の開発や拡張が行える**設計になっています。
+* **`vfpga/generator_shim.py` & `templates/libfpgashim.c.template`**: Aコアアプリケーション（ファームウェア）のシステムコール（`open`, `mmap`, `ioctl` 等）をインターセプトし、仮想的なデバイスファイルへのアクセスを共有メモリや UNIX ソケットへ安全にルーティングする C Shim（`libfpgashim.c`）の生成を行います。C言語としての複雑なロジック記述は、`templates/libfpgashim.c.template` として外出しされているため、**C言語のシンタックスハイライト、コード補完、フォーマッタが有効な状態で安全に Shim の開発や拡張が行える**設計になっています。さらに、本テンプレートには **決定論的カオス・障害注入エンジン**（`FBB_CHAOS_MODE`, `FBB_CHAOS_SEED`, `FBB_CHAOS_RATE`, `FBB_CHAOS_TARGETS`）が組み込まれており、無効時は条件分岐1回の完全ゼロオーバーヘッドを保証しつつ、有効時は `xorshift128+`（SplitMix64 初期化）PRNG による決定論的シード再現性をもって I2C, SPI, UIO, CDMA, SocketCAN へリアルタイムに障害（NACK、ビット反転、タイムアウト、パケット欠落、DecErr）を注入します。
 
 ### データフロー図
 ```mermaid
@@ -94,5 +94,5 @@ python3 scripts/test_gen_vfpga.py
 UART（シリアル通信）のエミュレーションを担当するスタンドアロン・スクリプトです。
 
 - **役割**: Shim が作成した PTY (Pseudo Terminal) デバイスを監視し、その入出力を TCP ポート（標準: 2000）へブリッジします。
-- **備考**: **現在、この機能は `vlogic_controller.py` の中に統合されており**、システム起動時に自動的に検出・ブリッジ処理が並行実行されます。そのため、本スクリプトを手動で起動する必要はありません（個別のデバッグ用途などのために残されています）。
-- **意義**: これにより、ホストPCから Tera Term や telnet を使って、仮想FPGA上のコンソールへリアルタイムにアクセス可能になります。
+- **備考**: **現在、この機能は `vlogic_controller.py` の中に統合されており**、システム起動時に自動的に検出・ブリッジ処理が並行実行されます。また、直近最大 64KB のコンソールログを永続リングバッファ（`/tmp/fbb_uart.history`）として保持するため、Web ダッシュボードの再読み込みやシナリオの再起動、後からのクライアント接続時にも過去の UART 出力が一切失われず即座にリプレイ・復元されます。そのため、本スクリプトを手動で起動する必要はありません（個別のデバッグ用途などのために残されています）。
+- **意義**: これにより、ホストPCから Tera Term や telnet、ダッシュボードのシリアル端末を使って、仮想FPGA上のコンソールへリアルタイムにアクセス可能になります。

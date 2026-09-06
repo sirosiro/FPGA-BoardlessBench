@@ -1,0 +1,95 @@
+{
+    "grid": {
+        "root": {
+            "type": "branch",
+            "data": [
+                {
+                    "type": "branch",
+                    "data": [
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "registerMonitor"
+                                ],
+                                "activeView": "registerMonitor",
+                                "id": "2"
+                            },
+                            "size": 262
+                        },
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "dtsVisualizer"
+                                ],
+                                "activeView": "dtsVisualizer",
+                                "id": "3"
+                            },
+                            "size": 802
+                        }
+                    ],
+                    "size": 400
+                },
+                {
+                    "type": "branch",
+                    "data": [
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "uartTerminal_default"
+                                ],
+                                "activeView": "uartTerminal_default",
+                                "id": "6"
+                            },
+                            "size": 477
+                        },
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "chaosEngine"
+                                ],
+                                "activeView": "chaosEngine",
+                                "id": "1"
+                            },
+                            "size": 587
+                        }
+                    ],
+                    "size": 1361
+                }
+            ],
+            "size": 1064
+        },
+        "width": 1761,
+        "height": 1064,
+        "orientation": "HORIZONTAL"
+    },
+    "panels": {
+        "registerMonitor": {
+            "id": "registerMonitor",
+            "contentComponent": "registerMonitor",
+            "title": "Registers"
+        },
+        "dtsVisualizer": {
+            "id": "dtsVisualizer",
+            "contentComponent": "dtsVisualizer",
+            "title": "DTS Visualizer & AI"
+        },
+        "uartTerminal_default": {
+            "id": "uartTerminal_default",
+            "contentComponent": "uartTerminal",
+            "params": {
+                "deviceName": "default"
+            },
+            "title": "UART Console"
+        },
+        "chaosEngine": {
+            "id": "chaosEngine",
+            "contentComponent": "chaosEngine",
+            "title": "Chaos & Fault Injection"
+        }
+    },
+    "activeGroup": "1"
+}

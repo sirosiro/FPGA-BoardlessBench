@@ -379,6 +379,46 @@
         1. 実機視覚操作体験の極致提供: ペリフェラル画面を開いた際、実機基板グラフィックをデフォルト前面に表示し、高倍率ズーム時でも自由なマウスドラッグで細部を観察できる直感的なデバッグ UI 環境を開発者に提供するため。
         2. UI-バックエンド通信信頼性の完全保護: オブジェクトエクスポート漏れによるサイレントエラー（エラー非発生でのパケット未送信）を排除し、PPA 5.0 データ駆動プロトコルの堅牢性を 100% 保証するため。
 
+- **2026-08-22: ADR #008 UIO 非同期割り込み（IRQ）エミュレーションと `eventfd` 透過ブロッキング機構の導入 (UIO Asynchronous Interrupt & eventfd Blocking Emulation)**
+  - **Decision:**
+        1. C-Shim (`libfpgashim.c.template`) において `/dev/uio*` に対する `read()` システムコールを横取りし、Linux ネイティブの `eventfd(0, EFD_CLOEXEC)` を用いて割込発生まで FW プロセスを安全にブロック待機させる `FbbDeviceContext` 拡張機能を導入。
+        2. シミュレータまたはコントローラからの割り込み発生通知を `eventfd` への書き込みによって中継し、FW 側の待機を即座に起床・解除。
+        3. FW が `/dev/uio*` へ `1` を書き込む割り込み再有効化（`uio_unmask`）シーケンスを透過捕捉。
+        4. 専用テストシナリオ [`01b_uio_irq_interrupt`](../../tests/scenarios/01b_uio_irq_interrupt/README.md) を新設。
+  - **Rationale:**
+        1. 実機ファームウェアのコード透過性 100% の維持: 実機 FW に `#ifdef` プリプロセッサ分岐を一切挟まず、プロダクション水準の実務標準 UIO 割込駆動ドライバをそのままホスト環境で透過実行可能にするため。
+
+- **2026-08-29: ADR #009 Linux SocketCAN (`AF_CAN`) API の完全透過エミュレーションと車載 ECU 診断環境の導入 (Full Transparent SocketCAN API Emulation & Automotive Gateway Diagnostics)**
+  - **Decision:**
+        1. C-Shim に `socket(AF_CAN, SOCK_RAW, CAN_RAW)`, `bind()`, `setsockopt(CAN_RAW_FILTER)`, `ioctl(SIOCGIFINDEX)` 等のシステムコールインターセプトを実装。
+        2. 外部ブローカーデーモンを排したサーバレス・マルチキャスト（`/tmp/fbb_can_p{bus_id}/`）とロックフリー共有メモリリングバッファ（`/dev/shm/fbb_can_ring{bus_id}`）によるゼロオーバーヘッド通信を実現。
+        3. Web ダッシュボードに `CanAnalyzerPane`（リアルタイムパケットテーブル & OBD-II パケットインジェクター）を導入。
+        4. 対話型 UART コンソールメニュー（`/dev/ttyPS1`）と自動回帰テストモードの切替機構を備えた車載ゲートウェイシナリオ [`21_can_socketcan_ecu`](../../tests/scenarios/21_can_socketcan_ecu/README.md) を統合。
+  - **Rationale:**
+        1. 物理トランシーバ不要の車載通信開発: 物理 CAN インターフェースやカーネル `vcan` モジュールを必要とせず、実機の車載 ECU ファームウェアや診断ツール（OBD-II / UDS）をホスト PC 上で 100% 透過的に開発・検証できるようにするため。
+
+- **2026-08-30: ADR #010 トランザクション・ロガー＆プロトコル・アサーション・エンジンの導入 (Transaction Logger & Register Protocol Assertion Engine)**
+  - **Decision:**
+        1. DTS レジスタ定義に `: RO`, `: WO`, `: RW` 属性をオプショナル拡張し、省略時は自動で `: RW` として処理する 100% 上位互換性を確保。
+        2. C-Shim にて Read-Only レジスタへの誤書き込みや Write-Only レジスタからの読み出し試行をリアルタイム検知し、標準エラー出力への赤字アサートメッセージ出力および `/tmp/fbb_protocol_violations.log` への構造化ログ記録を行うプロトコル・アサーション機構を導入。
+        3. Web ダッシュボードにアクセス履歴および違反警告をリアルタイム可視化する `TransactionLoggerPane` を導入。
+        4. 専用テストシナリオ [`01c_protocol_assertion`](../../tests/scenarios/01c_protocol_assertion/README.md) を新設。
+  - **Rationale:**
+        1. ハードウェアでのサイレントエラー撲滅: 実機 FPGA/SoC で Read-Only レジスタへ誤って Write を行った際にハードウェアが無言で無視（Silent Failure）する挙動に対し、テキストおよび UI レベルで違反をミリ秒で即時切り分け可能にするため。
+
+- **2026-09-06: ADR #011 決定論的シード再現型カオス・障害注入エンジンと Web ダッシュボード統合マルチコア・ライフサイクル管理の導入 (Deterministic PRNG Chaos Fault Injection & Dashboard Multi-Core Lifecycle Architecture)**
+  - **Decision:**
+        1. C-Shim (`libfpgashim.c.template`) に SplitMix64 初期化 + `xorshift128+` PRNG による決定論的カオスエンジンを組み込み。同一シード（`FBB_CHAOS_SEED`）を与えることで、全く同一の障害注入シーケンスを 100% 決定論的に再現可能化。
+        2. カオスモード無効時（`FBB_CHAOS_MODE=0` または未設定）は単一のインライン条件分岐のみとし、完全ゼロオーバーヘッド動作を保証。
+        3. I2C（確率的 NACK / タイムアウト ETIMEDOUT）、SPI（データバッファのビット反転）、UIO（割り込み待機タイムアウト）、CDMA（非アライメント DecErr 偽装）、SocketCAN（パケット無言ドロップ）の障害モデルを実装し、`/tmp/fbb_chaos_injection.log` へ構造化ログを記録。
+        4. Web ダッシュボードに `ChaosPanel` を追加し、Off / Random / Fixed モード切替、シード再生成（Reroll）、障害率（0.1%〜100%）スライダー、対象ペリフェラル選択、および CLI 再現コマンド（`fbb test <scenario> --chaos --seed ...`）のワンクリックコピー機能を提供。
+        5. 停止した特定コアのみを個別に起動・再試行できる選択的マルチコア・ライフサイクル管理 API（`/api/scenario/restart`）および、再起動・再接続時にもコンソール出力を失わない 64KB 永続 UART リングバッファ（`/tmp/fbb_uart.history`）を統合。
+        6. 専用テストシナリオ [`01d_chaos_fault_injection`](../../tests/scenarios/01d_chaos_fault_injection/README.md) を新設。
+  - **Rationale:**
+        1. 異常系テストの決定論的再現性の確立: 宇宙線や電気ノイズ、断線などの偶発的障害に対するファームウェアの再試行・フォールトトレラント耐性を、同一シードによる 100% の決定論的再現性をもってホスト環境で検証可能にするため。
+        2. 開発・デバッグサイクルの極大化: 障害発生により異常停止したコアのみをダッシュボードや CLI から即座に再起動して再試行できるようにし、再起動時も過去ログを失わない堅牢な観測環境を提供するため。
+
+
 
 
 

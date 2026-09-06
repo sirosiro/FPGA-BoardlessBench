@@ -1,0 +1,39 @@
+/dts-v1/;
+
+#include "src/peripherals/official_plugins/microchip_at24c02c/at24c02c.dtsi"
+
+/ {
+    #address-cells = <1>;
+    #size-cells = <1>;
+    model = "zynq7000-vfpga-01d_chaos_fault_injection";
+    compatible = "generic,fbb-vfpga";
+
+    chosen {
+        stdout-path = "/vfpga_uart@40002000";
+    };
+
+    vfpga_reg@40000000 {
+        compatible = "generic-uio";
+        reg = <0x40000000 0x1000>;
+        label = "/dev/uio0";
+        status = "okay";
+        registers = 
+            "CTRL   @ 0x00 : RW",
+            "STATUS @ 0x04 : RO",
+            "COUNTER@ 0x08 : RO";
+    };
+
+    vfpga_uart@40002000 {
+        compatible = "xlnx,xps-uartlite-1.00.a";
+        reg = <0x40002000 0x1000>;
+        label = "/dev/ttyUL0";
+        port = <2000>;
+    };
+
+    i2c0: i2c@e0004000 {
+        compatible = "cdns,i2c-r1p10";
+        reg = <0xe0004000 0x1000>;
+        bus_id = <0>;
+        label = "/dev/i2c-0";
+    };
+};

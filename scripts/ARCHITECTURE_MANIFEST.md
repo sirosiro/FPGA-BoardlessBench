@@ -26,6 +26,7 @@
 ### 3.1 Parser Layer (`DTSParser`)
 DTS ファイルを読み込み、意味論的な検証を行った上で `BoardModel` オブジェクトを構築する。
 - **再帰的 `#include` プリプロセス機能**: C プリプロセッサと同等に `#include "..."` および `#include <...>` ディレクティブを再帰的に解析し、メーカー提供の `.dtsi` 定義等を自動的にインライン展開する。
+- **DTS 構文事前検証 (`validate_syntax_precheck`)**: プロパティ定義末尾のセミコロン欠落や閉じ括弧の不整合を行番号・スニペット付きで事前検知。インラインコメント（`// ...`）を安全にトリムして誤検知を防ぎ、分かりやすい `DTSParserError` を出力する。
 - **`&label` ノードオーバーライド自動マージ**: `&i2c1 { ... }` のようなアンカー参照・オーバーライド構文を検知し、ルートノード (`/`) 内の該当ターゲットバスノードの中へ自動的に挿入・結合（マージ）する。
 - **ノードラベル保持と重複自動解消**: DTS ノード定義時のラベルプレフィックス（`uart1`, `uart2`, `uart3` 等）をデバイス名として保持。さらに同名ノードが複数存在するシナリオ（例: `serial@...`）においてもユニークインデックス（`serial`, `serial_1`, `serial_2`）を自動付与して上書き・衝突を防止する。
 - **方向レジスタ分類の精密化**: レジスタの `direction_mode` 自動識別時、データレジスタ (`PDIR`/`PDOR`) を方向設定から除外し、方向制御専用レジスタ (`PDDR`, `GDIR`, `TRI`, `DIR` 等) のみを正確に判定する。
@@ -40,9 +41,9 @@ DTS の論理構造を抽象化したデータモデル。
 `GeneratorOrchestrator` が `BoardModel` を各 `BaseGenerator` 実装へと配布し、一貫性のあるファイルセットを出力する。
 - **SystemConfigGenerator**: F-BBシステム構成ヘッダー (`vfpga_system_config.h`) を生成
 - **DeviceConfigGenerator**: シナリオ固有のデバイス定義ヘッダー (`vfpga_device_config.h`) を生成。`FBB_DEV_PATH_<NAME>` に加え、互換マクロ `FBB_DEV_PATH_<NAME>_0` を自動出力して既存ファームウェアとの後方互換性を保証する。
-- **ShimGenerator**: Shimライブラリ (`libfpgashim.c`) を生成。通常の UIO/GPIO/UART のラップに加え、非対称マルチコア（AMP）開発用の **VirtIO/RPMsg 仮想デバイススタック**（Unixドメインソケットを用いたAコア/Mコア間の通信、および proxy_pid を用いたIPIシグナル送信）を自動生成する。
+- **ShimGenerator**: Shimライブラリ (`libfpgashim.c`) を生成。通常の UIO/GPIO/UART のラップ、非対称マルチコア（AMP）開発用の **VirtIO/RPMsg 仮想デバイススタック**、および `xorshift128+` / SplitMix64 による**決定論的カオス障害注入エンジン**（I2C, SPI, UIO, CAN, CDMA への確率的障害注入と無効時ゼロオーバーヘッド動作）を自動生成する。
 - **RTLGenerator**: Verilog トップモジュール (`vfpga_top.v`) を生成
-- **SimulatorGenerator**: Verilator 用 C++ ラッパー (`sim_main.cpp`) を生成。共有メモリとRTLレジスタ間の同期を行うとともに、仮想IPI（`TRIG`）レジスタへの書き込み検知時に、Aコアの対応プロセスへシグナル（`SIGUSR2`）を自動中継して自身をクリアする調停ロジックを生成する。
+- **SimulatorGenerator**: Verilator 用 C++ ラッパー (`sim_main.cpp`) を生成。共有メモリとRTLレジスタ間の同期を行うとともに、仮想IPI（`TRIG`）レジスタへの書き込み検知時にAコアへシグナル（`SIGUSR2`）を自動中継。また 118 ピン標準インターフェース（`l_pins_i` [117:0]）向けに C++17 SFINAE トレイト `has_l_pins_i<T>` を介した型安全な 4 ワード一括代入を生成する。
 - **ManifestGenerator**: Webダッシュボード用メタデータ (`board_manifest.json`) を生成
 
 ## 4. クラス構造概略 (Class Diagram)

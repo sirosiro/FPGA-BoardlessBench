@@ -23,6 +23,10 @@ fi
 unset LD_PRELOAD
 unset LD_BIND_NOW
 
+export VFPGA_INTERACTIVE=1
+export FORCE_MESA_FALLBACK=1
+export FORCE_HOST_DISPLAY=1
+
 # クリーンアップ関数
 cleanup() {
     echo ""
@@ -35,12 +39,13 @@ cleanup() {
     pkill test_bin 2>/dev/null
     
     # remoteproc M-core processes cleanup
-    if [ -f "/tmp/fbb/sys/class/remoteproc/remoteproc0/pid" ]; then
-        MCORE_PID=$(cat /tmp/fbb/sys/class/remoteproc/remoteproc0/pid 2>/dev/null)
-        if [ -n "$MCORE_PID" ]; then
-            kill -9 $MCORE_PID 2>/dev/null
+    for pid_file in /tmp/fbb/sys/class/remoteproc/*/pid; do
+        if [ -f "$pid_file" ]; then
+            M_PID=$(cat "$pid_file" 2>/dev/null)
+            [ -n "$M_PID" ] && kill -9 $M_PID 2>/dev/null
         fi
-    fi
+    done
+    pkill -f "mcore_.*\.elf" 2>/dev/null || true
     rm -rf /tmp/fbb 2>/dev/null
 
     # 共有メモリファイルとマニフェストの削除
@@ -177,11 +182,17 @@ fi
 
 export LD_BIND_NOW=1
 export FBB_ACTIVE=1
-"${SCENARIO_DIR}/run.sh"
-unset FBB_ACTIVE
-unset LD_PRELOAD
-unset LD_BIND_NOW
+"${SCENARIO_DIR}/run.sh" &
+APP_PID=$!
 
-# アプリ終了後にバックエンドプロセスを自動クリーンアップして復帰
-echo "[Lab] Firmware process exited. Stopping background servers..."
+echo ""
+echo "===================================================="
+echo "  [Lab] Web Dashboard is ready!"
+echo "  Manage scenario execution, selective multi-core restart,"
+echo "  and chaos fault injection via the Web UI:"
+echo "  http://localhost:8080"
+echo "  Press Ctrl+C to terminate the lab and all background processes."
+echo "===================================================="
+
+wait $DASHBOARD_PID 2>/dev/null || while true; do sleep 1; done
 cleanup

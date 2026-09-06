@@ -52,6 +52,12 @@
 * **`01b_uio_irq_interrupt`**
   - **意図**: UIOドライバの非同期割り込み（IRQ）駆動動作の学習。
   - **役割**: FW側の `read()` / `poll()` ブロック待機、`uio_unmask` 割り込み許可、および RTL/eventfd からの割込解凍シーケンスの実務透過検証。
+* **`01c_protocol_assertion`**
+  - **意図**: レジスタアクセス属性（RO/WO/RW）違反のリアルタイム検知とプロトコル・アサーションの検証。
+  - **役割**: C-Shim トラッカーによる Read-Only レジスタへの誤書き込み捕捉、および `/tmp/fbb_protocol_violations.log` への自動記録と Transaction Logger 連動検証。
+* **`01d_chaos_fault_injection`**
+  - **意図**: 決定論的疑似乱数（`xorshift128+` / SplitMix64）を用いた通信障害・ペリフェラル異常注入に対するファームウェアのレジリエンス（再試行・復旧）検証。
+  - **役割**: I2C（NACK・タイムアウト）、SPI（ビット反転）、UIO（タイムアウト）、SocketCAN（パケットドロップ）、CDMA（デコードエラー）に対するシード値駆動の再現可能なカオス障害注入および Web ダッシュボード / CLI 連動の検証。
 * **`02_multi_i2c`**
   - **意図**: I2Cペリフェラルアクセスの検証。
   - **役割**: 複数I2Cバスへのアクセスと個別デバイスの識別（`ioctl`エミュレーション）。
@@ -166,6 +172,13 @@
 - **2026-08-29: ADR #009 Linux SocketCAN (`AF_CAN`) API の完全透過エミュレーションと車載 ECU 診断環境の導入**
   - **Decision**: C-Shim に `socket(AF_CAN, SOCK_RAW, CAN_RAW)`, `bind()`, `setsockopt(CAN_RAW_FILTER)`, `ioctl(SIOCGIFINDEX)` のインターセプトを実装。外部ブローカーデーモンを排したサーバレス・マルチキャスト（`/tmp/fbb_can_p{bus_id}/`）とロックフリー共有メモリリングバッファ（`/dev/shm/fbb_can_ring{bus_id}`）によるゼロオーバーヘッド通信、および Web ダッシュボード用 `CanAnalyzerPane`（リアルタイムパケットテーブル & OBD-II パケットインジェクター）を導入した。また、`start_lab.sh` 起動時の対話型 UART コンソールメニュー（`/dev/ttyPS1`）と自動回帰テストモードの切り替え機構を `21_can_socketcan_ecu` に統合した。
   - **Rationale**: 物理 CAN トランシーバやカーネル `vcan` モジュールを必要とせず、実機の車載 ECU ファームウェアや診断ツール（OBD-II / UDS）をホスト PC 上で 100% 透過的に開発・検証できるようにするため。
+- **2026-08-30: ADR #010 トランザクション・ロガー＆プロトコル・アサーション・エンジンの導入**
+  - **Decision**: DTS レジスタ定義に `: RO`, `: WO`, `: RW` 属性を拡張し、C-Shim にて不正な Read/Write 試行をリアルタイム検知してログ記録するプロトコル・アサーション機構と Web ダッシュボード `TransactionLoggerPane` を導入した。
+  - **Rationale**: ハードウェアでの無言の書き込み無視（Silent Failure）によるバグ調査コストを排除し、ファームウェア開発者がテキスト・UI レベルで違反を即座に切り分けられるようにするため。
+- **2026-09-06: ADR #011 決定論的シード再現型カオス・障害注入エンジンと Web ダッシュボード統合マルチコア・ライフサイクル管理の導入**
+  - **Decision**: C-Shim に `xorshift128+` PRNG と SplitMix64 によるシード初期化を組み込み、I2C（NACK/タイムアウト）、SPI（データ化け）、UIO（タイムアウト）、SocketCAN（パケット喪失）、CDMA（DecErr）を確率的に注入するカオスエンジンを導入。無効時は完全ゼロオーバーヘッド（条件分岐1回）を保証。さらに Web ダッシュボードに `ChaosPanel` を追加し、シード指定（Off/Random/Fixed）、CLI 再現コマンドコピー、障害率スライダー、およびマルチコア（Aコア/各Mコア）の個別選択的ライフサイクル再起動（`/api/scenario/restart`）を統合した。
+  - **Rationale**: 宇宙線、ノイズ、断線などの現実世界のハードウェア障害に対するファームウェアの再試行・フォールトトレラント耐性を、同一シードによる 100% の決定論的再現性をもってホスト環境で検証可能にするため。
+
 
 
 

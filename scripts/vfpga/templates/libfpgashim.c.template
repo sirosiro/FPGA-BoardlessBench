@@ -110,6 +110,142 @@ struct fbb_reg_perm {
 static struct fbb_reg_perm reg_perms[] = { %s };
 static int num_reg_perms = %d;
 
+/* ========================================================================= */
+/* F-BB Automated Chaos & Fault Injection Engine (Deterministic PRNG)        */
+/* ========================================================================= */
+
+#define FBB_CHAOS_TARGET_I2C  (1U << 0)
+#define FBB_CHAOS_TARGET_SPI  (1U << 1)
+#define FBB_CHAOS_TARGET_UIO  (1U << 2)
+#define FBB_CHAOS_TARGET_CAN  (1U << 3)
+#define FBB_CHAOS_TARGET_CDMA (1U << 4)
+#define FBB_CHAOS_TARGET_ALL  0xFFFFFFFFU
+
+static uint64_t fbb_chaos_s[2] = { 0x123456789ABCDEF0ULL, 0x0FEDCBA987654321ULL };
+static int fbb_chaos_enabled = 0;
+static uint64_t fbb_chaos_seed = 0;
+static uint64_t fbb_chaos_count = 0;
+static uint32_t fbb_chaos_targets = FBB_CHAOS_TARGET_ALL;
+static double fbb_chaos_rate = 0.20; // 20%% fault injection probability by default
+
+static inline uint64_t fbb_chaos_splitmix64(uint64_t *state) {
+    uint64_t z = (*state += 0x9e3779b97f4a7c15ULL);
+    z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ULL;
+    z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;
+    return z ^ (z >> 31);
+}
+
+static inline uint64_t fbb_chaos_xorshift128plus(void) {
+    uint64_t x = fbb_chaos_s[0];
+    uint64_t const y = fbb_chaos_s[1];
+    fbb_chaos_s[0] = y;
+    x ^= x << 23;
+    fbb_chaos_s[1] = x ^ y ^ (x >> 17) ^ (y >> 26);
+    return fbb_chaos_s[1] + y;
+}
+
+static int fbb_chaos_should_inject(uint32_t target_mask) {
+    if (__builtin_expect(!fbb_chaos_enabled, 1)) return 0;
+    if (!(fbb_chaos_targets & target_mask)) return 0;
+    fbb_chaos_count++;
+    uint64_t r = fbb_chaos_xorshift128plus();
+    uint64_t threshold = (uint64_t)(fbb_chaos_rate * (double)0xFFFFFFFFFFFFFFFFULL);
+    return (r < threshold);
+}
+
+static void fbb_chaos_log_event(const char *category, const char *fmt, ...) {
+    va_list ap;
+    va_start(ap, fmt);
+    char detail[512];
+    vsnprintf(detail, sizeof(detail), fmt, ap);
+    va_end(ap);
+
+    struct timeval tv;
+    gettimeofday(&tv, NULL);
+    unsigned long long ts_ms = (unsigned long long)tv.tv_sec * 1000ULL + (tv.tv_usec / 1000);
+
+    FILE *lf = fopen("/tmp/fbb_chaos_injection.log", "a");
+    if (lf) {
+        fprintf(lf, "[ts=%%llu] [CHAOS_%%s] seed=%%llu count=%%llu %%s\n",
+                ts_ms, category, (unsigned long long)fbb_chaos_seed, (unsigned long long)fbb_chaos_count, detail);
+        fclose(lf);
+    }
+    FILE *pv = fopen("/tmp/fbb_protocol_violations.log", "a");
+    if (pv) {
+        fprintf(pv, "[ts=%%llu] [CHAOS_FAULT] category=%%s seed=%%llu %%s\n",
+                ts_ms, category, (unsigned long long)fbb_chaos_seed, detail);
+        fclose(pv);
+    }
+}
+
+static void init_fbb_chaos(void) {
+    const char *mode_env = getenv("FBB_CHAOS_MODE");
+    if (!mode_env || (strcmp(mode_env, "1") != 0 && strcasecmp(mode_env, "true") != 0 && strcasecmp(mode_env, "on") != 0)) {
+        fbb_chaos_enabled = 0;
+        return;
+    }
+    fbb_chaos_enabled = 1;
+
+    const char *seed_env = getenv("FBB_CHAOS_SEED");
+    if (seed_env && strlen(seed_env) > 0) {
+        fbb_chaos_seed = (uint64_t)strtoull(seed_env, NULL, 0);
+    } else {
+        FILE *urand = fopen("/dev/urandom", "rb");
+        if (urand) {
+            if (fread(&fbb_chaos_seed, sizeof(fbb_chaos_seed), 1, urand) != 1) {
+                fbb_chaos_seed = (uint64_t)time(NULL) ^ ((uint64_t)getpid() << 16);
+            }
+            fclose(urand);
+        } else {
+            struct timespec ts;
+            clock_gettime(CLOCK_REALTIME, &ts);
+            fbb_chaos_seed = (uint64_t)ts.tv_sec ^ ((uint64_t)ts.tv_nsec << 12) ^ ((uint64_t)getpid() << 24);
+        }
+    }
+
+    uint64_t sm_state = fbb_chaos_seed;
+    fbb_chaos_s[0] = fbb_chaos_splitmix64(&sm_state);
+    fbb_chaos_s[1] = fbb_chaos_splitmix64(&sm_state);
+    if (fbb_chaos_s[0] == 0 && fbb_chaos_s[1] == 0) {
+        fbb_chaos_s[0] = 0x12345678ULL;
+        fbb_chaos_s[1] = 0x87654321ULL;
+    }
+
+    const char *rate_env = getenv("FBB_CHAOS_RATE");
+    if (rate_env && strlen(rate_env) > 0) {
+        double r = atof(rate_env);
+        if (r > 1.0) r /= 100.0;
+        if (r > 0.0 && r <= 1.0) fbb_chaos_rate = r;
+    }
+
+    const char *targets_env = getenv("FBB_CHAOS_TARGETS");
+    if (targets_env && strlen(targets_env) > 0) {
+        uint32_t t = 0;
+        if (strcasestr(targets_env, "i2c")) t |= FBB_CHAOS_TARGET_I2C;
+        if (strcasestr(targets_env, "spi")) t |= FBB_CHAOS_TARGET_SPI;
+        if (strcasestr(targets_env, "uio")) t |= FBB_CHAOS_TARGET_UIO;
+        if (strcasestr(targets_env, "can")) t |= FBB_CHAOS_TARGET_CAN;
+        if (strcasestr(targets_env, "cdma")) t |= FBB_CHAOS_TARGET_CDMA;
+        if (strcasestr(targets_env, "all")) t = FBB_CHAOS_TARGET_ALL;
+        if (t != 0) fbb_chaos_targets = t;
+    }
+
+    FILE *sf = fopen("/tmp/fbb_chaos_seed.txt", "w");
+    if (sf) {
+        fprintf(sf, "%%llu\n", (unsigned long long)fbb_chaos_seed);
+        fclose(sf);
+    }
+
+    fprintf(stderr, "\033[1;35m======================================================================\033[0m\n");
+    fprintf(stderr, "\033[1;35m[F-BB CHAOS] Fault Injection Engine Active!\033[0m\n");
+    fprintf(stderr, "\033[1;35m[F-BB CHAOS] Seed: %%llu (0x%%016llX) | Rate: %%.1f%%%% | Targets: 0x%%02X\033[0m\n",
+            (unsigned long long)fbb_chaos_seed, (unsigned long long)fbb_chaos_seed,
+            fbb_chaos_rate * 100.0, fbb_chaos_targets);
+    fprintf(stderr, "\033[1;35m[F-BB CHAOS] To reproduce this exact run, use: --chaos --seed=%%llu\033[0m\n",
+            (unsigned long long)fbb_chaos_seed);
+    fprintf(stderr, "\033[1;35m======================================================================\033[0m\n");
+}
+
 __attribute__((visibility("default"))) void fbb_check_protocol_assertion_addr(unsigned long addr, int is_write, unsigned long val);
 __attribute__((visibility("default"))) void fbb_write_reg(void *base_addr, unsigned long offset, uint32_t val);
 __attribute__((visibility("default"))) uint32_t fbb_read_reg(void *base_addr, unsigned long offset);
@@ -214,6 +350,14 @@ __attribute__((visibility("default"))) uint32_t fbb_read_reg(void *base_addr, un
     unsigned long abs_addr = resolve_physical_addr(base_addr, offset);
     uint32_t val = *(volatile uint32_t *)((char *)base_addr + offset);
     fbb_check_protocol_assertion_addr(abs_addr, 0, val);
+    if (__builtin_expect(fbb_chaos_enabled, 0)) {
+        if (offset == 0x04 && fbb_chaos_should_inject(FBB_CHAOS_TARGET_CDMA)) {
+            fbb_chaos_log_event("CDMA_DECERR", "addr=0x%%lX offset=0x%%lX", abs_addr, offset);
+            fprintf(stderr, "\033[1;31m[F-BB CHAOS] Injected CDMA DecErr status (0x%%08X -> 0x%%08X) (seed: %%llu)\033[0m\n",
+                    val, val | (1U << 6), (unsigned long long)fbb_chaos_seed);
+            val |= (1U << 6); // DMADecErr
+        }
+    }
     return val;
 }
 
@@ -381,6 +525,17 @@ static int transfer_spi_msg_via_socket(int bus_id, int cs, struct spi_ioc_transf
         received += r;
     }
     
+    if (fbb_chaos_should_inject(FBB_CHAOS_TARGET_SPI) && msg_len > 0) {
+        uint32_t byte_idx = (uint32_t)(fbb_chaos_xorshift128plus() %% msg_len);
+        uint8_t bit_idx = (uint8_t)(fbb_chaos_xorshift128plus() %% 8);
+        uint8_t old_byte = rx_ptr[byte_idx];
+        rx_ptr[byte_idx] ^= (1U << bit_idx);
+        fbb_chaos_log_event("SPI_BITFLIP", "bus=%%d cs=%%d byte=%%u bit=%%u old=0x%%02X new=0x%%02X",
+                            bus_id, cs, byte_idx, bit_idx, old_byte, rx_ptr[byte_idx]);
+        fprintf(stderr, "\033[1;31m[F-BB CHAOS] Injected SPI bit-flip on bus %%d CS %%d (byte %%u bit %%u: 0x%%02X -> 0x%%02X) (seed: %%llu)\033[0m\n",
+                bus_id, cs, byte_idx, bit_idx, old_byte, rx_ptr[byte_idx], (unsigned long long)fbb_chaos_seed);
+    }
+
     if (rx_temp) free(rx_temp);
     close(sock_fd);
     return 0;
@@ -1338,6 +1493,7 @@ static void __attribute__((constructor)) init_fbb_core(void) {
     original_sendto = dlsym(RTLD_NEXT, "sendto");
     original_recvfrom = dlsym(RTLD_NEXT, "recvfrom");
     init_segv_handler();
+    init_fbb_chaos();
 }
 
 /**
@@ -1360,6 +1516,13 @@ int ioctl(int fd, unsigned long request, ...) {
                 if (!data || !data->msgs) return -EFAULT;
                 int ret = 0;
                 for (unsigned int i = 0; i < data->nmsgs; i++) {
+                    if (fbb_chaos_should_inject(FBB_CHAOS_TARGET_I2C)) {
+                        fbb_chaos_log_event("I2C_NACK", "bus=%%d addr=0x%%02x", i2c_bus_id, data->msgs[i].addr);
+                        fprintf(stderr, "\033[1;31m[F-BB CHAOS] Injected I2C NACK (ENXIO) on bus %%d addr 0x%%02x (seed: %%llu, fault #%%llu)\033[0m\n",
+                                i2c_bus_id, data->msgs[i].addr, (unsigned long long)fbb_chaos_seed, (unsigned long long)fbb_chaos_count);
+                        errno = ENXIO;
+                        return -1;
+                    }
                     if (transfer_i2c_msg_via_socket(i2c_bus_id, &data->msgs[i]) < 0) {
                         ret = -1;
                     }
@@ -1429,6 +1592,13 @@ ssize_t write(int fd, const void *buf, size_t count) {
             }
         } else if (fd_contexts[fd].type == FBB_DEV_CAN) {
             if (!buf || count < sizeof(struct can_frame)) return -EINVAL;
+            if (fbb_chaos_should_inject(FBB_CHAOS_TARGET_CAN)) {
+                const struct can_frame *cf = (const struct can_frame *)buf;
+                fbb_chaos_log_event("CAN_DROP", "can_id=0x%%03X dlc=%%d", cf->can_id, cf->can_dlc);
+                fprintf(stderr, "\033[1;31m[F-BB CHAOS] Injected SocketCAN TX frame drop (can_id: 0x%%03X) (seed: %%llu)\033[0m\n",
+                        cf->can_id, (unsigned long long)fbb_chaos_seed);
+                return count;
+            }
             return broadcast_can_frame(fd, (const struct can_frame *)buf);
         }
     }
@@ -1443,6 +1613,13 @@ ssize_t read(int fd, void *buf, size_t count) {
     if (!original_read) original_read = dlsym(RTLD_NEXT, "read");
     if (fd >= 0 && fd < MAX_FDS) {
         if (fd_contexts[fd].type == FBB_DEV_UIO) {
+            if (fbb_chaos_should_inject(FBB_CHAOS_TARGET_UIO)) {
+                fbb_chaos_log_event("UIO_TIMEOUT", "fd=%%d route_idx=%%d", fd, fd_contexts[fd].sub_id);
+                fprintf(stderr, "\033[1;31m[F-BB CHAOS] Injected UIO interrupt timeout (ETIMEDOUT) on fd %%d (seed: %%llu)\033[0m\n",
+                        fd, (unsigned long long)fbb_chaos_seed);
+                errno = ETIMEDOUT;
+                return -1;
+            }
             int efd = fd_contexts[fd].eventfd_fd;
             if (efd >= 0) {
                 uint64_t irq_val = 0;
