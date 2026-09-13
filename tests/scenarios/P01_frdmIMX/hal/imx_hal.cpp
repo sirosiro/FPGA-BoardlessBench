@@ -33,10 +33,11 @@
 #include <GLES2/gl2.h>
 #include <GLES2/gl2ext.h>
 
+#include "vfpga_device_config.h"
+
 // GBM & DRM headers and fallbacks
 #if __has_include(<gbm.h>)
 #include <gbm.h>
-#include "vfpga_device_config.h"
 #else
 // Mock declarations for host environment compilation
 struct gbm_device;

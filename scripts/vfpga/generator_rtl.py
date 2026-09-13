@@ -305,7 +305,8 @@ void run_sim_loop(T* top, volatile uint32_t* shm, uint32_t* old_shm, VerilatedVc
         while (!Verilated::gotFinish()) {
             if (loop_count++ %% 10000 == 0) {
                 printf("[Sim Debug] ");
-                for (int j = 0; j < 16; j++) {
+                int max_debug = (SHM_SIZE / 4 < 16) ? (SHM_SIZE / 4) : 16;
+                for (int j = 0; j < max_debug; j++) {
                     printf("shm[%%d]=0x%%x ", j, shm[j]);
                 }
                 printf("\\n"); fflush(stdout);

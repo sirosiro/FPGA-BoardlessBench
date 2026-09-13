@@ -73,6 +73,9 @@ function checkProtocolViolations() {
     try {
         if (fs.existsSync(VIOLATION_LOG_PATH)) {
             const stats = fs.statSync(VIOLATION_LOG_PATH);
+            if (stats.size < lastViolationSize) {
+                lastViolationSize = 0;
+            }
             if (stats.size > lastViolationSize) {
                 const fd = fs.openSync(VIOLATION_LOG_PATH, 'r');
                 const buffer = Buffer.alloc(stats.size - lastViolationSize);
@@ -115,6 +118,9 @@ function checkChaosLogEvents() {
     try {
         if (fs.existsSync(CHAOS_LOG_PATH)) {
             const stats = fs.statSync(CHAOS_LOG_PATH);
+            if (stats.size < lastChaosLogSize) {
+                lastChaosLogSize = 0;
+            }
             if (stats.size > lastChaosLogSize) {
                 const fd = fs.openSync(CHAOS_LOG_PATH, 'r');
                 const buffer = Buffer.alloc(stats.size - lastChaosLogSize);
@@ -322,7 +328,6 @@ function loadManifest() {
             const newManifest = JSON.parse(data);
             const pathChanged = newManifest.hdmi_output_path !== manifest.hdmi_output_path;
             manifest = newManifest;
-            Object.keys(injectedPinOverrides).forEach(k => delete injectedPinOverrides[k]);
             if (pathChanged) {
                 setupHdmiWatcher();
             }
@@ -333,10 +338,6 @@ function loadManifest() {
     }
     return false;
 }
-
-
-// 手動注入された GPIO ピン入力状態の保持マップ { deviceName: { bitIndex: boolean } }
-const injectedPinOverrides = {};
 
 // =============================================================================
 // [CRITICAL SECTION] 単一 GPIO ピンの 4 バイト局所アトミック書き込み (Regression Guard)
@@ -771,13 +772,6 @@ io.on('connection', (socket) => {
     socket.on('gpio-inject', ({ deviceName, bitIndex, value, dataRegName = 'DATA' }) => {
         try {
             console.log(`[BACKEND-DEBUG] Received gpio-inject event: deviceName=${deviceName}, bitIndex=${bitIndex}, value=${value}`);
-            if (!injectedPinOverrides[deviceName]) {
-                injectedPinOverrides[deviceName] = {};
-            }
-            // Directly set injected state to passed value
-            injectedPinOverrides[deviceName][bitIndex] = !!value;
-            console.log(`[BACKEND-DEBUG] Current injectedPinOverrides for ${deviceName}:`, JSON.stringify(injectedPinOverrides[deviceName]));
-
             // Atomic 4-byte register pwrite
             injectGpioPin(deviceName, bitIndex, value, dataRegName);
             broadcastRegisters(true);

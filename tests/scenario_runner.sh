@@ -144,7 +144,7 @@ echo -e "\n[Runner] >>> Starting Scenario: ${SCENARIO_NAME} <<<"
 echo "[Runner] Generating code from ${DTS}..."
 python3 "${PROJECT_ROOT}/scripts/gen_vfpga.py" "${DTS}"
 
-# 3. エンジンのビルド
+# 2. エンジンのビルド
 # 【重要】コントローラ起動時にDTSで定義された周辺デバイスデーモン (fbb_spi_adc等) を正常に
 # 立ち上げるため、バックグラウンド起動前にプロジェクト全体 (周辺デバイスを含む) をビルド完了させておく。
 # そうしないと、対向デーモン不在によるソケット接続待ちでシミュレータがデッドロックします。
@@ -154,7 +154,7 @@ if [ -d "build" ]; then rm -rf build/* build/.[!.]* 2>/dev/null; fi
 cmake -B build -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DSCENARIO_DIR="${SCENARIO_DIR}" || exit 1
 cmake --build build || exit 1
 
-# 4. バックグラウンドプロセスの起動
+# 3. バックグラウンドプロセスの起動
 echo "[Runner] Starting Backend Controller & RTL Simulator..."
 python3 -u "${CONTROLLER}" "${DTS}" > "${SCENARIO_DIR}/controller.log" 2>&1 &
 "${SIMULATOR}" > "${SCENARIO_DIR}/simulator.log" 2>&1 &
@@ -169,11 +169,11 @@ fi
 # 通信の準備が整うまで少し待機
 sleep 2
 
-# 5. アプリケーションのビルド
+# 4. アプリケーションのビルド
 echo "[Runner] Building application via CMake..."
 cmake --build build || exit 1
 
-# 6. アプリケーションの実行 (LD_PRELOADを使用)
+# 5. アプリケーションの実行 (LD_PRELOADを使用)
 echo "[Runner] Executing application with LD_PRELOAD..."
 cd "${SCENARIO_DIR}"
 chmod +x ./run.sh

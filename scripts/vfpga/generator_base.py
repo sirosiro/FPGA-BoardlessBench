@@ -62,7 +62,7 @@ class SystemConfigGenerator(BaseGenerator):
         # PL SPI デバイスの検出
         pl_spi_socket = ""
         for dev in model.devices:
-            if dev.type == "spi" and dev.base_reg != 0xE0006000 and dev.base_reg != 0xE0007000:
+            if dev.type == "spi" and dev.base_addr != 0xE0006000 and dev.base_addr != 0xE0007000:
                 if hasattr(dev, "spi_slaves") and dev.spi_slaves:
                     slave = dev.spi_slaves[0]
                     bus_id = dev.extra_props.get("bus_id", 1)

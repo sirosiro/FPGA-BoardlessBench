@@ -14,7 +14,10 @@ _fbb_completions() {
 
     case "${COMP_WORDS[1]}" in
         test|inspect)
-            local scenarios_dir="/workspaces/FPGA-BoardlessBench/tests/scenarios"
+            local scenarios_dir="${FBB_ROOT:-/workspaces/FPGA-BoardlessBench}/tests/scenarios"
+            if [ ! -d "$scenarios_dir" ] && [ -d "./tests/scenarios" ]; then
+                scenarios_dir="./tests/scenarios"
+            fi
             local scenarios=""
             if [ -d "$scenarios_dir" ]; then
                 scenarios=$(ls -d ${scenarios_dir}/*/ 2>/dev/null | xargs -n1 basename 2>/dev/null)

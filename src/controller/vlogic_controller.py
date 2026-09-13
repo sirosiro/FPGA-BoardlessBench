@@ -567,7 +567,6 @@ def main():
     t_rproc = threading.Thread(target=remoteproc_monitor_thread, args=(dts_path,), daemon=True)
     t_rproc.start()
 
-    dts_path = sys.argv[1]
     regions = get_shm_info_from_dts(dts_path)
     
     # ジェネレータ側のロジックと合わせる (gen_vfpga.py と同じ計算)

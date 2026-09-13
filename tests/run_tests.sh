@@ -72,7 +72,7 @@ if [ "$CLEAN" = true ]; then
     echo "[Runner] Cleaning project artifacts and logs..."
     
     # Kill any zombie peripheral emulators and simulators running from build/bin directories
-    ps -ef | grep "/workspaces/FPGA-BoardlessBench/build/bin/" | grep -v grep | awk '{print $2}' | xargs kill -9 2>/dev/null || true
+    ps -ef | grep "${PROJECT_ROOT}/build/bin/" | grep -v grep | awk '{print $2}' | xargs kill -9 2>/dev/null || true
     ps -ef | grep "/tmp/fbb_build/bin/" | grep -v grep | awk '{print $2}' | xargs kill -9 2>/dev/null || true
     ps -ef | grep "test_bin" | grep -v grep | awk '{print $2}' | xargs kill -9 2>/dev/null || true
     pkill -9 -f "vlogic_controller" 2>/dev/null || true

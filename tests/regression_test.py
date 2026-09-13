@@ -61,10 +61,13 @@ def main():
                 stdout, stderr = proc.communicate(timeout=15)
                 is_passed = (proc.returncode == 0)
             else:
-                stdout, stderr = proc.communicate()
+                stdout, stderr = proc.communicate(timeout=60)
                 is_passed = (proc.returncode == 0)
         except subprocess.TimeoutExpired:
-            print(f"[Runner] Scenario {s} timed out as expected. Terminating process group...")
+            if is_infinite:
+                print(f"[Runner] Scenario {s} timed out as expected. Terminating process group...")
+            else:
+                print(f"[Runner] Scenario {s} timed out (exceeded 60s limit). Terminating process group...")
             try:
                 # Send SIGTERM to the process group
                 pgid = os.getpgid(proc.pid)
@@ -77,8 +80,12 @@ def main():
             except ProcessLookupError:
                 pass
                 
-            stdout, stderr = proc.communicate()
-            is_passed = True # Treat timeout as pass for infinite loops
+            try:
+                stdout, stderr = proc.communicate(timeout=5)
+            except subprocess.TimeoutExpired:
+                proc.kill()
+                stdout, stderr = proc.communicate()
+            is_passed = is_infinite  # Only treat timeout as pass for intentional infinite loops
             
         if is_passed:
             print(f"[Runner] RESULT: {s} PASSED")

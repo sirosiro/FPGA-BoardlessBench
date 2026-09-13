@@ -460,7 +460,7 @@ class DTSParser:
                         s_addr_str = s_node_name.split("@")[1] if "@" in s_node_name else "0"
                         try:
                             s_addr = int(s_addr_str, 16)
-                        except:
+                        except (ValueError, TypeError):
                             s_addr = 0
 
                         s_props = {}
@@ -478,7 +478,7 @@ class DTSParser:
                             init_val_str = s_props.get("fbb,mock-data", "0x10")
                             try:
                                 init_val = int(init_val_str, 0)
-                            except:
+                            except (ValueError, TypeError):
                                 init_val = 0x10
                             mock_file = s_props.get("fbb,mock-file", None)
                             slave = I2CSlave(s_name, s_addr, s_props["compatible"], mock_file, init_val)
@@ -510,7 +510,7 @@ class DTSParser:
                         s_cs_str = s_node_name.split("@")[1] if "@" in s_node_name else "0"
                         try:
                             s_cs = int(s_cs_str, 0)
-                        except:
+                        except (ValueError, TypeError):
                             s_cs = 0
 
                         s_props = {}
@@ -528,7 +528,7 @@ class DTSParser:
                             init_val_str = s_props.get("fbb,mock-data", "2048")
                             try:
                                 init_val = int(init_val_str, 0)
-                            except:
+                            except (ValueError, TypeError):
                                 init_val = 2048
                             mock_file = s_props.get("fbb,mock-file", None)
                             slave = SPISlave(s_name, s_cs, s_props["compatible"], mock_file, init_val)
