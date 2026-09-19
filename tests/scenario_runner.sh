@@ -84,7 +84,7 @@ if [ "$CLEAN" = true ]; then
     rm -f libfpgashim.so vfpga_sim 2>/dev/null
     rm -rf logs obj_dir 2>/dev/null
     rm -f /dev/shm/spi_adc /dev/shm/fbb_* 2>/dev/null
-    rm -f /tmp/vring0 /tmp/vfpga_reg /tmp/fbb_compatible /tmp/fbb_model /tmp/uio* /tmp/fbb_uart_* /tmp/vfpga_uart_* /tmp/fbb_spi_* /tmp/fbb_i2c_* /tmp/fbb_protocol_violations.log 2>/dev/null
+    rm -f /tmp/vring0 /tmp/vfpga_* /tmp/fbb_compatible /tmp/fbb_model /tmp/uio* /tmp/fbb_uart_* /tmp/vfpga_uart_* /tmp/fbb_spi_* /tmp/fbb_i2c_* /tmp/fbb_uio_irq_* /tmp/fbb_protocol_violations.log 2>/dev/null
     if [ -n "$SCENARIO_DIR" ]; then
         if [[ " $CLEAN_TARGETS " =~ " distclean " || " $CLEAN_TARGETS " =~ " cleanall " ]]; then
             rm -rf "${SCENARIO_DIR}/FreeRTOS-Kernel" "${SCENARIO_DIR}/threadx" "${SCENARIO_DIR}/CMSIS-FreeRTOS" "${SCENARIO_DIR}/stm32-mw-cmsis-rtos-tx" "${SCENARIO_DIR}/CMSIS_5" 2>/dev/null
@@ -122,7 +122,7 @@ cleanup() {
     done
     pkill -f "mcore_.*\.elf" 2>/dev/null || true
     rm -rf /tmp/fbb /tmp/fbb_can_* /dev/shm/fbb_can_* 2>/dev/null
-    rm -f /tmp/vring0 /tmp/vfpga_reg /tmp/fbb_compatible /tmp/fbb_model /tmp/uio* /tmp/fbb_uart_* /tmp/vfpga_uart_* /tmp/fbb_spi_* /tmp/fbb_i2c_* 2>/dev/null
+    rm -f /tmp/vring0 /tmp/vfpga_* /tmp/fbb_compatible /tmp/fbb_model /tmp/uio* /tmp/fbb_uart_* /tmp/vfpga_uart_* /tmp/fbb_spi_* /tmp/fbb_i2c_* /tmp/fbb_uio_irq_* 2>/dev/null
 }
 
 # 異常終了時や中断時（Ctrl+C）にプロセスを掃除するように設定

@@ -381,11 +381,13 @@ void run_sim_loop(T* top, volatile uint32_t* shm, uint32_t* old_shm, VerilatedVc
                         if (connect(irq_sock, (struct sockaddr*)&irq_addr, sizeof(irq_addr)) == 0) {
                             uint64_t val = 1;
                             send(irq_sock, &val, sizeof(val), 0);
+                            last_irq = 1;
                         }
                         close(irq_sock);
                     }
+                } else if (!top->irq_out) {
+                    last_irq = 0;
                 }
-                last_irq = top->irq_out;
             }
             m_trace->dump(vtime++);
             bridge.tick(top);

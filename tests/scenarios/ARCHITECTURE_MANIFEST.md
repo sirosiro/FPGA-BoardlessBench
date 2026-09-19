@@ -141,6 +141,9 @@ F-BB のテストシナリオは、将来の拡張性と責務分離（SoC/ベ�
 * **`21_can_socketcan_ecu`**
   - **意図**: 車載 ECU ゲートウェイおよび Linux 標準 SocketCAN (`AF_CAN`) API の完全透過エミュレーションと OBD-II / UDS 診断応答の検証。
   - **役割**: C-Shim における `socket(AF_CAN, SOCK_RAW, CAN_RAW)`, `bind()`, `setsockopt(CAN_RAW_FILTER)`, `ioctl(SIOCGIFINDEX)` のインターセプト、サーバレス・マルチキャスト通信、ロックフリー共有メモリリングバッファ、Web ダッシュボード CAN Bus Analyzer ペイン連携、および対話型 UART コンソールメニューと自動回帰テストの両立検証。
+* **`22_ros2_control_minimal`**
+  - **意図**: ロボット制御フレームワーク `ros2_control` の UIO ハードウェア境界および決定論的制御ループの最小セット検証。
+  - **役割**: 上位 ROS 2 スタックを要求しないゼロインストール C++17 互換レイヤーによる `hardware_interface::SystemInterface` 実装、UIO MMIO 経由の 1kHz リアルタイムジッター計測、差動二輪（左右輪）閉ループ速度・位置制御、ハードウェア E-STOP 即時遮断、プロトコル・アサーション検知、および 32-bit カウンタ折り返し（Wrap-around）耐性の網羅的検証。
 * **`P01_frdmIMX`**
   - **意図**: 車載画像処理SoC（i.MX95/8MP）を模擬した高度なハードウェア/ソフトウェア協調デバッグ。
   - **役割**: Mesa OpenGL ESを使用した4カメラ歪み補正・バードアイ合成、およびSoCモデル自動検知（compatible/model）、極性反転設計（TRI = ~GDIR）の検証。
@@ -189,6 +192,9 @@ F-BB のテストシナリオは、将来の拡張性と責務分離（SoC/ベ�
 - **2026-09-06: ADR #011 決定論的シード再現型カオス・障害注入エンジンと Web ダッシュボード統合マルチコア・ライフサイクル管理の導入**
   - **Decision**: C-Shim に `xorshift128+` PRNG と SplitMix64 によるシード初期化を組み込み、I2C（NACK/タイムアウト）、SPI（データ化け）、UIO（タイムアウト）、SocketCAN（パケット喪失）、CDMA（DecErr）を確率的に注入するカオスエンジンを導入。無効時は完全ゼロオーバーヘッド（条件分岐1回）を保証。さらに Web ダッシュボードに `ChaosPanel` を追加し、シード指定（Off/Random/Fixed）、CLI 再現コマンドコピー、障害率スライダー、およびマルチコア（Aコア/各Mコア）の個別選択的ライフサイクル再起動（`/api/scenario/restart`）を統合した。
   - **Rationale**: 宇宙線、ノイズ、断線などの現実世界のハードウェア障害に対するファームウェアの再試行・フォールトトレラント耐性を、同一シードによる 100% の決定論的再現性をもってホスト環境で検証可能にするため。
+- **2026-09-19: ADR #012 ros2_control ハードウェア境界の最小セット検証 (Scenario 22) とゼロインストール互換レイヤーの導入**
+  - **Decision**: ROS 2 実践プロジェクト (`P02_robot_amr_ros2`) に先立ち、巨大な ROS 2 ディストリビューション (Humble/Jazzy等) のインストールを一切要求せず、純粋な C++17 と Linux 標準ツールのみで動作する「基盤技術の最小セット検証シナリオ」として `22_ros2_control_minimal` を新設した。`hardware_interface::SystemInterface` の主要 API (`on_init`, `on_activate`, `read`, `write`, `export_state_interfaces`, `export_command_interfaces`) を完全互換でヘッダー内提供し、UIO MMIO / 1kHz リアルタイム制御ループ / 双輪エンコーダ / ハードウェア E-STOP / プロトコル・アサーション / 32-bit カウンタ折り返し（Wrap-around）耐性を検証する。
+  - **Rationale**: F-BB の基本理念である「ゼロヘビーインストール」「Learner-Centric Purity」「高い可搬性と高速なCI実行」を維持しつつ、ROS 2 連携における最も重要かつ障害の多発するハードウェア/ソフトウェア接合境界（UIO MMIO と 1kHz 決定論的ジッター）を隔離して確実に事前保証するため。
 
 
 

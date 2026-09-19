@@ -10,7 +10,7 @@ flowchart TD
     S2["Stage 2: 周辺機器と通信しよう\n(I2C, SPI, ディスプレイ表示)"]
     S3["Stage 3: 実践的なハードウェア制御\n(プロトコル検証・DMA・CAN)"]
     S4["Stage 4: ヘテロジニアスマルチコア (AMP)\n(Linux + RTOS / OpenAMP)"]
-    S5["Stage 5: モダン組み込み (Rust / 応用)\n(Embassy, RTIC, 特殊デバイス)"]
+    S5["Stage 5: モダン組み込み (Rust / C++ / ロボティクス)\n(Embassy, RTIC, ros2_control)"]
 
     S1 --> S2 --> S3 --> S4 --> S5
 ```
@@ -66,8 +66,8 @@ flowchart TD
 
 ---
 
-## Stage 5: モダン組み込み & 発展技術（Rust / C++）
-**目標**: C言語だけでなく、安全性・生産性の高い最新技術を試してみる。
+## Stage 5: モダン組み込み & 発展技術（Rust / C++ / ロボティクス）
+**目標**: C言語だけでなく、安全性・生産性の高い最新技術やロボット制御フレームワーク（ros2_control）を試してみる。
 
 | 順番 | シナリオ名 | 学ぶこと |
 | :--- | :--- | :--- |
@@ -75,6 +75,7 @@ flowchart TD
 | **5-2** | [17_amp_mcore_Rust_embassy](../../tests/scenarios/17_amp_mcore_Rust_embassy/README.md) | 非同期Rust（Embassy）による省電力・高効率な制御 |
 | **5-3** | [18_amp_mcore_Rust_rtic](../../tests/scenarios/18_amp_mcore_Rust_rtic/README.md) | リアルタイムRustフレームワーク（RTIC） |
 | **5-4** | [S01_cpp_lfsr_sequencer](../../tests/scenarios/S01_cpp_lfsr_sequencer/README.md) | C++によるシミュレーション検証 |
+| **5-5** | [22_ros2_control_minimal](../../tests/scenarios/22_ros2_control_minimal/README.md) | ロボット制御（ros2_control）ハードウェア境界と 1kHz リアルタイム制御ループ |
 
 ---
 

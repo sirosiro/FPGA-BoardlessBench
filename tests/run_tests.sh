@@ -35,7 +35,7 @@ cleanup_processes() {
         fi
     fi
     rm -rf /tmp/fbb /tmp/fbb_can_* /dev/shm/fbb_can_* 2>/dev/null
-    rm -f /tmp/vring0 /tmp/vfpga_reg /tmp/fbb_compatible /tmp/fbb_model 2>/dev/null
+    rm -f /tmp/vring0 /tmp/vfpga_* /tmp/fbb_compatible /tmp/fbb_model /tmp/fbb_uio_irq_* 2>/dev/null
 }
 
 # --- Argument Parsing ---
@@ -98,6 +98,7 @@ if [ "$CLEAN" = true ]; then
         rm -rf tests/scenarios/13_amp_mcore_cmsis-rtos2-threadx/stm32-mw-cmsis-rtos-tx 2>/dev/null
         rm -rf tests/scenarios/13_amp_mcore_cmsis-rtos2-threadx/CMSIS_5 2>/dev/null
         rm -rf tests/scenarios/15_amp_mcore_OpenAMP_freertos/FreeRTOS-Kernel 2>/dev/null
+        rm -rf tests/scenarios/22_ros2_control_minimal/external 2>/dev/null
     fi
 
     rm -f tests/scenarios/*/*.log
@@ -134,7 +135,7 @@ start_environment() {
     sync
     sleep 1
     rm -f libfpgashim.so vfpga_sim
-    rm -f /tmp/vring0 /tmp/vfpga_reg /tmp/fbb_compatible /tmp/fbb_model 2>/dev/null
+    rm -f /tmp/vring0 /tmp/vfpga_* /tmp/fbb_compatible /tmp/fbb_model /tmp/fbb_uio_irq_* 2>/dev/null
 
     echo "[Runner] Setting up environment with ${dts}..."
     

@@ -12,7 +12,7 @@ FPGA-BoardlessBench (F-BB)は、FPGAを搭載した実機や評価ボードが�
 評価ボード・オシロスコープ・JTAG機器なしで、実機Linux/RTOS/FPGA協調設計の製品レベル開発技術を修得できる **[組み込み・FPGA技術研修ソリューション提案書](./docs/architecture/AddInfo_Technical_Training_Proposal.md)** を公開しています。
 
 **初学者向けステップアップ学習ロードマップ**  
-「まずはレジスタを動かしてみる」から「周辺機器通信」「高速DMA」「マルチコア・RTOS」まで、全34本のテストシナリオを通して無理なく段階的に学べる **[ステップアップ学習プラン](./docs/architecture/AddInfo_Learning_Roadmap.md)** を用意しています。
+「まずはレジスタを動かしてみる」から「周辺機器通信」「高速DMA」「マルチコア・RTOS」まで、全35本のテストシナリオを通して無理なく段階的に学べる **[ステップアップ学習プラン](./docs/architecture/AddInfo_Learning_Roadmap.md)** を用意しています。
 
 ---
 [Scenario S01: C++ LFSR シーケンサー・ショーケース](tests/scenarios/S01_cpp_lfsr_sequencer/)
@@ -180,7 +180,7 @@ FPGA-BoardlessBench (F-BB)が「Zynqを想定した実働FW（ファームウェ
 F-BB では、テスト実行、DTS アドレスマップ検査、新規シナリオスカフォールディング（雛形作成）、サードパーティ製 PPA アドオンペリフェラルのワンコマンドインストールを単一コマンド `fbb` に集約しています。環境起動時にパスおよび Tab キー補完機能が自動有効化されます。
 
 ```bash
-# 1. 全自動テストスイートの実行 (全34シナリオの合否一括判定)
+# 1. 全自動テストスイートの実行 (全35シナリオの合否一括判定)
 fbb test
 
 # 2. 特定シナリオのテスト実行 (シナリオ名、相対/絶対パス、補完 01_<Tab> 対応)
@@ -239,7 +239,7 @@ fbb test
   ./start_lab.sh tests/scenarios/S01_cpp_lfsr_sequencer/
   ```
 
-> 💡 **全34シナリオの一覧・技術対応表**  
+> 💡 **全35シナリオの一覧・技術対応表**  
 > Aコア/Mコア AMP 協調動作、車載 SocketCAN、AXI CDMA 高速転送、HUB75 LED パネルなど、すべての検証シナリオの概要と対応表は、後述の **[提供されているテストシナリオ一覧](#提供されているテストシナリオ一覧)** を参照してください。各シナリオディレクトリ内には図解入りの詳細な `README.md` が用意されています。
 
 ### 3. 対話モードとダッシュボードの利用
@@ -382,6 +382,7 @@ F-BB のテストシナリオは、将来の拡張性と責務分離（SoC/ベ�
 | [20_dma_cdma](tests/scenarios/20_dma_cdma/) | Zynq AXI CDMA IP (`xlnx,axi-cdma-1.00.a`) による超高速・高信頼 DMA エミュレーションおよび事前境界チェックの検証 | AXI CDMA, `memcpy` エミュレーション, アライメント判定 (`DMADecErr`), アンダーラン (Stale Data), オーバーラン (`OVERRUN_ERR`) |
 | [20b_mcore_cdma](tests/scenarios/20b_mcore_cdma/) | AMP Mコア (Cortex-M / ベアメタル) による AXI CDMA オフロード制御 & リアルタイム DMA エミュレーションの検証 | AMP, Mコアベアメタル, AXI CDMA オフロード, ゼロコピー DRAM 共有, `remoteproc` 連携 |
 | [21_can_socketcan_ecu](tests/scenarios/21_can_socketcan_ecu/) | Linux SocketCAN (`AF_CAN`) API の完全透過エミュレーション、車載 ECU テレメトリ配信、および OBD-II 診断プロトコル (PID 0D / 0C) 応答検証 | SocketCAN, 車載 ECU ゲートウェイ, OBD-II / UDS 診断, `0x7DF`/`0x7E8`, CAN Bus Analyzer ペイン |
+| [22_ros2_control_minimal](tests/scenarios/22_ros2_control_minimal/) | ロボット制御フレームワーク `ros2_control` の UIO ハードウェア境界および決定論的 1kHz リアルタイム制御ループ（ジッター計測、差動二輪対称閉ループ、E-STOP 即時遮断、プロトコル違反検知、32-bit ラップアラウンド耐性）のゼロインストール検証 | ros2_control, `SystemInterface`, UIO MMIO, 1kHz タイマ割込待機, 双輪エンコーダ, ハードウェア E-STOP, プロトコル・アサーション |
 
 ### 2. 本格的な実践プロジェクト構成（P プレフィックス: Practical Project Integration）
 
@@ -453,28 +454,28 @@ F-BBは、ハードウェア記述言語（RTL）から、低レイヤーのシ�
 
 ビルド成果物（`build`, `dist`）、外部パッケージ（`node_modules`）、および一時ファイルを除外したリポジトリ全体の静的ソースコードを `cloc` (Count Lines of Code v1.90) にて正確に計測した結果です。
 
-F-BB 独自のプロジェクトコードのみ（`--cleanall` 時）で**純プログラムステップ数（Pure Code） 40,792 行 (約 40.8k LOC)**、総行数 **51,730 行**（全 376 ファイル）で構成されています。また、シナリオ 10〜15 で動的ロードされる外部 RTOS カーネル（FreeRTOS, ThreadX, CMSIS_5）のソース群を含むフル状態では **88,200 行 (88.2k+ LOC)** / **全 165,700 行**（全 754 ファイル）の規模となります。
+F-BB 独自のプロジェクトコードのみ（`--cleanall` 時）で**純プログラムステップ数（Pure Code） 41,555 行 (約 41.6k LOC)**、総行数 **52,780 行**（全 385 ファイル）で構成されています。また、シナリオ 10〜15 で動的ロードされる外部 RTOS カーネル（FreeRTOS, ThreadX, CMSIS_5）のソース群を含むフル状態では **89,000 行 (89.0k+ LOC)** / **全 167,000 行**（全 763 ファイル）の規模となります。
 
 > **Project Scale Summary (`cloc` 計測値):**
-> - **Pure F-BB Code (F-BB独自コードのみ):** **40,792 Lines of Code** *(総行数 51,730行 / 376ファイル / コメント 3,325行 / 空行 7,613行)*
-> - **Full Environment (外部RTOSカーネル同梱時):** **約 88,200 Lines of Code** *(総行数 約 165,700行 / 754ファイル)*
-> - **主要言語構成:** *(Markdown/Doc: ~11.1k LOC, JSON: ~6.9k LOC, C/C++: ~11.5k LOC (全シナリオFW/Shim/PPA), React/JSX/JS/CSS: ~6.0k LOC, Python: ~2.2k LOC)*
+> - **Pure F-BB Code (F-BB独自コードのみ):** **41,555 Lines of Code** *(総行数 52,780行 / 385ファイル / コメント 3,443行 / 空行 7,782行)*
+> - **Full Environment (外部RTOSカーネル同梱時):** **約 89,000 Lines of Code** *(総行数 約 167,000行 / 763ファイル)*
+> - **主要言語構成:** *(Markdown/Doc: ~11.2k LOC, JSON: ~6.9k LOC, C/C++: ~12.0k LOC (全シナリオFW/Shim/PPA), React/JSX/JS/CSS: ~6.0k LOC, Python: ~2.2k LOC)*
 
 | 言語分類 (cloc) | 拡張子 | ファイル数 | 空行 (Blank) | コメント (Comment) | 純コード (Pure LOC) | 総行数 (Total Lines) | 主な構成要素と役割 |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **Markdown** | `.md` | 121 | 4,323 | 0 | **11,130行** | **15,453行** | システム仕様書、ADR、初学者学習ロードマップ、全34シナリオREADME/ADVANCED仕様書、PPA 5.1 開発ガイド |
-| **JSON / Manifest** | `.json` | 33 | 0 | 0 | **6,909行** | **6,909行** | PPAペリフェラルマニフェスト (`fbb-plugin.json`)、ボード構造メタデータ |
+| **Markdown** | `.md` | 122 | 4,365 | 0 | **11,235行** | **15,600行** | システム仕様書、ADR、初学者学習ロードマップ、全35シナリオREADME/ADVANCED仕様書、PPA 5.1 開発ガイド |
+| **JSON / Manifest** | `.json` | 33 | 0 | 0 | **6,906行** | **6,906行** | PPAペリフェラルマニフェスト (`fbb-plugin.json`)、ボード構造メタデータ |
+| **C++** | `.cpp` | 22 | 875 | 907 | **5,640行** | **7,422行** | Verilator シミュレーションコア、PPA ペリフェラルプラグイン実装、Scenario 22 ros2_control ハードウェア層 |
 | **C** | `.c` | 35 | 835 | 701 | **5,379行** | **6,915行** | システムコール横取り Shim、エミュレータデーモン、カオス障害注入エンジン、全シナリオ FW |
-| **C++** | `.cpp` | 20 | 815 | 847 | **5,355行** | **7,017行** | Verilator シミュレーションコア、PPA ペリフェラルプラグイン実装 |
 | **JSX** | `.jsx` | 18 | 389 | 147 | **4,340行** | **4,876行** | Vite + React 19 UI（Dockview, DPPA `paneRegistry.jsx`, `PopoutWindow.jsx`, `DockHeaderActions.jsx`, Recharts, 各種診断ペイン） |
-| **Python** | `.py` / CLI | 14 | 408 | 794 | **2,199行** | **3,401行** | DTSパース・診断エンジン (`DTSParserError`)、コード自動生成、統一 CLI (`bin/fbb`), PPA |
+| **Python** | `.py` / CLI | 14 | 408 | 794 | **2,201行** | **3,403行** | DTSパース・診断エンジン (`DTSParserError`)、コード自動生成、統一 CLI (`bin/fbb`), PPA |
 | **JavaScript** | `.js` | 3 | 156 | 70 | **1,283行** | **1,509行** | ダッシュボード WebSockets サーバー（`dashboard/server.js`）、マルチスクリーンレイアウト永続化 API |
-| **Bourne Shell** | `.sh` | 38 | 200 | 187 | **952行** | **1,339行** | 自動検証ランナー（`run_tests.sh`）、ラボ起動スクリプト（`start_lab.sh`） |
+| **C/C++ Header** | `.h` / `.hpp` | 36 | 167 | 289 | **1,005行** | **1,461行** | 統一 CLI パーサー (`cli_helper.hpp`)、デバイス共通ヘッダー、レジスタ定義、Shimマクロ、Scenario 22 hardware_interface互換層 |
+| **Bourne Shell** | `.sh` | 39 | 203 | 188 | **969行** | **1,360行** | 自動検証ランナー（`run_tests.sh`）、シナリオ単体ランナー（`scenario_runner.sh`）、ラボ起動スクリプト（`start_lab.sh`） |
+| **Verilog** | `.v` | 19 | 104 | 174 | **922行** | **1,200行** | シミュレーション対象の FPGA ハードウェア記述 (RTL) |
+| **CMake** | `CMakeLists.txt` / `.cmake` | 23 | 121 | 68 | **813行** | **1,002行** | マルチターゲットビルド設定（シナリオ・PPA・カーネル） |
 | **Other / Rust** | `.rs` / `.css` / 他 | 21 | 159 | 105 | **862行** | **1,126行** | UIスタイルシート (CSS), Mコア Rust FW, 各種設定メタデータ |
-| **C/C++ Header** | `.h` / `.hpp` | 33 | 121 | 260 | **801行** | **1,182行** | 統一 CLI パーサー (`cli_helper.hpp`)、デバイス共通ヘッダー、レジスタ定義、Shimマクロ |
-| **Verilog** | `.v` | 18 | 93 | 147 | **794行** | **1,034行** | シミュレーション対象の FPGA ハードウェア記述 (RTL) |
-| **CMake** | `CMakeLists.txt` / `.cmake` | 22 | 114 | 67 | **788行** | **969行** | マルチターゲットビルド設定（シナリオ・PPA・カーネル） |
-| **合計 (SUM Total)** | **-** | **376** | **7,613** | **3,325** | **40,792行** | **51,730行** | **F-BB プラットフォーム全体の静的ソースコード総数** |
+| **合計 (SUM Total)** | **-** | **385** | **7,782** | **3,443** | **41,555行** | **52,780行** | **F-BB プラットフォーム全体の静的ソースコード総数** |
 
 
 > **コード生成エンジンによる動的コード**
