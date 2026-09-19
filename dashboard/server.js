@@ -1033,18 +1033,24 @@ setInterval(() => {
 
 
 
-// GET /api/layout - Load fbb_layout.json from the active scenario folder
-// @intent:rationale 指定されたテストシナリオフォルダ配下の fbb_layout.json を読み込み、クライアントに返します。存在しない場合は 404 を返します。
+// GET /api/layout - Load layout file from the active scenario folder (supports ?screen=<id>)
+// @intent:rationale 指定されたテストシナリオフォルダ配下の fbb_layout.json（または ?screen=<id> 指定時は fbb_layout_${screen}.json）を読み込み、クライアントに返します。存在しない場合は 404 を返します。
 app.get('/api/layout', (req, res) => {
     const projRoot = manifest.project_root || path.join(__dirname, '..');
     const scnDir = manifest.scenario_dir || '.';
-    const layoutPath = path.isAbsolute(scnDir) ? path.join(scnDir, 'fbb_layout.json') : path.join(projRoot, scnDir, 'fbb_layout.json');
+    const screen = req.query.screen ? String(req.query.screen).replace(/[^a-zA-Z0-9_-]/g, '') : null;
+    const layoutFilename = screen && screen !== 'default' && screen !== 'main'
+        ? `fbb_layout_${screen}.json`
+        : 'fbb_layout.json';
+    const layoutPath = path.isAbsolute(scnDir)
+        ? path.join(scnDir, layoutFilename)
+        : path.join(projRoot, scnDir, layoutFilename);
     try {
         if (fs.existsSync(layoutPath)) {
             const data = fs.readFileSync(layoutPath, 'utf8');
             return res.json(JSON.parse(data));
         } else {
-            return res.status(404).json({ message: 'No saved layout' });
+            return res.status(404).json({ message: `No saved layout for ${layoutFilename}` });
         }
     } catch (e) {
         console.error(`[Backend] Failed to load layout: ${e.message}`);
@@ -1052,12 +1058,18 @@ app.get('/api/layout', (req, res) => {
     }
 });
 
-// POST /api/layout - Save fbb_layout.json to the active scenario folder
-// @intent:rationale 現在のペイン配置（レイアウト）データを、指定されたテストシナリオフォルダ配下に fbb_layout.json として永続化保存します。
+// POST /api/layout - Save layout file to the active scenario folder (supports ?screen=<id>)
+// @intent:rationale 現在のペイン配置データを、指定されたテストシナリオフォルダ配下に fbb_layout.json（または ?screen=<id> 指定時は fbb_layout_${screen}.json）として永続化保存します。
 app.post('/api/layout', (req, res) => {
     const projRoot = manifest.project_root || path.join(__dirname, '..');
     const scnDir = manifest.scenario_dir || '.';
-    const layoutPath = path.isAbsolute(scnDir) ? path.join(scnDir, 'fbb_layout.json') : path.join(projRoot, scnDir, 'fbb_layout.json');
+    const screen = req.query.screen ? String(req.query.screen).replace(/[^a-zA-Z0-9_-]/g, '') : null;
+    const layoutFilename = screen && screen !== 'default' && screen !== 'main'
+        ? `fbb_layout_${screen}.json`
+        : 'fbb_layout.json';
+    const layoutPath = path.isAbsolute(scnDir)
+        ? path.join(scnDir, layoutFilename)
+        : path.join(projRoot, scnDir, layoutFilename);
     try {
         const dir = path.dirname(layoutPath);
         if (!fs.existsSync(dir)) {
@@ -1065,7 +1077,7 @@ app.post('/api/layout', (req, res) => {
         }
         fs.writeFileSync(layoutPath, JSON.stringify(req.body, null, 4), 'utf8');
         console.log(`[Backend] Layout saved successfully to ${layoutPath}`);
-        return res.json({ success: true, path: layoutPath });
+        return res.json({ success: true, path: layoutPath, screen: screen || 'default' });
     } catch (e) {
         console.error(`[Backend] Failed to save layout: ${e.message}`);
         return res.status(500).json({ error: e.message });

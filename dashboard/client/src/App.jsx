@@ -1,47 +1,32 @@
 import { useRef, useState, useEffect } from 'react';
-import { Box, Plus, ChevronDown, Monitor, Cpu, Activity, Terminal, Tv, HardDrive, Layers, FileCode, ShieldAlert, Car, Zap } from 'lucide-react';
+import { Box, Plus, ChevronDown } from 'lucide-react';
 import { DockviewReact } from 'dockview-react';
 import { DashboardProvider, useDashboard } from './components/DashboardContext';
-import RegisterMonitor from './components/RegisterMonitor';
-import GpioPanel from './components/GpioPanel';
-import UartTerminal from './components/UartTerminal';
-import RegisterTracer from './components/RegisterTracer';
-import HdmiOutput from './components/HdmiOutput';
-import SdCardPanel from './components/SdCardPanel';
-import DtsVisualizer from './components/DTSVisualizer';
-import GenericPeripheralPane from './components/GenericPeripheralPane';
-import TransactionLoggerPane from './components/TransactionLoggerPane';
-import CanAnalyzerPane from './components/CanAnalyzerPane';
-import ChaosPanel from './components/ChaosPanel';
 import MemoryErrorModal from './components/MemoryErrorModal';
+import PopoutWindow from './components/PopoutWindow';
+import DockHeaderActions from './components/DockHeaderActions';
+import {
+  getDockviewComponentsMap,
+  getGroupedPanesForMenu,
+  getPaneDefinition
+} from './panes/paneRegistry';
 import './App.css';
 
-
-// Components mapping for Dockview
-const components = {
-  registerMonitor: (props) => <RegisterMonitor {...props} />,
-  gpioPanel: (props) => <GpioPanel {...props} />,
-  registerTracer: (props) => <RegisterTracer {...props} />,
-  transactionLogger: (props) => <TransactionLoggerPane {...props} />,
-  chaosEngine: (props) => <ChaosPanel {...props} />,
-  uartTerminal: (props) => <UartTerminal {...props} />,
-  hdmiOutput: (props) => <HdmiOutput {...props} />,
-  spiAdcPanel: (props) => <GenericPeripheralPane {...props} />,
-  oledDisplay: (props) => <GenericPeripheralPane {...props} />,
-  seg7Display: (props) => <GenericPeripheralPane {...props} />,
-  sdCard: (props) => <SdCardPanel {...props} />,
-  dtsVisualizer: (props) => <DtsVisualizer {...props} />,
-  genericPeripheralPane: (props) => <GenericPeripheralPane {...props} />,
-  canAnalyzer: (props) => <CanAnalyzerPane {...props} />,
-};
-
+// Dynamic Dockview components mapping from DPPA registry
+const components = getDockviewComponentsMap();
 
 function DashboardInner() {
   const { connected, manifest } = useDashboard();
   const apiRef = useRef(null);
   const [saveStatus, setSaveStatus] = useState('Save Layout');
   const [isAddPaneOpen, setIsAddPaneOpen] = useState(false);
+  const [poppedOutPanels, setPoppedOutPanels] = useState([]);
   const dropdownRef = useRef(null);
+
+  // URL query parameter resolution
+  const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();
+  const paneParam = searchParams.get('pane');
+  const screenParam = searchParams.get('screen') || 'main';
 
   // Close dropdown on outside click
   useEffect(() => {
@@ -54,13 +39,53 @@ function DashboardInner() {
     return () => document.removeEventListener('mousedown', handleClickOutside);
   }, []);
 
-  // @intent:rationale マウント時にバックエンドから保存済みのレイアウト（fbb_layout.json）をフェッチし、存在する場合は Dockview API にロードして復元します。存在しない場合はデフォルトレイアウトを適用します。
+  // Multi-Screen: Popout event listener (triggered by DockHeaderActions or custom events)
+  useEffect(() => {
+    const handlePopoutEvent = (e) => {
+      const panelInfo = e.detail;
+      if (!panelInfo || !apiRef.current) return;
+
+      const panel = apiRef.current.getPanel(panelInfo.id);
+      if (panel) {
+        apiRef.current.removePanel(panel);
+      }
+      setPoppedOutPanels(prev => [
+        ...prev.filter(p => p.id !== panelInfo.id),
+        panelInfo
+      ]);
+    };
+
+    window.addEventListener('fbb:popout', handlePopoutEvent);
+    return () => window.removeEventListener('fbb:popout', handlePopoutEvent);
+  }, []);
+
+  // Handler to re-dock a popped-out panel back into main Dockview
+  const handleReDock = (panelInfo) => {
+    setPoppedOutPanels(prev => prev.filter(p => p.id !== panelInfo.id));
+    if (apiRef.current) {
+      const existing = apiRef.current.getPanel(panelInfo.id);
+      if (!existing) {
+        apiRef.current.addPanel({
+          id: panelInfo.id,
+          component: panelInfo.component || panelInfo.id.split('_')[0],
+          title: panelInfo.title,
+          params: panelInfo.params || {}
+        });
+      }
+    }
+  };
+
+  // @intent:rationale マウント時にバックエンドから保存済みのレイアウト（?screen=<id> 指定時は fbb_layout_${screen}.json、未指定時は fbb_layout.json）をフェッチし、存在する場合は Dockview API にロードして復元します。
   const onReady = async (event) => {
     const api = event.api;
     apiRef.current = api;
 
+    const layoutUrl = screenParam && screenParam !== 'main' && screenParam !== 'default'
+      ? `/api/layout?screen=${encodeURIComponent(screenParam)}`
+      : '/api/layout';
+
     try {
-      const response = await fetch('/api/layout');
+      const response = await fetch(layoutUrl);
       if (response.ok) {
         const layoutData = await response.json();
         if (layoutData && Object.keys(layoutData).length > 0) {
@@ -84,7 +109,7 @@ function DashboardInner() {
         }
       }
     } catch (e) {
-      console.warn('[Dashboard] No saved layout found or failed to load, using default layout.', e);
+      console.warn(`[Dashboard] No saved layout found for screen '${screenParam}', using default layout.`, e);
     }
 
     initLayout(api);
@@ -110,7 +135,7 @@ function DashboardInner() {
           id: panelId,
           component: 'uartTerminal',
           title: `UART: ${uart.name}`,
-          params: { deviceName: uart.name },
+          params: { deviceName: uart.name, _componentName: 'uartTerminal' },
           ...(isFirst ? {} : {
             position: {
               referencePanel: mainUartPanelId,
@@ -120,12 +145,11 @@ function DashboardInner() {
         });
       });
     } else {
-      // Fallback if no UARTs are defined yet
       api.addPanel({
         id: 'uartTerminal_default',
         component: 'uartTerminal',
         title: 'UART Console',
-        params: { deviceName: 'default' }
+        params: { deviceName: 'default', _componentName: 'uartTerminal' }
       });
     }
 
@@ -136,6 +160,7 @@ function DashboardInner() {
       id: 'registerMonitor',
       component: 'registerMonitor',
       title: 'Registers',
+      params: { _componentName: 'registerMonitor' },
       position: {
         referencePanel: referenceId,
         direction: 'left',
@@ -147,6 +172,7 @@ function DashboardInner() {
       id: 'gpioPanel',
       component: 'gpioPanel',
       title: 'GPIO / Pin Array',
+      params: { _componentName: 'gpioPanel' },
       position: {
         referencePanel: 'registerMonitor',
         direction: 'below',
@@ -167,7 +193,8 @@ function DashboardInner() {
         title: pTitle,
         params: {
           pluginId: s.compatible,
-          manifest: s
+          manifest: s,
+          _componentName: 'genericPeripheralPane'
         },
         position: {
           referencePanel: 'gpioPanel',
@@ -181,6 +208,7 @@ function DashboardInner() {
       id: 'sdCard',
       component: 'sdCard',
       title: 'Virtual SD Card',
+      params: { _componentName: 'sdCard' },
       position: {
         referencePanel: 'gpioPanel',
         direction: 'within',
@@ -192,6 +220,7 @@ function DashboardInner() {
       id: 'dtsVisualizer',
       component: 'dtsVisualizer',
       title: 'DTS Visualizer & AI',
+      params: { _componentName: 'dtsVisualizer' },
       position: {
         referencePanel: 'gpioPanel',
         direction: 'within',
@@ -203,6 +232,7 @@ function DashboardInner() {
       id: 'registerTracer',
       component: 'registerTracer',
       title: 'Tracer',
+      params: { _componentName: 'registerTracer' },
       position: {
         referencePanel: 'gpioPanel',
         direction: 'below',
@@ -214,13 +244,14 @@ function DashboardInner() {
       id: 'hdmiOutput',
       component: 'hdmiOutput',
       title: 'HDMI Output Preview',
+      params: { _componentName: 'hdmiOutput' },
       position: {
         referencePanel: referenceId,
         direction: 'below',
       },
     });
 
-    // Programmatic adjustment of sizes to match default ratios with safety checks
+    // Programmatic adjustment of sizes to match default ratios
     if (regPanel?.api) {
       regPanel.api.setSize({ width: 400 });
       regPanel.api.setSize({ height: 250 });
@@ -234,7 +265,6 @@ function DashboardInner() {
       tracerPanel.api.setConstraints({ minimumWidth: 200, minimumHeight: 100 });
     }
     
-    // Programmatic layout update via API lookup instead of object handles
     const mainPanel = api.getPanel(referenceId);
     if (mainPanel?.api && tracerPanel?.api) {
       api.setGroupRatio(mainPanel.api.group, 0.6);
@@ -265,17 +295,21 @@ function DashboardInner() {
         id,
         component,
         title,
-        params,
+        params: { ...params, _componentName: component },
       });
     }
   };
 
-  // @intent:rationale 現在の Dockview のペイン配置情報をシリアライズし、バックエンド経由でアクティブなシナリオフォルダ配下の fbb_layout.json に保存します。保存結果はボタン表記を通じて非侵襲的に通知されます。
+  // @intent:rationale 現在の Dockview のペイン配置情報をシリアライズし、バックエンド経由で保存します。?screen=<id> 指定時は画面固有のファイルへ保存されます。
   const handleSaveLayout = async () => {
     if (!apiRef.current) return;
     const layoutData = apiRef.current.toJSON();
+    const layoutUrl = screenParam && screenParam !== 'main' && screenParam !== 'default'
+      ? `/api/layout?screen=${encodeURIComponent(screenParam)}`
+      : '/api/layout';
+
     try {
-      const response = await fetch('/api/layout', {
+      const response = await fetch(layoutUrl, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -297,130 +331,29 @@ function DashboardInner() {
     }
   };
 
-  // DTSに定義されているアドイン・ペリフェラルの動的抽出
-  const i2cSlaves = manifest?.devices?.flatMap(d => d.i2c_slaves || []) || [];
-  const spiSlaves = manifest?.devices?.flatMap(d => d.spi_slaves || []) || [];
-  const directDevices = manifest?.devices?.filter(d => d.ui_widget || d.compatible?.includes('hub75')) || [];
-  const allSlaves = [...i2cSlaves, ...spiSlaves, ...directDevices];
-
-  const hasOled = i2cSlaves.some(s => s.compatible?.includes('ssd1306'));
-  const hasSeg7 = i2cSlaves.some(s => s.compatible?.includes('ht16k33'));
-  const hasSpiAdc = spiSlaves.some(s => s.compatible?.includes('mcp3208'));
-  const hasSdCard = Boolean(manifest?.sd_card_path) || manifest?.devices?.some(d => d.name?.includes('sd') || d.compatible?.includes('sd'));
-  const hasHdmi = Boolean(manifest?.hdmi_output_path) || manifest?.devices?.some(d => d.name?.includes('hdmi') || d.compatible?.includes('hdmi'));
-
-  const peripheralItems = [];
-
-  if (hasOled) {
-    const oledTitle = i2cSlaves.find(s => s.compatible?.includes('ssd1306'))?.ui_widget?.title || 'SSD1306 OLED Display (128x64)';
-    peripheralItems.push({
-      id: 'oledDisplay',
-      component: 'oledDisplay',
-      title: oledTitle,
-      icon: Monitor,
-      params: { type: 'oled' }
-    });
-  }
-
-  if (hasSeg7) {
-    const seg7Title = i2cSlaves.find(s => s.compatible?.includes('ht16k33'))?.ui_widget?.title || 'Adafruit 4-Digit 7-Segment LED (Red)';
-    peripheralItems.push({
-      id: 'seg7Display',
-      component: 'oledDisplay',
-      title: seg7Title,
-      icon: Monitor,
-      params: { type: 'seg7', pluginId: 'adafruit_ht16k33' }
-    });
-  }
-
-  if (hasSpiAdc) {
-    peripheralItems.push({
-      id: 'spiAdcPanel',
-      component: 'spiAdcPanel',
-      title: 'SPI ADC (12-bit)',
-      icon: Activity
-    });
-  }
-
-  // Dynamic PPA 3.0/4.0 custom peripheral items for dropdown menu
-  allSlaves.forEach((s, idx) => {
-    const isLegacyOled = s.compatible?.includes('ssd1306');
-    const isLegacySeg7 = s.compatible?.includes('ht16k33');
-    const isLegacySpiAdc = s.compatible?.includes('mcp3208');
-    if (!isLegacyOled && !isLegacySeg7 && !isLegacySpiAdc) {
-      const pTitle = s.ui_widget?.title || s.name || 'Generic Peripheral';
-      const pId = `generic_peripheral_${s.name || idx}_${idx}`;
-      peripheralItems.push({
-        id: pId,
-        component: 'genericPeripheralPane',
-        title: pTitle,
-        icon: Monitor,
-        params: { pluginId: s.compatible, manifest: s }
-      });
+  // Standalone Pane View (triggered by ?pane=<id>)
+  if (paneParam) {
+    const paneDef = getPaneDefinition(paneParam);
+    if (paneDef) {
+      const Component = paneDef.component;
+      const params = Object.fromEntries(searchParams.entries());
+      return (
+        <div style={{ width: '100vw', height: '100vh', background: '#0d1117', color: '#c9d1d9', overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
+          <header style={{ height: '36px', background: '#161b22', borderBottom: '1px solid #30363d', display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '0 12px', fontSize: '0.8rem', userSelect: 'none' }}>
+            <span style={{ fontWeight: 600, color: '#58a6ff' }}>F-BB Standalone: {paneDef.title}</span>
+            <a href={window.location.pathname} style={{ color: '#8b949e', textDecoration: 'none', fontSize: '0.75rem' }}>&larr; Back to Full Dashboard</a>
+          </header>
+          <div style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
+            <Component params={params} />
+          </div>
+          <MemoryErrorModal />
+        </div>
+      );
     }
-  });
-
-  if (hasSdCard) {
-    peripheralItems.push({
-      id: 'sdCard',
-      component: 'sdCard',
-      title: 'Virtual SD Card',
-      icon: HardDrive
-    });
   }
 
-  if (hasHdmi) {
-    peripheralItems.push({
-      id: 'hdmiOutput',
-      component: 'hdmiOutput',
-      title: 'HDMI Output Preview',
-      icon: Tv
-    });
-  }
-
-  // もしDTSにディスプレイ/センサー等のアドインペリフェラルが含まれない場合、
-  // デフォルトの「Virtual Peripheral View」(スタンドバイ画面) を1つだけ表示
-  if (peripheralItems.length === 0) {
-    peripheralItems.push({
-      id: 'oledDisplay',
-      component: 'oledDisplay',
-      title: 'Virtual Peripheral View',
-      icon: Monitor,
-      params: { type: 'standby' }
-    });
-  }
-
-  // 利用可能な標準ペインの一覧
-  const standardPaneCategories = [
-    {
-      category: 'Observability & Control',
-      items: [
-        { id: 'registerMonitor', component: 'registerMonitor', title: 'Registers', icon: Cpu },
-        { id: 'gpioPanel', component: 'gpioPanel', title: 'GPIO / Pin Array', icon: Activity },
-        { id: 'canAnalyzer', component: 'canAnalyzer', title: 'CAN Bus Analyzer', icon: Car },
-        { id: 'registerTracer', component: 'registerTracer', title: 'Tracer', icon: Layers },
-        { id: 'transactionLogger', component: 'transactionLogger', title: 'Transaction Logger', icon: ShieldAlert },
-        { id: 'chaosEngine', component: 'chaosEngine', title: 'Chaos & Fault Injection', icon: Zap },
-        { id: 'dtsVisualizer', component: 'dtsVisualizer', title: 'DTS Visualizer & AI', icon: FileCode },
-      ]
-    },
-    {
-      category: 'Peripherals & I/O',
-      items: peripheralItems
-    }
-  ];
-
-  // UART Consoles (動的生成)
-  const rawUarts = manifest?.uarts || [];
-  const uartItems = rawUarts.length > 0
-    ? rawUarts.map(u => ({
-        id: `uartTerminal_${u.name}`,
-        component: 'uartTerminal',
-        title: `UART: ${u.name}`,
-        params: { deviceName: u.name },
-        icon: Terminal
-      }))
-    : [{ id: 'uartTerminal_default', component: 'uartTerminal', title: 'UART Console', params: { deviceName: 'default' }, icon: Terminal }];
+  // Dynamically resolve grouped pane items from DPPA registry
+  const standardPaneCategories = getGroupedPanesForMenu(manifest);
 
   return (
     <div className="dashboard-container" style={{ display: 'flex', flexDirection: 'column', height: '100vh', width: '100vw', overflow: 'hidden' }}>
@@ -428,10 +361,28 @@ function DashboardInner() {
         <div className="brand" style={{ display: 'flex', alignItems: 'center' }}>
           <span className="logo-text" style={{ fontWeight: 800, fontSize: '1.2rem', color: '#58a6ff' }}>FPGA-BoardlessBench (F-BB)</span>
           <span className="version-tag" style={{ marginLeft: '0.5rem', fontSize: '0.7rem', color: '#8b949e', border: '1px solid #30363d', padding: '2px 6px', borderRadius: '4px' }}>v3.0 Premium</span>
+          {screenParam && screenParam !== 'main' && screenParam !== 'default' && (
+            <span
+              className="screen-tag"
+              style={{
+                marginLeft: '0.5rem',
+                fontSize: '0.72rem',
+                fontWeight: 700,
+                color: '#58a6ff',
+                backgroundColor: 'rgba(56, 139, 253, 0.15)',
+                border: '1px solid rgba(56, 139, 253, 0.4)',
+                padding: '2px 8px',
+                borderRadius: '4px',
+                letterSpacing: '0.5px'
+              }}
+            >
+              SCREEN: {screenParam.toUpperCase()}
+            </span>
+          )}
         </div>
         <div className="system-meta" style={{ display: 'flex', alignItems: 'center', gap: '1.2rem' }}>
 
-          {/* Add Pane Dropdown Menu */}
+          {/* Add Pane Dropdown Menu (Registry Driven) */}
           <div ref={dropdownRef} style={{ position: 'relative' }}>
             <button
               className="add-pane-btn"
@@ -470,7 +421,9 @@ function DashboardInner() {
                   boxShadow: '0 8px 24px rgba(0,0,0,0.6)',
                   padding: '8px 0',
                   zIndex: 1000,
-                  userSelect: 'none'
+                  userSelect: 'none',
+                  maxHeight: '80vh',
+                  overflowY: 'auto'
                 }}
               >
                 {standardPaneCategories.map((cat, idx) => (
@@ -479,7 +432,7 @@ function DashboardInner() {
                       {cat.category}
                     </div>
                     {cat.items.map(item => {
-                      const ItemIcon = item.icon;
+                      const ItemIcon = item.icon || Box;
                       return (
                         <div
                           key={item.id}
@@ -510,40 +463,6 @@ function DashboardInner() {
                     })}
                   </div>
                 ))}
-
-                {/* UART Group */}
-                <div style={{ borderTop: '1px solid #21262d', paddingTop: '6px', marginTop: '4px' }}>
-                  <div style={{ padding: '4px 12px', fontSize: '0.68rem', fontWeight: 700, color: '#8b949e', textTransform: 'uppercase', letterSpacing: '0.5px' }}>
-                    Serial Terminals
-                  </div>
-                  {uartItems.map(item => (
-                    <div
-                      key={item.id}
-                      onClick={() => handleAddPane(item.id, item.component, item.title, item.params || {})}
-                      style={{
-                        padding: '6px 14px',
-                        fontSize: '0.8rem',
-                        color: '#c9d1d9',
-                        display: 'flex',
-                        alignItems: 'center',
-                        gap: '10px',
-                        cursor: 'pointer',
-                        transition: 'background 0.15s, color 0.15s'
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.backgroundColor = '#21262d';
-                        e.currentTarget.style.color = '#58a6ff';
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.backgroundColor = 'transparent';
-                        e.currentTarget.style.color = '#c9d1d9';
-                      }}
-                    >
-                      <Terminal size={14} style={{ color: '#8b949e' }} />
-                      {item.title}
-                    </div>
-                  ))}
-                </div>
               </div>
             )}
           </div>
@@ -598,9 +517,29 @@ function DashboardInner() {
       <main className="content-layout dockview-theme-dark" style={{ flex: 1, overflow: 'hidden', position: 'relative' }}>
         <DockviewReact
           components={components}
+          rightHeaderActionsComponent={DockHeaderActions}
           onReady={onReady}
         />
       </main>
+
+      {/* Multi-Screen: Popped out child windows via React Portal */}
+      {poppedOutPanels.map(p => {
+        const componentId = p.component || p.id.split('_')[0];
+        const paneDef = getPaneDefinition(componentId);
+        const Component = paneDef?.component;
+        if (!Component) return null;
+        return (
+          <PopoutWindow
+            key={p.id}
+            title={p.title}
+            win={p.win}
+            onClose={() => handleReDock(p)}
+          >
+            <Component params={p.params} />
+          </PopoutWindow>
+        );
+      })}
+
       <MemoryErrorModal />
     </div>
   );

@@ -83,6 +83,29 @@ export const DashboardProvider = ({ children }) => {
     socket.emit('gpio-inject', { deviceName, bitIndex, value: !currentOn, dataRegName });
   };
   
+  // Cross-window BroadcastChannel synchronization
+  useEffect(() => {
+    let channel;
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        channel = new BroadcastChannel('fbb_dashboard_sync');
+        channel.onmessage = (event) => {
+          const { type, payload } = event.data || {};
+          if (type === 'SYNC_HIDDEN_TRACE_KEYS' && payload) {
+            setHiddenTraceKeys(payload);
+          }
+        };
+      }
+    } catch (e) {
+      console.warn('[DashboardContext] BroadcastChannel init error:', e);
+    }
+    return () => {
+      if (channel) {
+        channel.close();
+      }
+    };
+  }, []);
+
   const handleSpiAdcInject = (channel, value) => {
     socket.emit('spi-adc-inject', { channel, value });
   };
@@ -92,10 +115,22 @@ export const DashboardProvider = ({ children }) => {
   };
 
   const toggleTraceKey = (key) => {
-    setHiddenTraceKeys(prev => ({
-      ...prev,
-      [key]: !prev[key]
-    }));
+    setHiddenTraceKeys(prev => {
+      const updated = {
+        ...prev,
+        [key]: !prev[key]
+      };
+      try {
+        if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+          const ch = new BroadcastChannel('fbb_dashboard_sync');
+          ch.postMessage({ type: 'SYNC_HIDDEN_TRACE_KEYS', payload: updated });
+          ch.close();
+        }
+      } catch (e) {
+        // ignore
+      }
+      return updated;
+    });
   };
 
   const isGpioDev = (d) => {

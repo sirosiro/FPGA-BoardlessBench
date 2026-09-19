@@ -253,7 +253,7 @@ fbb test
 
 起動後、以下の方法でシミュレーション環境にアクセスできます：
 
-- **Webダッシュボード**: ブラウザで `http://localhost:8080` にアクセスしてください。
+- **Webダッシュボード**: ブラウザで `http://localhost:8080` にアクセスしてください。複数モニタ環境向けに各ペインのワンクリック別ウィンドウ化（Pop-out）やサブモニタ用プロファイル（`?screen=monitor2`）にも対応しています。
 - **外部UARTコンソール**: ポート **`3000`**（UART1用）/ **`3001`**（UART2用）で待ち受けています（`nc localhost 3000` や Tera Term 等で接続）。Webダッシュボード側と完全に画面同期され、過去ログのリプレイ機能が有効です。  
   *(※内部の Python PTY ブリッジはポート `2000`〜 でローカルバインドされています)*
 
@@ -333,7 +333,20 @@ Tera Term を起動し、「新規接続 (New Connection)」ダイアログで�
 設定後、「OK」をクリックして接続すると、これまでのUARTログが瞬時にリプレイされ、Webダッシュボード側と完全に画面同期された状態で双方向に対話通信が可能になります。
 
 ## 提供されているテストシナリオ一覧
-F-BB環境には、基本的なペリフェラル操作から高度なマルチコアRTOS協調動作まで、実際の開発に役立つ様々な検証シナリオが標準で用意されています。各シナリオディレクトリには詳細なドキュメントも含まれています。
+F-BB環境には、基本的なペリフェラル操作から高度なマルチコアRTOS協調動作、車載・ロボティクスまで、実際の開発に役立つ様々な検証シナリオが標準で用意されています。各シナリオディレクトリには詳細なドキュメントも含まれています。
+
+### シナリオ命名規則と分類体系 (Scenario Taxonomy & Naming Convention)
+F-BB のテストシナリオは、将来の拡張性と責務分離（SoC/ベンダー非依存、学習の純粋性）を維持するため、以下の規約に基づいて厳格に分類・命名されています：
+- **アルファベットなし連番 (`01`, `02`, ..., `21`)**: **基盤技術の最小セット検証 (Minimal Baseline Verification)**  
+  単機能・最小構成のハードウェア/ドライバ/同期インターフェースのみを分離検証する軽量シナリオ。上位の重厚なスタックを持たず、接合メカニズムそのものの疎通と決定論的挙動をテストします。
+- **`P` プレフィックス (`P01`, `P02`...)**: **本格的な実践プロジェクト構成 (Practical Project Integration)**  
+  実製品相当の複合スタック（例: `P01_frdmIMX` = 車載4カメラ/Mesa OpenGL ES、`P02_robot_amr_ros2` = 自律移動ロボット/ROS 2/URDF/DiffDrive 等）を統合し、実務で直面する高度なハードウェア/ソフトウェア協調デバッグを検証します。
+- **`S` プレフィックス (`S01`, `S02`...)**: **統合機能展示ショーケース (Showcase & Interactive Demo)**  
+  Web UI（React 19 / Dockview）、CLI、ダッシュボード等の全機能を網羅した動作デモおよびユーザー体験展示です。
+- **特定技術固有プレフィックス（`R` 等）の新設禁止**:  
+  特定の技術領域（ROS等）ごとに独自のプレフィックス（`R01`等）を設けることは、カテゴリの乱立を招き拡張性を損なうため禁止としています。あらゆる新技術はまず「基盤技術の最小セット検証（連番）」から着手し、その後「実践プロジェクト（`P`）」へと段階的に昇格させます。
+
+### 1. 基盤技術の最小セット検証（連番: Minimal Baseline Verification）
 
 | シナリオフォルダ | 概要 | 検証対象技術 |
 | :--- | :--- | :--- |
@@ -369,7 +382,17 @@ F-BB環境には、基本的なペリフェラル操作から高度なマルチ�
 | [20_dma_cdma](tests/scenarios/20_dma_cdma/) | Zynq AXI CDMA IP (`xlnx,axi-cdma-1.00.a`) による超高速・高信頼 DMA エミュレーションおよび事前境界チェックの検証 | AXI CDMA, `memcpy` エミュレーション, アライメント判定 (`DMADecErr`), アンダーラン (Stale Data), オーバーラン (`OVERRUN_ERR`) |
 | [20b_mcore_cdma](tests/scenarios/20b_mcore_cdma/) | AMP Mコア (Cortex-M / ベアメタル) による AXI CDMA オフロード制御 & リアルタイム DMA エミュレーションの検証 | AMP, Mコアベアメタル, AXI CDMA オフロード, ゼロコピー DRAM 共有, `remoteproc` 連携 |
 | [21_can_socketcan_ecu](tests/scenarios/21_can_socketcan_ecu/) | Linux SocketCAN (`AF_CAN`) API の完全透過エミュレーション、車載 ECU テレメトリ配信、および OBD-II 診断プロトコル (PID 0D / 0C) 応答検証 | SocketCAN, 車載 ECU ゲートウェイ, OBD-II / UDS 診断, `0x7DF`/`0x7E8`, CAN Bus Analyzer ペイン |
-| [P01_frdmIMX](tests/scenarios/P01_frdmIMX/) | i.MX95/8MP HAL C++ を使用したOpenGL ES 4カメラ入力 | OpenGL ES, HDMIエミュレーション, C++ HAL |
+
+### 2. 本格的な実践プロジェクト構成（P プレフィックス: Practical Project Integration）
+
+| シナリオフォルダ | 概要 | 検証対象技術 |
+| :--- | :--- | :--- |
+| [P01_frdmIMX](tests/scenarios/P01_frdmIMX/) | i.MX95/8MP HAL C++ を使用したOpenGL ES 4カメラ入力と車載マルチカメラ統合検証 | OpenGL ES, HDMIエミュレーション, C++ HAL, 車載4カメラ |
+
+### 3. 統合機能展示ショーケース（S プレフィックス: Showcase & Interactive Demo）
+
+| シナリオフォルダ | 概要 | 検証対象技術 |
+| :--- | :--- | :--- |
 | [S01_cpp_lfsr_sequencer](tests/scenarios/S01_cpp_lfsr_sequencer/) | CLI シェルと Web ダッシュボードを統合したショーケースデモ | 統合 Web UI, Dockview, Recharts, CLI |
 
 ---
@@ -394,7 +417,12 @@ F-BBは、コアとなる透過エミュレーション層に加えて、開発�
 
 - **マルチデバイス・マルチバス対応**: 複数のI2Cバスの個別識別や、UART通信のPTYリダイレクト（TCPブリッジ経由でのコンソール対話）、SoC規模（最大118チャネル）の双方向GPIOエミュレーション、および車載 SocketCAN 透過通信をサポートします。
 - **RTL統合シミュレーション**: [Verilator](./docs/architecture/AddInfo_verilator.md) を用いた高速なRTLシミュレーションをサポートし、共有メモリ経由でレジスタ値を同期します。
-- **Webダッシュボード**: Webベースのインターフェース（ポート 8080）を介して、レジスタやGPIOの入出力状態をリアルタイムで監視・操作できます（他レジスタと競合しないアトミックな4バイト局所書き込みにより、ファームウェア実行中も非侵襲にGPIO入力注入が可能）。VS Codeライクなドッキングレイアウト（Dockview）を採用し、閉じたペインを個別復元できる **`+ Add Pane` プルダウンメニュー** や、ペリフェラル未接続時の **`Virtual Peripheral View` スタンバイ画面**、レジスタの変化履歴を可視化する **Register State Tracer**、車載通信を可視化・操作する **CAN Bus Analyzer**、および `fbb-plugin.json` / `board.svg` に基づく **汎用ペリフェラルビュー (`GenericPeripheralPane`)** を備えています。デフォルトで 1:1 実基板ベクター画像 (`[PCB Board]`) を表示し、50%〜400% のズーム操作時にマウスのクリック＆ドラッグによる自由な視点移動（パンニング）に対応しています。
+- **Webダッシュボード**: Webベースのインターフェース（ポート 8080）を介して、レジスタやGPIOの入出力状態をリアルタイムで監視・操作できます（他レジスタと競合しないアトミックな4バイト局所書き込みにより、ファームウェア実行中も非侵襲にGPIO入力注入が可能）。VS Codeライクなドッキングレイアウト（Dockview）を採用し、閉じたペインを個別復元できる **`+ Add Pane` プルダウンメニュー** や、ペリフェラル未接続時の **`Virtual Peripheral View` スタンバイ画面**、レジスタの変化履歴を可視化する **Register State Tracer**、車載通信を可視化・操作する **CAN Bus Analyzer**、および `fbb-plugin.json` / `board.svg` に基づく **汎用ペリフェラルビュー (`GenericPeripheralPane`)** を備えています。デフォルトで 1:1 実基板ベクター画像 (`[PCB Board]`) を表示し、50%〜400% のズーム操作時にマウスのクリック＆ドラッグによる自由な視点移動（パンニング）に対応しています。  
+  さらに最新の **DPPA (Dashboard Pane Plugin Architecture)** と **ハイブリッド・マルチスクリーン構成** により、以下の高度なマルチモニタコックピット機能を提供します：
+  * **ワンクリック・ポップアウト (Pop-out to separate window)**: 各タブ右上の切り離しアイコンから、React 19 `createPortal` を介して子ウィンドウへ瞬時にペインを切り離し可能。親画面のステートやダークテーマスタイルを完全維持したまま別モニタへ配置できます。
+  * **マルチモニタ別レイアウト永続化 (`?screen=<id>`)**: サブモニタ専用 URL（例: `http://localhost:8080/?screen=monitor2`）により、モニタごとに独立したペイン配置（`fbb_layout_<screen>.json`）を保存・自動復元。
+  * **単体全画面表示 (`?pane=<id>`)**: プロジェクター投影や専用ディスプレイ用に枠のない単一ペイン全画面モード（例: `?pane=peripheral_ssd1306`）を提供。
+  * **画面間ゼロオーバーヘッド同期 (`BroadcastChannel`)**: サーバー負荷ゼロで、複数画面間でUI状態（Tracer非表示キー等）をリアルタイムに相互同期。
   * **標準レジスタ/GPIO監視画面 (例: `S01_cpp_lfsr_sequencer` シナリオ)**
     ![FPGA-BoardlessBench (F-BB) Dashboard](docs/assets/dashboard.png)
 - **HDMI プレビュー出力エミュレーション**: DRM/KMS 経由での物理モニターへの出力と、ダンプファイル（`/tmp/hdmi_output.bmp`）を介したダッシュボード上へのリアルタイムプレビューに対応しています。ホスト環境と実機評価ボード環境を同一コードで透過的にサポートし、ダッシュボード上でピクセル等倍〜1600%のズーム・スクロール操作が可能です。
@@ -425,28 +453,28 @@ F-BBは、ハードウェア記述言語（RTL）から、低レイヤーのシ�
 
 ビルド成果物（`build`, `dist`）、外部パッケージ（`node_modules`）、および一時ファイルを除外したリポジトリ全体の静的ソースコードを `cloc` (Count Lines of Code v1.90) にて正確に計測した結果です。
 
-F-BB 独自のプロジェクトコードのみ（`--cleanall` 時）で**純プログラムステップ数（Pure Code） 40,057 行 (約 40.1k LOC)**、総行数 **50,817 行**（全 373 ファイル）で構成されています。また、シナリオ 10〜15 で動的ロードされる外部 RTOS カーネル（FreeRTOS, ThreadX, CMSIS_5）のソース群を含むフル状態では **87,500 行 (87.5k+ LOC)** / **全 164,800 行**（全 751 ファイル）の規模となります。
+F-BB 独自のプロジェクトコードのみ（`--cleanall` 時）で**純プログラムステップ数（Pure Code） 40,792 行 (約 40.8k LOC)**、総行数 **51,730 行**（全 376 ファイル）で構成されています。また、シナリオ 10〜15 で動的ロードされる外部 RTOS カーネル（FreeRTOS, ThreadX, CMSIS_5）のソース群を含むフル状態では **88,200 行 (88.2k+ LOC)** / **全 165,700 行**（全 754 ファイル）の規模となります。
 
 > **Project Scale Summary (`cloc` 計測値):**
-> - **Pure F-BB Code (F-BB独自コードのみ):** **40,057 Lines of Code** *(総行数 50,817行 / 373ファイル / コメント 3,253行 / 空行 7,507行)*
-> - **Full Environment (外部RTOSカーネル同梱時):** **87,500 Lines of Code** *(総行数 164,800行 / 751ファイル)*
-> - **主要言語構成:** *(Markdown/Doc: ~10.9k LOC, JSON: ~6.9k LOC, C/C++: ~11.5k LOC (全シナリオFW/Shim/PPA), React/JSX/JS/CSS: ~5.4k LOC, Python: ~2.2k LOC)*
+> - **Pure F-BB Code (F-BB独自コードのみ):** **40,792 Lines of Code** *(総行数 51,730行 / 376ファイル / コメント 3,325行 / 空行 7,613行)*
+> - **Full Environment (外部RTOSカーネル同梱時):** **約 88,200 Lines of Code** *(総行数 約 165,700行 / 754ファイル)*
+> - **主要言語構成:** *(Markdown/Doc: ~11.1k LOC, JSON: ~6.9k LOC, C/C++: ~11.5k LOC (全シナリオFW/Shim/PPA), React/JSX/JS/CSS: ~6.0k LOC, Python: ~2.2k LOC)*
 
 | 言語分類 (cloc) | 拡張子 | ファイル数 | 空行 (Blank) | コメント (Comment) | 純コード (Pure LOC) | 総行数 (Total Lines) | 主な構成要素と役割 |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **Markdown** | `.md` | 121 | 4,274 | 0 | **10,908行** | **15,182行** | システム仕様書、ADR、初学者学習ロードマップ、全34シナリオREADME/ADVANCED仕様書、PPA 5.1 開発ガイド |
-| **JSON / Manifest** | `.json` | 33 | 0 | 0 | **6,901行** | **6,901行** | PPAペリフェラルマニフェスト (`fbb-plugin.json`)、ボード構造メタデータ |
+| **Markdown** | `.md` | 121 | 4,323 | 0 | **11,130行** | **15,453行** | システム仕様書、ADR、初学者学習ロードマップ、全34シナリオREADME/ADVANCED仕様書、PPA 5.1 開発ガイド |
+| **JSON / Manifest** | `.json` | 33 | 0 | 0 | **6,909行** | **6,909行** | PPAペリフェラルマニフェスト (`fbb-plugin.json`)、ボード構造メタデータ |
 | **C** | `.c` | 35 | 835 | 701 | **5,379行** | **6,915行** | システムコール横取り Shim、エミュレータデーモン、カオス障害注入エンジン、全シナリオ FW |
 | **C++** | `.cpp` | 20 | 815 | 847 | **5,355行** | **7,017行** | Verilator シミュレーションコア、PPA ペリフェラルプラグイン実装 |
-| **JSX** | `.jsx` | 15 | 332 | 75 | **3,839行** | **4,246行** | Vite + React 19 UI（Dockview, Recharts, `CanAnalyzerPane`, `ChaosPanel`, `GenericPeripheralPane`, `TransactionLoggerPane`） |
+| **JSX** | `.jsx` | 18 | 389 | 147 | **4,340行** | **4,876行** | Vite + React 19 UI（Dockview, DPPA `paneRegistry.jsx`, `PopoutWindow.jsx`, `DockHeaderActions.jsx`, Recharts, 各種診断ペイン） |
 | **Python** | `.py` / CLI | 14 | 408 | 794 | **2,199行** | **3,401行** | DTSパース・診断エンジン (`DTSParserError`)、コード自動生成、統一 CLI (`bin/fbb`), PPA |
-| **JavaScript** | `.js` | 3 | 156 | 70 | **1,271行** | **1,497行** | ダッシュボード WebSockets サーバー（`dashboard/server.js`）、マルチコアライフサイクル API |
+| **JavaScript** | `.js` | 3 | 156 | 70 | **1,283行** | **1,509行** | ダッシュボード WebSockets サーバー（`dashboard/server.js`）、マルチスクリーンレイアウト永続化 API |
 | **Bourne Shell** | `.sh` | 38 | 200 | 187 | **952行** | **1,339行** | 自動検証ランナー（`run_tests.sh`）、ラボ起動スクリプト（`start_lab.sh`） |
 | **Other / Rust** | `.rs` / `.css` / 他 | 21 | 159 | 105 | **862行** | **1,126行** | UIスタイルシート (CSS), Mコア Rust FW, 各種設定メタデータ |
 | **C/C++ Header** | `.h` / `.hpp` | 33 | 121 | 260 | **801行** | **1,182行** | 統一 CLI パーサー (`cli_helper.hpp`)、デバイス共通ヘッダー、レジスタ定義、Shimマクロ |
-| **Verilog** | `.v` | 18 | 93 | 147 | **802行** | **1,042行** | シミュレーション対象の FPGA ハードウェア記述 (RTL) |
+| **Verilog** | `.v` | 18 | 93 | 147 | **794行** | **1,034行** | シミュレーション対象の FPGA ハードウェア記述 (RTL) |
 | **CMake** | `CMakeLists.txt` / `.cmake` | 22 | 114 | 67 | **788行** | **969行** | マルチターゲットビルド設定（シナリオ・PPA・カーネル） |
-| **合計 (SUM Total)** | **-** | **373** | **7,507** | **3,253** | **40,057行** | **50,817行** | **F-BB プラットフォーム全体の静的ソースコード総数** |
+| **合計 (SUM Total)** | **-** | **376** | **7,613** | **3,325** | **40,792行** | **51,730行** | **F-BB プラットフォーム全体の静的ソースコード総数** |
 
 
 > **コード生成エンジンによる動的コード**
@@ -456,7 +484,7 @@ F-BB 独自のプロジェクトコードのみ（`--cleanall` 時）で**純プ
 - **Verilog (RTL)**: テスト対象となるFPGA内の回路ロジック。
 - **C/C++**: `LD_PRELOAD` によるシステムコールの横取り（`open`/`mmap`/`ioctl`等のリダイレクト）、Verilator シミュレーション実行エンジン（`sim_main.cpp`）、および統一 CLI パーサー（`fbb::PluginCLI`）を備えた公式・サードパーティ製 PPA ペリフェラルデーモン群。
 - **Python**: DTS仕様を読み取ってShimやRTLスケルトンを自動出力するコード生成器、行番号・スニペット・修正Tip付きの親切な構文エラー診断機能（`DTSParserError`）、PPAプラグイン自動起動エンジン、および共有メモリ初期化やシリアル（UART PTY）中継を担うバックエンドコントローラ。
-- **JavaScript (Node.js & React 19)**: 共有メモリのデータをWebSocketでリアルタイム受信・配信するダッシュボードサーバー、VS Codeライクなドラッグ分割レイアウト（Dockview）、閉じたペインを動的復元する `+ Add Pane` ドロップダウン、および `fbb-plugin.json` の UI スキーマを動的レンダリングする共通ペイン規格 (`GenericPeripheralPane`)。
+- **JavaScript (Node.js & React 19)**: 共有メモリのデータをWebSocketでリアルタイム受信・配信するダッシュボードサーバー、開閉原則（OCP）に準拠しペイン定義を完全疎結合化したプラグインレジストリ（DPPA: `paneRegistry.jsx`）、VS Codeライクなドラッグ分割レイアウト（Dockview）、ワンクリックで別ウィンドウへ切り離すマルチモニタPop-out機能、閉じたペインを動的復元する `+ Add Pane` ドロップダウン、および `fbb-plugin.json` の UI スキーマを動的レンダリングする共通ペイン規格 (`GenericPeripheralPane`)。
 
 ## Antigravity IDE とローカル Ollama の連携 (任意)
 

@@ -27,7 +27,7 @@
     - **UART ブリッジ統合**: PTY <-> TCP (Port 2000~) の中継、外部ポート (Port 3000~) プロキシ、64KB リングバッファによる初期ブート/メニュー出力消失防止、および子プロセスへの `VFPGA_INTERACTIVE=1` 環境変数透過伝播。
     - **マルチコア・シナリオ・ライフサイクル管理 API**: 実行中のプロセス（Aコア/Mコア等）の自動検知 (`GET /api/scenario/cores`)、個別コアまたは全体の停止 (`POST /api/scenario/stop`)、およびカオス障害注入設定を反映した動的再起動 (`POST /api/scenario/restart`) を提供。
     - **カオス・エンジン・ログ監視**: `/tmp/fbb_chaos_injection.log` をポーリング監視し、発生した障害イベントを WebSocket (`scenario:chaos_event`) 経由でフロントエンドへ即時配信。
-    - **レイアウト永続化 API**: シナリオフォルダの `fbb_layout.json` を通じてレイアウト情報をロード (`GET /api/layout`) および保存 (`POST /api/layout`) するエンドポイントを提供。
+    - **レイアウト永続化 API**: シナリオフォルダの `fbb_layout.json`（またはスクリーン指定時は `fbb_layout_${screen}.json`）を通じてレイアウト情報をロード (`GET /api/layout?screen=...`) および保存 (`POST /api/layout?screen=...`) するエンドポイントを提供。
 - **データ構造**:
     - `shmBuffer`: SHM ファイルのメモリマッピング。
     - `traceHistory`: レジスタ状態の時系列スナップショット配列。
@@ -35,14 +35,16 @@
     - `currentChaosConfig`: カオス障害注入の動作状態・シード値・障害率・対象ペリフェラル辞書。
 
 ### 3.2 Dashboard Frontend (React)
-- **技術スタック**: Vite + React + Lucide-react (Icons) + Socket.io-client + **recharts** (Charting) + **dockview-react** (Docking Layout)。
-- **特徴**: 
+- **技術スタック**: Vite + React 19 + Lucide-react (Icons) + Socket.io-client + **recharts** (Charting) + **dockview-react** (Docking Layout)。
+- **アーキテクチャ特徴**:
+    - **DPPA (Dashboard Pane Plugin Architecture)**: `paneRegistry.jsx` を介した宣言的ペイン管理機構。ペインの実装・定義と Dockview ウィンドウマネージャー（`App.jsx`）を完全疎結合化。
+    - **ハイブリッド・マルチスクリーン (Pop-out & Multi-Screen Cockpit)**: Dockview のタブ右上に「Pop out to separate window」アクションを統合。React 19 `createPortal` による子ウィンドウ化および `BroadcastChannel` による画面間ステート同期をサポート。また、URL クエリ `?screen=<id>` / `?pane=<id>` によるモニタ別レイアウト永続化・単体全画面表示に対応。
     - **Chaos & Multi-Core Lifecycle Panel (`ChaosPanel`)**: シナリオ内の各コア（Aコア `test_bin` / Mコア `remoteproc*`）の稼働状態表示と個別選択再起動、シード指定モード（Off / Random / Fixed）、シード再ロール（Reroll）、CLI 再現用コマンド（`fbb test --chaos --seed ...`）のワンクリックコピー、障害率スライダー（0〜100%）、およびペリフェラル別（I2C, SPI, UIO, CAN, CDMA）障害有効化チェックボックスを統合した高機能検証ペイン。
     - **Register Monitor**: デバイス（モジュール）ごとにアコーディオンパネルで展開・折りたたみ可能にグルーピング表示。各レジスタに「Trace」チェックボックスを備え、Tracerでの描画および凡例の動的フィルタリングを双方向同期。
     - **GPIO / Pin Array**: 118 チャネルの GPIO をグリッド表示し、マニフェスト経由で配信される方向モード属性（`direction_mode`: `active_low_input` / `active_high_input`）に基づき LED（出力）とトグルスイッチ（入力）を完全なデータ駆動（SoC非依存）で動的に切り替えて描画。
     - **DTS Visualizer & AI Diagnostics**: 32-bit物理アドレス空間全体を一括俯瞰する「一体型メモリマップダイアグラム」を表示。マップ上の各デバイスブロックをクリックで直下にインライン展開し、アラインメント・レジスタ・プロパティを詳細確認可能。デバイス間の未割り当て空間（Unmapped Space Gap）をシックなグレーのパターン領域として可視化し、新規IP用空き容量バッファを提示。さらに Ollama LLM / CIP プロンプトと連動した「AI Smart DTS Check」により、コンパイルエラーの自然言語解説と推奨Fix Diffを提示。
     - **Register State Tracer**: レジスタの変化履歴を正規化表示し、微小な変化も可視化。凡例クリックまたは Register Monitor のチェックボックスと連動した、表示・非表示および凡例の動的な削除・追加に対応。
-    - **IDE-style Docking Layout (Dockview)**: VS Code互換のドッキングレイアウトを採用。パネルのドラッグ＆ドロップによる分割・結合・タブ化・フローティング化をネイティブサポートし、UI全体の配置リセット機能（Reset Layout）も完備。レレガシーな手動リサイズコードを撤去し、高精度なリサイズ体験を提供。
+    - **IDE-style Docking Layout (Dockview)**: VS Code互換のドッキングレイアウトを採用。パネルのドラッグ＆ドロップによる分割・結合・タブ化・フローティング化をネイティブサポートし、UI全体の配置リセット機能（Reset Layout）も完備。レガシーな手動リサイズコードを撤去し、高精度なリサイズ体験を提供。
     - **Generic Peripheral View (PPA 2.0 Equalization)**: 公式・サードパーティを問わず全ペリフェラルプラグインを 100% 均一に扱う汎用ビューペイン。`fbb-plugin.json` 内で指定されたベクターグラフィック `board.svg` を解像度低下ゼロ（500%+ 拡大耐性）でレンダリングし、その上にリアルタイムフレームバッファ（Canvas Stream）やセンサー制御スライダー等を自動オーバーレイ描画。ペリフェラル非接続時は特定機器に偏らないスタイリッシュな **`NO ACTIVE PERIPHERAL CONNECTED` (スタンバイ画面)** を表示。
     - **レイアウト状態の保存・復元と個別ペイン追加機能**: 起動時に自動でサーバーからシナリオ別レイアウトを読み込み復元し、ヘッダーの「Save Layout」ボタンから現在の配置状態を保存可能。さらに **`+ Add Pane`** ドロップダウンメニューから、閉じた任意のペイン（または動的発見された複数ペリフェラルペイン）を選択して単体動的復元・フォーカス移動が可能。
 
@@ -105,8 +107,57 @@ GPIO の方向判定およびデータレジスタ特定ロジック（`GpioPane
   - `injectGpioPin` は対象オフセットの 4 バイトのみを局所更新する。
   - レジスタ特定時は、入力レジスタ（`DATA_IN`, `IN`, `IDR`, `DIN`）を優先して解決し、ファームウェアのポーリング先へ確実に値を伝達すること。
 
+## 3.6 DPPA (Dashboard Pane Plugin Architecture) およびハイブリッド・マルチスクリーン選定意思決定ログ (DPPA & Multi-Screen Architecture Decision Log)
+
+### 1. 背景と課題 (Why)
+- **密結合の技術的負債**:
+  - レガシーな `App.jsx` は、全ペインのコンポーネント（RegisterMonitor, GpioPanel, TracerPanel, UartPanel, DtsVisualizerPanel, ChaosPanel, GenericPeripheralPanel）、アイコン（Lucide）、メニュー構造、Dockviewコンポーネント辞書を直接内部で抱え込んでいた。
+  - ペインが1つ追加・変更されるたびに、`App.jsx` のインポート文、メニューカテゴリ配列、Dockview初期化ブロックを修正する必要があり、開放閉鎖原則（OCP: Open-Closed Principle）に著しく違反していた。
+- **単一画面（シングルモニタ）の手狭さ**:
+  - 物理FPGAボードの代替として高機能化するにつれ、シリアルコンソール（UART1/2）、波形ロジックアナライザ（Tracer）、レジスタ監視、メモリマップ（DTS）、カオス注入パネル、ペリフェラルビューとペイン数が倍増。
+  - 複数モニタを持つ開発者が「1画面に全ペインを詰め込む」ことを強いられ、作業領域が圧迫されていた。
+
+### 2. バックエンド PPA (ADR #005) とフロントエンド DPPA の設計思想的一致
+- バックエンド側では、ADR #005（Peripheral Plugin Architecture）により、特定ペリフェラルの知識をコア（`vlogic_controller.py`）から排除し、`fbb-plugin.json` による自動探索と動的マッピングを実現した。
+- 今回のフロントエンド刷新では、このプラグイン指向の設計原則をUI層へ水平展開し、**DPPA (Dashboard Pane Plugin Architecture)** を確立した。
+- `App.jsx` を純粋な「Docking Window Manager & Layout Coordinator」へと責務を絞り込み、ペインの定義・カテゴリ・アイコン・ファクトリを宣言的レジストリ（`paneRegistry.jsx`）へと移譲した。
+
+### 3. マルチスクリーン構成の比較と選定
+1. **案A: Electron / Tauri 等のネイティブデスクトップアプリ化 (評価: C - 不採用)**:
+   - *理由*: Docker コンテナ開発および「Web標準・ブラウザだけで即動く」という F-BB の根本設計原則（Decoupled Observability & Zero Heavy Install）を破壊する。クロスプラットフォームのビルドやインストールの手間を学習者に強要する。
+2. **案B: 単純な複数タブ/独立URLルーティング方式 (評価: B - 不採用)**:
+   - *理由*: 各タブが独立したSocket.io接続とReactステートを持つため、状態同期が取れず、メインウィンドウからの「ワンクリック切り離し（Pop-out）」や「再格納（Re-dock）」というシームレスなDXが実現できない。
+3. **案C: Web標準ハイブリッド・マルチスクリーン（React 19 `createPortal` + `BroadcastChannel` / 評価: A+ - 採用）**:
+   - *仕組み*:
+     - **動的 Pop-out (子ウィンドウ化)**: Dockview の各タブ右上に配置された「Pop-out」ボタンをクリックすると、`window.open` で新規ウィンドウを生成し、React 19 の `createPortal` を介して親ウィンドウのコンポーネントツリーから透過的に子ウィンドウのDOMへ描画。親のスタイル（CSS/ダークテーマ）を自動複製し、子ウィンドウを閉じれば親Dockviewの元位置へ自動リドック。
+     - **URL クエリパラメータによるモニタ別コックピット化 (`?screen=<id>`)**: サブモニタ専用のブラウザウィンドウで `http://localhost:8080/?screen=monitor2` を開くことで、モニタごとに独立したレイアウトファイル（`fbb_layout_monitor2.json`）を永続化・ロード可能。
+     - **単体ペイン全画面ビュー (`?pane=<id>`)**: プロジェクター投影や専用モニタ全画面化向けに、Dockview ヘッダーのない単一ペイン全画面モード（例: `?pane=peripheral_ssd1306`）を提供。
+     - **ゼロ・オーバーヘッド画面間同期 (`BroadcastChannel`)**: 複数画面間でUI設定（Tracerの非表示キー等）を共有するため、サーバーを介さずブラウザ標準の `BroadcastChannel('fbb_dashboard_sync')` を使用。
+
+### 4. 各ソースコードの役割と責務 (Source File Roles & Responsibilities)
+- **`dashboard/client/src/panes/paneRegistry.jsx`**:
+  - 宣言的ペインレジストリ。`BUILTIN_PANES` 配列で全ペインのメタデータ（id, title, category, icon, component, defaultLocation）を一元定義。
+  - `getGroupedPanesForMenu(manifest)`: メニュー用ツリーの動的抽出。
+  - `getDockviewComponentsMap()`: Dockview 用コンポーネントマップの自動生成。
+  - `registerCustomPane(definition)`: アドオンペイン（将来の ROS 2 AMR Nav2 Map 等）用動的拡張フック。
+- **`dashboard/client/src/components/PopoutWindow.jsx`**:
+  - React 19 `createPortal` によるマルチウィンドウポータルマネージャー。親の `<style>` / `<link>` の子ウィンドウへの完全同期、ダークテーマのクラス伝播、ヘッダーの「Re-dock to Main Window」ボタンおよび `beforeunload` での親Dockviewへの自動リドック処理をカプセル化。
+- **`dashboard/client/src/components/DockHeaderActions.jsx`**:
+  - Dockview の `rightHeaderActionsComponent` にマウントされるタブヘッダー拡張。現在アクティブなタブを検出し、VS Code 風の「Pop out to separate window」アイコンボタンを表示、クリック時にカスタムイベント `fbb:popout` を発火。
+- **`dashboard/client/src/components/DashboardContext.jsx`**:
+  - WebSocket（Socket.io）および共有メモリ状態のマスタープロバイダー。`BroadcastChannel('fbb_dashboard_sync')` を内包し、別ウィンドウとして開かれた複数画面間でのUI状態（非表示トレースキー等）のゼロレイテンシ同期を仲介。
+- **`dashboard/client/src/App.jsx`**:
+  - ペインの実装詳細から完全に切り離された「純粋なドッキング・ウィンドウマネージャー」。レジストリからの情報に基づき、Dockview のレイアウト制御、ポップアウト状態管理（`poppedOutPanels`）、URLクエリパラメータ（`?screen=`, `?pane=`）の解釈、およびレイアウト保存/復元を統括。
+- **`dashboard/server.js`**:
+  - `GET /api/layout` および `POST /api/layout` で `?screen=<id>` クエリパラメータを受け付け、`fbb_layout_${screen}.json` の永続化をサポート（デフォルト時は従来の `fbb_layout.json` を維持し完全な下位互換性を担保）。
+
+### 5. 狙いと効用 (Benefits & Impact)
+- **開閉原則 (OCP) の完全遵守**: 新規ペイン（P02のROS 2 AMR Nav2 Map等）を追加する際、`App.jsx` の修正は一切不要。`paneRegistry.jsx` に1エントリ追加するだけで、メニュー・Dockview・ポップアウト・個別URLの全機能が自動的に有効化される。
+- **マルチモニタ作業効率の大幅向上**: シリアルコンソールや波形トレーサー、ペリフェラルモニタを物理的な別モニタへ切り離し、メイン画面のドッキングレイアウトと並行して広々とデバッグ可能。
+- **ゼロ・オーバーヘッド・ゼロ・インストール**: 外部ネイティブアプリのインストールが不要で、Dockerコンテナ環境およびブラウザのWeb標準機能のみで完結。
+
 ## 4. 既知の未解決課題 (Known Open Issues)
 - **多重接続時の競合**: 同一の UART に対して複数のブラウザタブから入力を試みた際の排他制御。
 - **波形エクスポート**: トレーサーで記録したデータの CSV/JSON 形式でのダウンロード機能。
-- **シナリオ別UIレイアウトの保存と復元**: 各シナリオフォルダ内の `fbb_layout.json` を通じたペインレイアウトの永続化。[NEW - 実装済]
+- **シナリオ別UIレイアウトの保存と復元（マルチスクリーン対応）**: 各シナリオフォルダ内の `fbb_layout.json` / `fbb_layout_${screen}.json` を通じたペインレイアウトの永続化。[NEW - マルチスクリーン対応完了]
 
