@@ -27,6 +27,9 @@ FPGA-BoardlessBench (F-BB)は、FPGAを搭載した実機や評価ボードが�
 [シナリオ 06c: HUB75 128x64 Dual-Panel デイジーチェーン RGB LED マトリクス](tests/scenarios/06c_hub75_matrix_daisy_chain/)
 ![FPGA-BoardlessBench Demo](tests/scenarios/06c_hub75_matrix_daisy_chain/assets/dashboard.gif)
 
+[P02_robot_amr_ros2: 自律移動ロボット (AMR) × ROS 2 統合制御 & Web コックピット](tests/scenarios/P02_robot_amr_ros2/)
+![FPGA-BoardlessBench Demo](tests/scenarios/P02_robot_amr_ros2/assets/dashboard.gif)
+
 ---
 
 ## FPGA-BoardlessBench (F-BB) の位置づけ:一般的な開発手法との比較
