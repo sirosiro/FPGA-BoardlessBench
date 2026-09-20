@@ -147,6 +147,9 @@ F-BB のテストシナリオは、将来の拡張性と責務分離（SoC/ベ�
 * **`P01_frdmIMX`**
   - **意図**: 車載画像処理SoC（i.MX95/8MP）を模擬した高度なハードウェア/ソフトウェア協調デバッグ。
   - **役割**: Mesa OpenGL ESを使用した4カメラ歪み補正・バードアイ合成、およびSoCモデル自動検知（compatible/model）、極性反転設計（TRI = ~GDIR）の検証。
+* **`P02_robot_amr_ros2`**
+  - **意図**: 自律移動ロボット（AMR）向け `ros2_control` ハードウェア境界、双輪差動運動学（Differential Drive Kinematics）、2D オドメトリ、1kHz リアルタイムジッター制御、および Web ダッシュボード特化型コックピット（DPPA/PPA Tier 2 連動）の実践的検証。
+  - **役割**: Zynq-7000 UIO を介した双輪 PWM 生成・QEI エンコーダ直交パルス・ハードウェア E-STOP と、`hardware_interface::SystemInterface`、`DiffDriveController`、ルンゲクッタ2次積分オドメトリ計算、および Web ダッシュボードの4つの特化型ペイン（`ros2ControlStatus`, `ros2JointWaveform`, `ros2TeleopConsole`, `ros2PoseMap2D`）との統合検証。
 * **`S01_cpp_lfsr_sequencer`**
   - **意図**: 総合的な機能展示（ショーケース）。
   - **役割**: CLIシェル、ダッシュボードでのRecharts/Dockview統合などの全エミュレーション機能を網羅した動作デモ。
@@ -195,9 +198,9 @@ F-BB のテストシナリオは、将来の拡張性と責務分離（SoC/ベ�
 - **2026-09-19: ADR #012 ros2_control ハードウェア境界の最小セット検証 (Scenario 22) とゼロインストール互換レイヤーの導入**
   - **Decision**: ROS 2 実践プロジェクト (`P02_robot_amr_ros2`) に先立ち、巨大な ROS 2 ディストリビューション (Humble/Jazzy等) のインストールを一切要求せず、純粋な C++17 と Linux 標準ツールのみで動作する「基盤技術の最小セット検証シナリオ」として `22_ros2_control_minimal` を新設した。`hardware_interface::SystemInterface` の主要 API (`on_init`, `on_activate`, `read`, `write`, `export_state_interfaces`, `export_command_interfaces`) を完全互換でヘッダー内提供し、UIO MMIO / 1kHz リアルタイム制御ループ / 双輪エンコーダ / ハードウェア E-STOP / プロトコル・アサーション / 32-bit カウンタ折り返し（Wrap-around）耐性を検証する。
   - **Rationale**: F-BB の基本理念である「ゼロヘビーインストール」「Learner-Centric Purity」「高い可搬性と高速なCI実行」を維持しつつ、ROS 2 連携における最も重要かつ障害の多発するハードウェア/ソフトウェア接合境界（UIO MMIO と 1kHz 決定論的ジッター）を隔離して確実に事前保証するため。
-
-
-
+- **2026-09-20: ADR #013 自律移動ロボット (AMR) 向け `ros2_control` 実践シナリオ (`P02_robot_amr_ros2`) と 2-Tier DPPA/PPA コックピットの導入**
+  - **Decision**: `22_ros2_control_minimal` の基盤技術を受け継ぎ、実製品相当の差動2輪 AMR スタックを統合した `P02_robot_amr_ros2` を導入した。また Web ダッシュボードには、単一巨大ペインへの押し込みを排除し、DPPA（Dashboard Pane Plugin Architecture）のマルチモニター Pop-out（`createPortal`）および Dockview グリッド機能を最大限に活かせる「4つの特化型ペイン構成」を採用した。さらに汎用性とロボット特化 UX を両立するため、Tier 1（汎用コア: Lifecycle, Multi-joint Waveform, Teleop/E-STOP）と Tier 2（PPA データ駆動アドオン: `amr_manifest.json` に基づく 2D Pose & Map）の 2-Tier アーキテクチャを確立した。
+  - **Rationale**: 巨大な ROS 2 インストールを要求せず、純粋な C++20 / Verilog / Linux UIO のみで数秒でビルド・実行可能な「ゼロヘビーインストール」を貫徹しつつ、実機 ROS 2 エコシステム（`DiffDriveController`, `/cmd_vel`, `/odom`）と 100% 透過的に相互運用可能とし、かつダッシュボード側の拡張性と可搬性を担保するため。
 
 ### 5. AIとの協調に関する指針 (AI Collaboration Policy)
 - **マニフェスト優先の維持**: テストシナリオの構成を変更するようなタスクがある場合、必ずこのマニフェストの更新が人間に承認される前にコード修正に着手してはならない。

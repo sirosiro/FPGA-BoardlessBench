@@ -1,0 +1,32 @@
+/dts-v1/;
+
+/ {
+    #address-cells = <1>;
+    #size-cells = <1>;
+    model = "zynq-vfpga-P02-robot-amr";
+    compatible = "xlnx,zynq-7000";
+
+    /*
+     * 【Scenario P02: ros2_control Autonomous Mobile Robot (AMR) UIO Node】
+     * Real-world standard Linux UIO (/dev/uio0) actuator/sensor node.
+     * Maps dual-wheel motor PWM, quadrature encoder pulse counters,
+     * 1kHz hardware periodic timer interrupt, and E-STOP controls.
+     */
+    vfpga_robot_uio@40000000 {
+        compatible = "generic-uio";
+        reg = <0x40000000 0x1000>;
+        label = "/dev/uio0";
+        interrupts = <7>;
+        status = "okay";
+
+        registers = 
+            "STATUS        @ 0x00 : RO",
+            "LEFT_ENCODER  @ 0x04 : RO",
+            "RIGHT_ENCODER @ 0x08 : RO",
+            "INT_ACK       @ 0x0C : WO",
+            "CONTROL       @ 0x10 : RW",
+            "LEFT_PWM      @ 0x14 : RW",
+            "RIGHT_PWM     @ 0x18 : RW",
+            "CYCLE_CNT     @ 0x1C : RO";
+    };
+};

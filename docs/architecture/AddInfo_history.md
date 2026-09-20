@@ -418,8 +418,19 @@
         1. 異常系テストの決定論的再現性の確立: 宇宙線や電気ノイズ、断線などの偶発的障害に対するファームウェアの再試行・フォールトトレラント耐性を、同一シードによる 100% の決定論的再現性をもってホスト環境で検証可能にするため。
         2. 開発・デバッグサイクルの極大化: 障害発生により異常停止したコアのみをダッシュボードや CLI から即座に再起動して再試行できるようにし、再起動時も過去ログを失わない堅牢な観測環境を提供するため。
 
+- **2026-09-19: ADR #012 ros2_control ハードウェア境界の最小セット検証 (Scenario 22) とゼロインストール互換レイヤーの導入 (Zero-Install ros2_control SystemInterface Verification)**
+  - **Decision:**
+        1. ROS 2 実践プロジェクト (`P02_robot_amr_ros2`) に先立ち、巨大な ROS 2 ディストリビューション (Humble/Jazzy等) のインストールを一切要求せず、純粋な C++17 と Linux 標準ツールのみで動作する「基盤技術の最小セット検証シナリオ」として [`22_ros2_control_minimal`](../../tests/scenarios/22_ros2_control_minimal/README.md) を新設。
+        2. `hardware_interface::SystemInterface` の主要 API (`on_init`, `on_activate`, `read`, `write`, `export_state_interfaces`, `export_command_interfaces`) を外部依存ゼロの完全互換ヘッダーとして提供。
+        3. UIO MMIO / 1kHz リアルタイム制御ループ / 双輪エンコーダ / ハードウェア E-STOP / プロトコル・アサーション / 32-bit カウンタ折り返し（Wrap-around）耐性の網羅的自動検証を実装。
+  - **Rationale:**
+        1. ゼロヘビーインストールと学習純度の維持: 巨大な ROS 2 パッケージ群のインストールを課すことなく、最もクリティカルかつ障害が発生しやすいハードウェア/ソフトウェア境界（UIO MMIO と 1kHz 決定論的ジッター）を隔離して高速かつ確実に検証可能にするため。
 
-
-
-
-
+- **2026-09-20: ADR #013 自律移動ロボット (AMR) 向け `ros2_control` 実践シナリオ (`P02_robot_amr_ros2`) と 2-Tier DPPA/PPA コックピットの導入 (AMR Differential Drive ros2_control Integration & 2-Tier Modular DPPA Cockpit)**
+  - **Decision:**
+        1. 実製品相当の差動2輪 AMR スタック（`ros2_control`、`DiffDriveController`、ルンゲクッタ2次積分オドメトリ計算、双輪 PWM/QEI エンコーダ、ハードウェア E-STOP）を統合した実践シナリオ [`P02_robot_amr_ros2`](../../tests/scenarios/P02_robot_amr_ros2/README.md) を新設。
+        2. Web ダッシュボードのロボット操作卓について、単一巨大ペインへの集約を避け、DPPA（Dashboard Pane Plugin Architecture）のマルチモニター Pop-out（`createPortal`）および Dockview グリッド機能を最大限に活かせる「4つの特化型ペイン構成」(`ros2ControlStatus`, `ros2JointWaveform`, `ros2TeleopConsole`, `ros2PoseMap2D`) を採用。
+        3. 汎用性とロボット特化 UX を両立するため、Tier 1（汎用コア: Lifecycle, Multi-joint Waveform, Teleop/E-STOP）と Tier 2（PPA データ駆動アドオン: `amr_manifest.json` に基づく 2D Pose & Map）の 2-Tier アーキテクチャを確立。
+  - **Rationale:**
+        1. ゼロヘビーインストールと実機運用の完全両立: 数秒でビルド・実行可能な軽量性を維持しつつ、ROS 2 エコシステム（`/cmd_vel`, `/odom`）と 100% 相互運用可能とするため。
+        2. DPPA/PPA 責務分離の堅持: ダッシュボードコアに特定ロボットの幾何寸法やパラメータをハードコードせず、`amr_manifest.json` を Single Source of Truth として動的取得することで、他車種やカスタムロボットへの高い拡張性を担保するため。

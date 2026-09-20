@@ -143,7 +143,9 @@ function checkChaosLogEvents() {
 setInterval(checkChaosLogEvents, 200);
 
 function getActiveScenarioDir() {
-    return manifest.scenario_dir || process.env.SCENARIO_DIR || '';
+    const scn = manifest.scenario_dir || process.env.SCENARIO_DIR || '';
+    if (!scn) return '';
+    return path.isAbsolute(scn) ? scn : path.join(__dirname, '..', scn);
 }
 
 function getDiscoveredCores() {
@@ -932,6 +934,39 @@ function pushCanFrameToRing(busId, canId, dlc, dataBytes) {
         currentChaosConfig = { ...currentChaosConfig, ...config };
         broadcastScenarioStatus();
     });
+
+    socket.on('amr:command', (cmd) => {
+        try {
+            const rawV = cmd.linear !== undefined ? cmd.linear : (cmd.v !== undefined ? cmd.v : 0.0);
+            const rawW = cmd.angular !== undefined ? cmd.angular : (cmd.w !== undefined ? cmd.w : 0.0);
+            const v = Number.isFinite(Number(rawV)) ? Number(rawV) : 0.0;
+            const w = Number.isFinite(Number(rawW)) ? Number(rawW) : 0.0;
+            const payload = { v, w, linear: v, angular: w };
+            fs.writeFileSync('/tmp/fbb_amr_cmd.json', JSON.stringify(payload) + '\n');
+        } catch (e) {
+            console.error('[Backend] Failed to write /tmp/fbb_amr_cmd.json:', e.message);
+        }
+    });
+
+    socket.on('amr:estop', (estop) => {
+        try {
+            let current = {};
+            if (fs.existsSync('/tmp/fbb_amr_cmd.json')) {
+                try { current = JSON.parse(fs.readFileSync('/tmp/fbb_amr_cmd.json', 'utf8')); } catch (e) {}
+            }
+            const isEstop = typeof estop === 'object' ? !!estop.active : !!estop;
+            current.estop = isEstop;
+            if (isEstop) {
+                current.v = 0.0;
+                current.w = 0.0;
+                current.linear = 0.0;
+                current.angular = 0.0;
+            }
+            fs.writeFileSync('/tmp/fbb_amr_cmd.json', JSON.stringify(current) + '\n');
+        } catch (e) {
+            console.error('[Backend] Failed to write E-STOP to /tmp/fbb_amr_cmd.json:', e.message);
+        }
+    });
 });
 
 const lastShmBuffers = {};
@@ -1026,15 +1061,44 @@ setInterval(() => {
     syncUartConnections();
 }, 200);
 
+let lastAmrTelemetryMtime = 0;
+function updateAmrTelemetry() {
+    const telemetryPath = '/tmp/fbb_amr_telemetry.json';
+    if (!fs.existsSync(telemetryPath)) return;
+    try {
+        const stats = fs.statSync(telemetryPath);
+        if (stats.mtimeMs > lastAmrTelemetryMtime) {
+            lastAmrTelemetryMtime = stats.mtimeMs;
+            const raw = fs.readFileSync(telemetryPath, 'utf8');
+            const telemetry = JSON.parse(raw);
+            io.emit('amr:telemetry', telemetry);
+        }
+    } catch (e) {}
+}
+
 setInterval(() => {
     updatePeripheralShm();
     updateCanRingBuffers();
+    updateAmrTelemetry();
 }, 33); // ~30 FPS
 
-
+// GET /api/scenario/robot-manifest - Load amr_manifest.json from active scenario folder (PPA Data-Driven)
+app.get('/api/scenario/robot-manifest', (req, res) => {
+    const scnDir = getActiveScenarioDir();
+    const manifestPath = path.join(scnDir, 'amr_manifest.json');
+    try {
+        if (fs.existsSync(manifestPath)) {
+            const data = fs.readFileSync(manifestPath, 'utf8');
+            return res.json(JSON.parse(data));
+        } else {
+            return res.status(404).json({ message: 'No amr_manifest.json found in active scenario' });
+        }
+    } catch (e) {
+        return res.status(500).json({ error: e.message });
+    }
+});
 
 // GET /api/layout - Load layout file from the active scenario folder (supports ?screen=<id>)
-// @intent:rationale 指定されたテストシナリオフォルダ配下の fbb_layout.json（または ?screen=<id> 指定時は fbb_layout_${screen}.json）を読み込み、クライアントに返します。存在しない場合は 404 を返します。
 app.get('/api/layout', (req, res) => {
     const projRoot = manifest.project_root || path.join(__dirname, '..');
     const scnDir = manifest.scenario_dir || '.';

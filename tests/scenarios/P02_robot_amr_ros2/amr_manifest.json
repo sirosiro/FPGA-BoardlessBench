@@ -1,0 +1,51 @@
+{
+  "robot_type": "differential_drive",
+  "robot_name": "F-BB AMR-200",
+  "description": "Differential Drive Autonomous Mobile Robot for ROS 2 Navigation & Hardware Control",
+  "chassis": {
+    "width": 0.20,
+    "length": 0.25,
+    "wheel_base": 0.16,
+    "wheel_radius": 0.033,
+    "wheel_width": 0.024,
+    "max_linear_speed": 0.60,
+    "max_angular_speed": 2.50,
+    "encoder_cpr": 4096
+  },
+  "joints": [
+    { "name": "joint_left",  "type": "continuous", "wheel": "left",  "radius": 0.033 },
+    { "name": "joint_right", "type": "continuous", "wheel": "right", "radius": 0.033 }
+  ],
+  "mission_presets": [
+    {
+      "id": "straight_1m",
+      "name": "直進 1.0m (Forward)",
+      "description": "Drive straight at 0.2 m/s for 5.0 seconds",
+      "cmd": { "v": 0.20, "w": 0.0, "duration": 5.0 }
+    },
+    {
+      "id": "reverse_1m",
+      "name": "後退 1.0m (Reverse)",
+      "description": "Drive backward at -0.2 m/s for 5.0 seconds",
+      "cmd": { "v": -0.20, "w": 0.0, "duration": 5.0 }
+    },
+    {
+      "id": "pivot_90_left",
+      "name": "90° 左ピボット (Pivot Left)",
+      "description": "Pivot turn counter-clockwise at 0.5 rad/s for 3.14s",
+      "cmd": { "v": 0.0, "w": 0.50, "duration": 3.14 }
+    },
+    {
+      "id": "spin_360",
+      "name": "360° 超信地旋回 (Spin 360°)",
+      "description": "Full 360-degree rotation on spot at 1.0 rad/s for 6.28s",
+      "cmd": { "v": 0.0, "w": 1.00, "duration": 6.28 }
+    },
+    {
+      "id": "s_curve",
+      "name": "S字スラローム (S-Curve)",
+      "description": "Curving trajectory at 0.2 m/s linear, 0.4 rad/s angular for 8.0s",
+      "cmd": { "v": 0.20, "w": 0.40, "duration": 8.0 }
+    }
+  ]
+}

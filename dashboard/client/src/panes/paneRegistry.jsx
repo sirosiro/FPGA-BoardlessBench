@@ -19,7 +19,10 @@ import {
   Monitor,
   ShieldAlert,
   Car,
-  Zap
+  Zap,
+  Gauge,
+  MapPin,
+  Navigation
 } from 'lucide-react';
 
 import RegisterMonitor from '../components/RegisterMonitor';
@@ -33,6 +36,10 @@ import GenericPeripheralPane from '../components/GenericPeripheralPane';
 import TransactionLoggerPane from '../components/TransactionLoggerPane';
 import CanAnalyzerPane from '../components/CanAnalyzerPane';
 import ChaosPanel from '../components/ChaosPanel';
+import Ros2ControlStatusPane from '../components/Ros2ControlStatusPane';
+import Ros2JointWaveformPane from '../components/Ros2JointWaveformPane';
+import Ros2TeleopConsolePane from '../components/Ros2TeleopConsolePane';
+import Ros2PoseMap2DPane from '../components/Ros2PoseMap2DPane';
 
 export const PANE_CATEGORIES = {
   OBSERVABILITY: 'Observability & Control',
@@ -133,6 +140,38 @@ export const BUILTIN_PANES = {
     category: PANE_CATEGORIES.PERIPHERALS,
     icon: Tv,
     component: HdmiOutput,
+    defaultParams: {}
+  },
+  ros2ControlStatus: {
+    id: 'ros2ControlStatus',
+    title: 'ros2_control Status & Jitter',
+    category: PANE_CATEGORIES.EXTENSIONS,
+    icon: Gauge,
+    component: Ros2ControlStatusPane,
+    defaultParams: {}
+  },
+  ros2JointWaveform: {
+    id: 'ros2JointWaveform',
+    title: 'ROS 2 Joint Tracking Waveform',
+    category: PANE_CATEGORIES.EXTENSIONS,
+    icon: Activity,
+    component: Ros2JointWaveformPane,
+    defaultParams: {}
+  },
+  ros2TeleopConsole: {
+    id: 'ros2TeleopConsole',
+    title: 'ROS 2 Teleop & E-STOP Console',
+    category: PANE_CATEGORIES.EXTENSIONS,
+    icon: Navigation,
+    component: Ros2TeleopConsolePane,
+    defaultParams: {}
+  },
+  ros2PoseMap2D: {
+    id: 'ros2PoseMap2D',
+    title: 'AMR 2D Pose & Map',
+    category: PANE_CATEGORIES.EXTENSIONS,
+    icon: MapPin,
+    component: Ros2PoseMap2DPane,
     defaultParams: {}
   }
 };
@@ -355,7 +394,19 @@ export function getGroupedPanesForMenu(manifest) {
     : [{ id: 'uartTerminal_default', component: 'uartTerminal', title: 'UART Console', params: { deviceName: 'default' }, icon: Terminal }];
 
   // Extension Add-on items
-  const extensionItems = [];
+  const extensionItems = [
+    BUILTIN_PANES.ros2ControlStatus,
+    BUILTIN_PANES.ros2JointWaveform,
+    BUILTIN_PANES.ros2TeleopConsole,
+    BUILTIN_PANES.ros2PoseMap2D
+  ].map(p => ({
+    id: p.id,
+    component: p.id,
+    title: p.title,
+    icon: p.icon,
+    params: p.defaultParams || {}
+  }));
+
   customPanes.forEach(p => {
     extensionItems.push({
       id: p.id,

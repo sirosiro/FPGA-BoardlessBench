@@ -1,0 +1,133 @@
+{
+    "grid": {
+        "root": {
+            "type": "branch",
+            "data": [
+                {
+                    "type": "branch",
+                    "data": [
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "ros2PoseMap2D"
+                                ],
+                                "activeView": "ros2PoseMap2D",
+                                "id": "1"
+                            },
+                            "size": 567
+                        },
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "ros2TeleopConsole"
+                                ],
+                                "activeView": "ros2TeleopConsole",
+                                "id": "2"
+                            },
+                            "size": 436
+                        }
+                    ],
+                    "size": 768.7830774001777
+                },
+                {
+                    "type": "branch",
+                    "data": [
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "ros2JointWaveform"
+                                ],
+                                "activeView": "ros2JointWaveform",
+                                "id": "3"
+                            },
+                            "size": 501
+                        },
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "ros2ControlStatus"
+                                ],
+                                "activeView": "ros2ControlStatus",
+                                "id": "4"
+                            },
+                            "size": 502
+                        }
+                    ],
+                    "size": 556.9770238483325
+                },
+                {
+                    "type": "branch",
+                    "data": [
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "registerMonitor"
+                                ],
+                                "activeView": "registerMonitor",
+                                "id": "5"
+                            },
+                            "size": 404
+                        },
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "dtsVisualizer"
+                                ],
+                                "activeView": "dtsVisualizer",
+                                "id": "6"
+                            },
+                            "size": 599
+                        }
+                    ],
+                    "size": 435.2398987514898
+                }
+            ],
+            "size": 1003
+        },
+        "width": 1761,
+        "height": 1003,
+        "orientation": "HORIZONTAL"
+    },
+    "panels": {
+        "ros2PoseMap2D": {
+            "id": "ros2PoseMap2D",
+            "contentComponent": "ros2PoseMap2D",
+            "title": "AMR 2D Odometry Map"
+        },
+        "ros2TeleopConsole": {
+            "id": "ros2TeleopConsole",
+            "contentComponent": "ros2TeleopConsole",
+            "title": "AMR Teleop & Mission Console"
+        },
+        "ros2JointWaveform": {
+            "id": "ros2JointWaveform",
+            "contentComponent": "ros2JointWaveform",
+            "title": "Actuator Tracking Waveform"
+        },
+        "ros2ControlStatus": {
+            "id": "ros2ControlStatus",
+            "contentComponent": "ros2ControlStatus",
+            "title": "ros2_control & Jitter"
+        },
+        "registerMonitor": {
+            "id": "registerMonitor",
+            "contentComponent": "registerMonitor",
+            "title": "Registers"
+        },
+        "dtsVisualizer": {
+            "id": "dtsVisualizer",
+            "contentComponent": "dtsVisualizer",
+            "params": {
+                "_componentName": "dtsVisualizer"
+            },
+            "title": "DTS Visualizer & AI"
+        }
+    },
+    "activeGroup": "6"
+}
