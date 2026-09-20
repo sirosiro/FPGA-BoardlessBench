@@ -58,20 +58,35 @@ static void export_telemetry_json(
     auto pose = kin.get_pose();
     auto twist = kin.get_current_twist();
 
+    auto ws = kin.twist_to_wheel_speeds(cmd_v, cmd_w);
+    double rad_per_tick = (2.0 * M_PI) / 4096.0;
+    double left_pos_rad = hw.get_left_pos() * rad_per_tick;
+    double right_pos_rad = hw.get_right_pos() * rad_per_tick;
+    double left_vel_rad = static_cast<double>(hw.get_delta_left() * 1000.0) * rad_per_tick;
+    double right_vel_rad = static_cast<double>(hw.get_delta_right() * 1000.0) * rad_per_tick;
+
     std::ostringstream ss;
     ss << "{\n";
     ss << "  \"timestamp\": " << std::fixed << std::setprecision(4) << (cycle * 0.001) << ",\n";
     ss << "  \"pose\": { \"x\": " << pose.x << ", \"y\": " << pose.y << ", \"theta\": " << pose.theta << " },\n";
     ss << "  \"twist\": { \"linear\": " << twist.linear << ", \"angular\": " << twist.angular << " },\n";
     ss << "  \"joints\": [\n";
-    ss << "    { \"name\": \"joint_left\", \"command\": " << hw.get_left_cmd()
-       << ", \"state_pos\": " << hw.get_left_pos()
-       << ", \"state_vel\": " << hw.get_left_vel()
-       << ", \"pwm\": " << static_cast<int>(hw.get_left_cmd()) << " },\n";
-    ss << "    { \"name\": \"joint_right\", \"command\": " << hw.get_right_cmd()
-       << ", \"state_pos\": " << hw.get_right_pos()
-       << ", \"state_vel\": " << hw.get_right_vel()
-       << ", \"pwm\": " << static_cast<int>(hw.get_right_cmd()) << " }\n";
+    ss << "    { \"name\": \"joint_left\","
+       << " \"command\": " << ws.left_radps << ","
+       << " \"cmd_vel\": " << ws.left_radps << ","
+       << " \"state_pos\": " << left_pos_rad << ","
+       << " \"state_vel\": " << left_vel_rad << ","
+       << " \"raw_ticks\": " << hw.get_left_pos() << ","
+       << " \"pwm\": " << static_cast<int>(hw.get_left_cmd()) << ","
+       << " \"pwm_duty\": " << static_cast<int>(hw.get_left_cmd()) << " },\n";
+    ss << "    { \"name\": \"joint_right\","
+       << " \"command\": " << ws.right_radps << ","
+       << " \"cmd_vel\": " << ws.right_radps << ","
+       << " \"state_pos\": " << right_pos_rad << ","
+       << " \"state_vel\": " << right_vel_rad << ","
+       << " \"raw_ticks\": " << hw.get_right_pos() << ","
+       << " \"pwm\": " << static_cast<int>(hw.get_right_cmd()) << ","
+       << " \"pwm_duty\": " << static_cast<int>(hw.get_right_cmd()) << " }\n";
     ss << "  ],\n";
     ss << "  \"controllers\": [\n";
     ss << "    { \"name\": \"diff_drive_controller\", \"type\": \"diff_drive_controller/DiffDriveController\", \"state\": \"active\" }\n";
@@ -84,7 +99,10 @@ static void export_telemetry_json(
     ss << "  },\n";
     ss << "  \"safety\": {\n";
     ss << "    \"estop\": " << (hw.is_estop_active() ? "true" : "false") << ",\n";
-    ss << "    \"fault\": " << ((hw.get_status_reg() & 0x01) ? "true" : "false") << "\n";
+    ss << "    \"estop_active\": " << (hw.is_estop_active() ? "true" : "false") << ",\n";
+    ss << "    \"fault\": " << ((hw.get_status_reg() & 0x01) ? "true" : "false") << ",\n";
+    ss << "    \"hardware_fault\": " << ((hw.get_status_reg() & 0x01) ? "true" : "false") << ",\n";
+    ss << "    \"enabled\": " << ((hw.get_status_reg() & 0x02) ? "true" : "false") << "\n";
     ss << "  },\n";
     ss << "  \"cycle_count\": " << cycle << ",\n";
     ss << "  \"total_distance\": " << kin.get_total_distance() << "\n";

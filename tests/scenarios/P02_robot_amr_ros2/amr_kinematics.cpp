@@ -13,9 +13,8 @@ namespace fbb_amr {
     }
 
     double AmrKinematics::normalize_angle(double angle) {
-        while (angle > M_PI)  angle -= 2.0 * M_PI;
-        while (angle < -M_PI) angle += 2.0 * M_PI;
-        return angle;
+        if (!std::isfinite(angle)) return 0.0;
+        return std::atan2(std::sin(angle), std::cos(angle));
     }
 
     void AmrKinematics::reset_odometry(double x, double y, double theta) {

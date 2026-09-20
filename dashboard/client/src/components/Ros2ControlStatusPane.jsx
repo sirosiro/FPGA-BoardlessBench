@@ -30,8 +30,8 @@ export default function Ros2ControlStatusPane() {
 
   const joints = telemetry?.joints || [];
   const cycleCount = telemetry?.cycle_count || 0;
-  const isEstop = telemetry?.safety?.estop || false;
-  const isFault = telemetry?.safety?.fault || false;
+  const isEstop = Boolean(telemetry?.safety?.estop ?? telemetry?.safety?.estop_active ?? false);
+  const isFault = Boolean(telemetry?.safety?.fault ?? telemetry?.safety?.hardware_fault ?? false);
 
   const jitterColor = rtMetrics.avg_jitter_us < 200 ? '#3fb950' : rtMetrics.avg_jitter_us < 1000 ? '#d29922' : '#f85149';
 
@@ -234,7 +234,7 @@ export default function Ros2ControlStatusPane() {
                     {joint.name}
                   </td>
                   <td style={{ padding: '6px 4px', textAlign: 'right', fontFamily: 'monospace', color: '#58a6ff' }}>
-                    {joint.cmd_vel !== undefined ? joint.cmd_vel.toFixed(2) : '-'} <span style={{ fontSize: '9px', color: '#8b949e' }}>r/s</span>
+                    {(joint.cmd_vel !== undefined ? joint.cmd_vel : joint.command) !== undefined ? Number(joint.cmd_vel !== undefined ? joint.cmd_vel : joint.command).toFixed(2) : '-'} <span style={{ fontSize: '9px', color: '#8b949e' }}>r/s</span>
                   </td>
                   <td style={{ padding: '6px 4px', textAlign: 'right', fontFamily: 'monospace', color: '#3fb950' }}>
                     {joint.state_pos !== undefined ? joint.state_pos.toFixed(1) : '-'} <span style={{ fontSize: '9px', color: '#8b949e' }}>rad</span>
@@ -243,7 +243,7 @@ export default function Ros2ControlStatusPane() {
                     {joint.state_vel !== undefined ? joint.state_vel.toFixed(2) : '-'} <span style={{ fontSize: '9px', color: '#8b949e' }}>r/s</span>
                   </td>
                   <td style={{ padding: '6px 4px', textAlign: 'right', fontFamily: 'monospace', color: '#bc8cff' }}>
-                    {joint.pwm_duty !== undefined ? joint.pwm_duty : '-'}
+                    {(joint.pwm_duty !== undefined ? joint.pwm_duty : joint.pwm) !== undefined ? (joint.pwm_duty !== undefined ? joint.pwm_duty : joint.pwm) : '-'}
                   </td>
                 </tr>
               ))

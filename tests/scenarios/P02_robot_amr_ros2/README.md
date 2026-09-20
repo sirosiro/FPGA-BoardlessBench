@@ -4,7 +4,7 @@
 
 差動二輪ロボット（AMR: Autonomous Mobile Robot）の運動学・オドメトリ積算エンジン、FPGA（Verilator）の 1kHz 周期割り込み・デュアル PWM・直交エンコーダ回路、Linux UIO (`/dev/uio0`) ハードウェア抽象化レイヤ（`ros2_control`）、そして Web ダッシュボードの 4つの特化型ペインを統合した環境を提供します。
 
-![FPGA-BoardlessBench (F-BB) AroundView Dashboard](assets/dashboard.gif)
+![FPGA-BoardlessBench (F-BB) AMR ROS 2 Actuator Cockpit Dashboard](assets/dashboard.gif)
 
 ---
 

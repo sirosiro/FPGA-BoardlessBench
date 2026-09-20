@@ -42,10 +42,13 @@ export default function Ros2JointWaveformPane() {
 
       data.joints.forEach((joint) => {
         const prefix = joint.name.includes('left') ? 'L' : joint.name.includes('right') ? 'R' : joint.name;
-        entry[`${prefix}_cmd`] = Number(joint.cmd_vel?.toFixed(2) || 0);
-        entry[`${prefix}_vel`] = Number(joint.state_vel?.toFixed(2) || 0);
-        entry[`${prefix}_pwm`] = Number(joint.pwm_duty || 0);
-        entry[`${prefix}_err`] = Number(((joint.cmd_vel || 0) - (joint.state_vel || 0)).toFixed(2));
+        const cmdVal = joint.cmd_vel !== undefined ? joint.cmd_vel : (joint.command !== undefined ? joint.command : 0);
+        const velVal = joint.state_vel !== undefined ? joint.state_vel : 0;
+        const pwmVal = joint.pwm_duty !== undefined ? joint.pwm_duty : (joint.pwm !== undefined ? joint.pwm : 0);
+        entry[`${prefix}_cmd`] = Number(cmdVal.toFixed(2));
+        entry[`${prefix}_vel`] = Number(velVal.toFixed(2));
+        entry[`${prefix}_pwm`] = Number(pwmVal);
+        entry[`${prefix}_err`] = Number((cmdVal - velVal).toFixed(2));
       });
 
       setHistory((prev) => {

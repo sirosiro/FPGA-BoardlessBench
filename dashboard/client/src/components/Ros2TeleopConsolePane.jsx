@@ -23,6 +23,16 @@ export default function Ros2TeleopConsolePane() {
   // Joystick pad refs
   const joystickRef = useRef(null);
   const isDraggingRef = useRef(false);
+  const presetTimerRef = useRef(null);
+
+  // Clean up preset timer on unmount
+  useEffect(() => {
+    return () => {
+      if (presetTimerRef.current) {
+        clearTimeout(presetTimerRef.current);
+      }
+    };
+  }, []);
 
   // Fetch robot manifest for mission presets & limits
   useEffect(() => {
@@ -31,11 +41,13 @@ export default function Ros2TeleopConsolePane() {
       .then((data) => {
         if (data) {
           setManifest(data);
-          if (data.limits?.max_linear_velocity) {
-            setMaxLinear(data.limits.max_linear_velocity);
+          const maxLin = data.chassis?.max_linear_speed ?? data.limits?.max_linear_velocity;
+          if (maxLin) {
+            setMaxLinear(maxLin);
           }
-          if (data.limits?.max_angular_velocity) {
-            setMaxAngular(data.limits.max_angular_velocity);
+          const maxAng = data.chassis?.max_angular_speed ?? data.limits?.max_angular_velocity;
+          if (maxAng) {
+            setMaxAngular(maxAng);
           }
         }
       })
@@ -47,7 +59,7 @@ export default function Ros2TeleopConsolePane() {
     if (!socket) return;
     const handleTelemetry = (data) => {
       if (data?.safety) {
-        setIsEstop(data.safety.estop);
+        setIsEstop(Boolean(data.safety.estop ?? data.safety.estop_active ?? false));
       }
     };
     socket.on('amr:telemetry', handleTelemetry);
@@ -79,10 +91,18 @@ export default function Ros2TeleopConsolePane() {
   );
 
   const handleStop = useCallback(() => {
+    if (presetTimerRef.current) {
+      clearTimeout(presetTimerRef.current);
+      presetTimerRef.current = null;
+    }
     sendCommand(0, 0);
   }, [sendCommand]);
 
   const handleToggleEstop = () => {
+    if (presetTimerRef.current) {
+      clearTimeout(presetTimerRef.current);
+      presetTimerRef.current = null;
+    }
     const nextState = !isEstop;
     setIsEstop(nextState);
     if (socket) {
@@ -90,10 +110,33 @@ export default function Ros2TeleopConsolePane() {
     }
   };
 
+  const handleExecutePreset = useCallback((preset) => {
+    if (presetTimerRef.current) {
+      clearTimeout(presetTimerRef.current);
+      presetTimerRef.current = null;
+    }
+    const lin = preset.linear !== undefined ? preset.linear : (preset.cmd?.v !== undefined ? preset.cmd.v : 0.0);
+    const ang = preset.angular !== undefined ? preset.angular : (preset.cmd?.w !== undefined ? preset.cmd.w : 0.0);
+    const dur = preset.duration !== undefined ? preset.duration : (preset.cmd?.duration !== undefined ? preset.cmd.duration : null);
+
+    sendCommand(lin, ang);
+
+    if (dur && Number.isFinite(dur) && dur > 0) {
+      presetTimerRef.current = setTimeout(() => {
+        sendCommand(0, 0);
+        presetTimerRef.current = null;
+      }, dur * 1000);
+    }
+  }, [sendCommand]);
+
   // Keyboard navigation (W, A, S, D, Space)
   useEffect(() => {
     const handleKeyDown = (e) => {
       if (['INPUT', 'SELECT', 'TEXTAREA'].includes(e.target.tagName)) return;
+      if (presetTimerRef.current) {
+        clearTimeout(presetTimerRef.current);
+        presetTimerRef.current = null;
+      }
 
       const stepLin = maxLinear * 0.25;
       const stepAng = maxAngular * 0.25;
@@ -155,6 +198,10 @@ export default function Ros2TeleopConsolePane() {
   };
 
   const handlePointerDown = (e) => {
+    if (presetTimerRef.current) {
+      clearTimeout(presetTimerRef.current);
+      presetTimerRef.current = null;
+    }
     isDraggingRef.current = true;
     updateJoystickPosition(e.clientX, e.clientY);
   };
@@ -380,7 +427,7 @@ export default function Ros2TeleopConsolePane() {
                 return (
                   <button
                     key={preset.id || preset.name || idx}
-                    onClick={() => sendCommand(lin, ang)}
+                    onClick={() => handleExecutePreset(preset)}
                     style={{
                       backgroundColor: '#21262d',
                       border: '1px solid #30363d',
@@ -404,7 +451,7 @@ export default function Ros2TeleopConsolePane() {
                   >
                     <span style={{ fontWeight: 600, fontSize: '11px', color: '#f0f6fc' }}>{label}</span>
                     <span style={{ fontFamily: 'monospace', fontSize: '10px', color: '#8b949e', marginTop: '2px' }}>
-                      v={lin} | ω={ang}
+                      v={lin} | ω={ang}{preset.cmd?.duration ? ` (${preset.cmd.duration}s)` : ''}
                     </span>
                   </button>
                 );

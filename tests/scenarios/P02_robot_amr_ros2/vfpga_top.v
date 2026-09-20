@@ -55,7 +55,8 @@ module vfpga_top (
                         end
                     end
                     32'h40000010: begin
-                        CONTROL <= w_data;
+                        // Bit 2 is a self-clearing synchronous reset strobe; do not latch in CONTROL
+                        CONTROL <= (w_data & ~32'h4);
                         // Synchronous reset of encoder accumulators
                         if (w_data[2]) begin
                             LEFT_ENCODER  <= 32'sd0;

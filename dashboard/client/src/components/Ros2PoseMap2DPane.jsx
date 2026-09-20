@@ -16,6 +16,13 @@ export default function Ros2PoseMap2DPane() {
   // Viewport transform: zoom (pixels per meter), pan offset (pixels in screen space)
   const [zoom, setZoom] = useState(250);
   const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [isFollowing, setIsFollowing] = useState(true);
+  const isFollowingRef = useRef(true);
+  isFollowingRef.current = isFollowing;
+  const zoomRef = useRef(zoom);
+  zoomRef.current = zoom;
+  const panRef = useRef(pan);
+  panRef.current = pan;
   const isPanningRef = useRef(false);
   const lastMouseRef = useRef({ x: 0, y: 0 });
 
@@ -36,7 +43,19 @@ export default function Ros2PoseMap2DPane() {
     const handleTelemetry = (data) => {
       if (!data || !data.pose) return;
       const p = data.pose;
-      setPose(p);
+      setPose({
+        ...p,
+        linear_vel: data.twist?.linear ?? p.linear_vel ?? 0,
+        angular_vel: data.twist?.angular ?? p.angular_vel ?? 0
+      });
+
+      // Auto-follow robot if enabled
+      if (isFollowingRef.current) {
+        setPan({
+          x: -p.x * zoomRef.current,
+          y: p.y * zoomRef.current
+        });
+      }
 
       // Append to trail
       const trail = trailRef.current;
@@ -55,9 +74,9 @@ export default function Ros2PoseMap2DPane() {
     };
   }, [socket]);
 
-  // Center on robot
+  // Center on robot and engage auto-follow
   const handleCenterRobot = useCallback(() => {
-    if (!containerRef.current) return;
+    setIsFollowing(true);
     setPan({
       x: -pose.x * zoom,
       y: pose.y * zoom
@@ -66,6 +85,7 @@ export default function Ros2PoseMap2DPane() {
 
   // Reset view to (0,0) origin
   const handleResetOrigin = () => {
+    setIsFollowing(false);
     setPan({ x: 0, y: 0 });
     setZoom(250);
   };
@@ -74,16 +94,49 @@ export default function Ros2PoseMap2DPane() {
     trailRef.current = [];
   };
 
-  // Mouse pan/zoom handlers
+  // Zoom step around viewport center
+  const handleZoomStep = (factor) => {
+    const curZoom = zoomRef.current;
+    const curPan = panRef.current;
+    const newZoom = Math.max(10, Math.min(1000, Math.round(curZoom * factor)));
+    if (newZoom === curZoom) return;
+    const ratio = newZoom / curZoom;
+    setZoom(newZoom);
+    setPan({
+      x: curPan.x * ratio,
+      y: curPan.y * ratio
+    });
+  };
+
+  // Mouse wheel zoom anchored around mouse cursor
   const handleWheel = (e) => {
     e.preventDefault();
+    if (!containerRef.current) return;
+    const rect = containerRef.current.getBoundingClientRect();
+    const mouseX = e.clientX - rect.left;
+    const mouseY = e.clientY - rect.top;
+    const width = containerRef.current.clientWidth;
+    const height = containerRef.current.clientHeight;
+
     const factor = e.deltaY < 0 ? 1.15 : 0.85;
-    setZoom((prev) => Math.max(50, Math.min(800, prev * factor)));
+    const curZoom = zoomRef.current;
+    const curPan = panRef.current;
+    const newZoom = Math.max(10, Math.min(1000, curZoom * factor));
+    if (newZoom === curZoom) return;
+
+    const ratio = newZoom / curZoom;
+    // Cursor-anchored pan calculation to keep point under mouse stationary
+    const newPanX = (mouseX - width / 2) * (1 - ratio) + curPan.x * ratio;
+    const newPanY = (mouseY - height / 2) * (1 - ratio) + curPan.y * ratio;
+
+    setZoom(newZoom);
+    setPan({ x: newPanX, y: newPanY });
   };
 
   const handleMouseDown = (e) => {
     if (e.button === 0) {
       isPanningRef.current = true;
+      setIsFollowing(false); // Manual dragging disengages auto-follow
       lastMouseRef.current = { x: e.clientX, y: e.clientY };
     }
   };
@@ -126,8 +179,15 @@ export default function Ros2PoseMap2DPane() {
       y: originY - wy * zoom
     });
 
-    // 1. Draw Grid Lines
-    const gridStep = 0.5;
+    // 1. Draw Adaptive Grid Lines
+    let gridStep = 0.5;
+    if (zoom < 15) gridStep = 10.0;
+    else if (zoom < 35) gridStep = 5.0;
+    else if (zoom < 75) gridStep = 2.0;
+    else if (zoom < 150) gridStep = 1.0;
+    else if (zoom < 300) gridStep = 0.5;
+    else gridStep = 0.2;
+
     const minMetersX = -(originX) / zoom;
     const maxMetersX = (width - originX) / zoom;
     const minMetersY = -(height - originY) / zoom;
@@ -138,36 +198,40 @@ export default function Ros2PoseMap2DPane() {
     const startGridY = Math.floor(minMetersY / gridStep) * gridStep;
     const endGridY = Math.ceil(maxMetersY / gridStep) * gridStep;
 
+    const showLabels = (gridStep * zoom) >= 30;
+
     ctx.lineWidth = 1;
-    for (let gx = startGridX; gx <= endGridX; gx += gridStep) {
+    for (let gx = startGridX; gx <= endGridX + (gridStep * 0.5); gx += gridStep) {
       const sx = originX + gx * zoom;
-      const isMajor = Math.abs(Math.round(gx) - gx) < 0.001;
+      const isMajor = Math.abs(Math.round(gx / (gridStep * 2)) * (gridStep * 2) - gx) < 0.001;
       ctx.strokeStyle = isMajor ? '#21262d' : '#161b22';
       ctx.beginPath();
       ctx.moveTo(sx, 0);
       ctx.lineTo(sx, height);
       ctx.stroke();
 
-      if (isMajor && zoom > 120) {
+      if (showLabels && isMajor) {
         ctx.fillStyle = '#6e7681';
         ctx.font = '9px monospace';
-        ctx.fillText(`${gx.toFixed(1)}m`, sx + 3, height - 6);
+        const label = gridStep < 1 ? gx.toFixed(1) : Math.round(gx);
+        ctx.fillText(`${label}m`, sx + 3, height - 6);
       }
     }
 
-    for (let gy = startGridY; gy <= endGridY; gy += gridStep) {
+    for (let gy = startGridY; gy <= endGridY + (gridStep * 0.5); gy += gridStep) {
       const sy = originY - gy * zoom;
-      const isMajor = Math.abs(Math.round(gy) - gy) < 0.001;
+      const isMajor = Math.abs(Math.round(gy / (gridStep * 2)) * (gridStep * 2) - gy) < 0.001;
       ctx.strokeStyle = isMajor ? '#21262d' : '#161b22';
       ctx.beginPath();
       ctx.moveTo(0, sy);
       ctx.lineTo(width, sy);
       ctx.stroke();
 
-      if (isMajor && zoom > 120) {
+      if (showLabels && isMajor) {
         ctx.fillStyle = '#6e7681';
         ctx.font = '9px monospace';
-        ctx.fillText(`${gy.toFixed(1)}m`, 6, sy - 3);
+        const label = gridStep < 1 ? gy.toFixed(1) : Math.round(gy);
+        ctx.fillText(`${label}m`, 6, sy - 3);
       }
     }
 
@@ -203,10 +267,10 @@ export default function Ros2PoseMap2DPane() {
     }
 
     // 3. Draw Robot Chassis
-    const chassisWidth = manifest?.chassis?.chassis_width_m || 0.22;
-    const chassisLength = manifest?.chassis?.chassis_length_m || 0.26;
-    const wheelSeparation = manifest?.chassis?.wheel_separation_m || 0.16;
-    const wheelRadius = manifest?.chassis?.wheel_radius_m || 0.033;
+    const chassisWidth = manifest?.chassis?.width ?? manifest?.chassis?.chassis_width_m ?? 0.20;
+    const chassisLength = manifest?.chassis?.length ?? manifest?.chassis?.chassis_length_m ?? 0.25;
+    const wheelSeparation = manifest?.chassis?.wheel_base ?? manifest?.chassis?.wheel_separation_m ?? 0.16;
+    const wheelRadius = manifest?.chassis?.wheel_radius ?? manifest?.chassis?.wheel_radius_m ?? 0.033;
 
     const botScreen = toScreen(pose.x, pose.y);
 
@@ -214,9 +278,11 @@ export default function Ros2PoseMap2DPane() {
     ctx.translate(botScreen.x, botScreen.y);
     ctx.rotate(-pose.theta);
 
-    // Chassis Body (Rounded Rect)
-    const bodyW = chassisLength * zoom;
-    const bodyH = chassisWidth * zoom;
+    // Chassis Body (Rounded Rect with minimum visible size)
+    const rawBodyW = chassisLength * zoom;
+    const rawBodyH = chassisWidth * zoom;
+    const bodyW = Math.max(16, rawBodyW);
+    const bodyH = Math.max(12, rawBodyH);
     ctx.fillStyle = '#161b22';
     ctx.strokeStyle = '#58a6ff';
     ctx.lineWidth = 2;
@@ -334,11 +400,11 @@ export default function Ros2PoseMap2DPane() {
         }}>
           <button
             onClick={handleCenterRobot}
-            title="Center on Robot"
+            title={isFollowing ? 'Auto-Tracking Robot (Active)' : 'Center & Track Robot'}
             style={{
-              backgroundColor: 'transparent',
-              border: 'none',
-              color: '#c9d1d9',
+              backgroundColor: isFollowing ? 'rgba(56, 139, 253, 0.2)' : 'transparent',
+              border: isFollowing ? '1px solid #388bfd' : '1px solid transparent',
+              color: isFollowing ? '#58a6ff' : '#c9d1d9',
               padding: '4px',
               borderRadius: '4px',
               cursor: 'pointer'
@@ -347,7 +413,7 @@ export default function Ros2PoseMap2DPane() {
             <Crosshair size={14} />
           </button>
           <button
-            onClick={() => setZoom((z) => Math.min(800, z * 1.2))}
+            onClick={() => handleZoomStep(1.25)}
             title="Zoom In"
             style={{
               backgroundColor: 'transparent',
@@ -361,7 +427,7 @@ export default function Ros2PoseMap2DPane() {
             <ZoomIn size={14} />
           </button>
           <button
-            onClick={() => setZoom((z) => Math.max(50, z * 0.8))}
+            onClick={() => handleZoomStep(0.8)}
             title="Zoom Out"
             style={{
               backgroundColor: 'transparent',

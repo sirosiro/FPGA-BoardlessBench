@@ -146,7 +146,7 @@ hardware_interface::return_type UioRobotHardware::write(
 void UioRobotHardware::trigger_estop(bool enable) {
     estop_active_ = enable;
     if (!uio_dev_) return;
-    uint32_t ctrl = uio_dev_->read32(REG_CONTROL_OFFSET);
+    uint32_t ctrl = uio_dev_->read32(REG_CONTROL_OFFSET) & ~(1 << 2); // Ensure bit 2 is never re-written
     if (enable) {
         ctrl |= (1 << 1); // bit 1: ESTOP
     } else {
@@ -157,8 +157,9 @@ void UioRobotHardware::trigger_estop(bool enable) {
 
 void UioRobotHardware::reset_encoders() {
     if (!uio_dev_) return;
-    uint32_t ctrl = uio_dev_->read32(REG_CONTROL_OFFSET);
-    uio_dev_->write32(REG_CONTROL_OFFSET, ctrl | (1 << 2)); // bit 2: RESET
+    uint32_t ctrl = uio_dev_->read32(REG_CONTROL_OFFSET) & ~(1 << 2);
+    uio_dev_->write32(REG_CONTROL_OFFSET, ctrl | (1 << 2)); // Pulse bit 2: RESET
+    uio_dev_->write32(REG_CONTROL_OFFSET, ctrl);             // Clear strobe bit
     left_pos_ = 0.0;
     left_vel_ = 0.0;
     right_pos_ = 0.0;
