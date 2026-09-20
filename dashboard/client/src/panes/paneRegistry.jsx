@@ -199,6 +199,53 @@ export function registerCustomPane(descriptor) {
 }
 
 /**
+ * Asynchronously load external ESM panes from the backend (/api/plugins/panes)
+ * Uses browser-native dynamic import() to achieve 100% zero-rebuild runtime modularity.
+ * @param {Function} [onLoaded] - Callback invoked when external panes are loaded or refreshed
+ */
+export async function loadExternalPanes(onLoaded) {
+  try {
+    const res = await fetch('/api/plugins/panes');
+    if (!res.ok) return;
+    const plugins = await res.json();
+    let loadedCount = 0;
+
+    for (const p of plugins) {
+      try {
+        // Native ESM dynamic import bypassing Vite bundling
+        const module = await import(/* @vite-ignore */ p.scriptUrl);
+        const Component = module.default || module.component;
+        if (!Component) {
+          console.warn(`[DPPA] External pane ${p.id} does not export a default component.`);
+          continue;
+        }
+
+        const iconComponent = (p.iconName && window.FBB?.icons?.[p.iconName]) || module.icon || Monitor;
+
+        registerCustomPane({
+          id: p.id,
+          title: p.title || module.title || p.id,
+          icon: iconComponent,
+          category: p.category || module.category || PANE_CATEGORIES.EXTENSIONS,
+          component: Component,
+          defaultParams: p.defaultParams || module.defaultParams || {}
+        });
+        loadedCount++;
+        console.log(`[DPPA] Successfully loaded external runtime pane: ${p.id} (${p.title})`);
+      } catch (importErr) {
+        console.error(`[DPPA] Failed to dynamically import pane ${p.id} from ${p.scriptUrl}:`, importErr);
+      }
+    }
+
+    if (loadedCount > 0 && typeof onLoaded === 'function') {
+      onLoaded();
+    }
+  } catch (err) {
+    console.warn('[DPPA] Could not query /api/plugins/panes:', err.message);
+  }
+}
+
+/**
  * Resolve pane definition by component ID (with legacy alias mapping)
  * @param {string} id
  * @returns {Object|null}

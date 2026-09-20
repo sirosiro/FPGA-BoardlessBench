@@ -621,8 +621,12 @@ def main():
             bin_rel = plugin_info['binary']
             bin_path = os.path.join(plugin_info['plugin_dir'], bin_rel) if not os.path.isabs(bin_rel) else bin_rel
             if not os.path.exists(bin_path):
-                # Fallback check in build/bin
-                bin_path = os.path.join(PROJECT_ROOT, f"build/bin/{os.path.basename(bin_rel)}")
+                bin_subpath = os.path.join(plugin_info['plugin_dir'], "bin", os.path.basename(bin_rel))
+                if os.path.exists(bin_subpath):
+                    bin_path = bin_subpath
+                else:
+                    # Fallback check in build/bin
+                    bin_path = os.path.join(PROJECT_ROOT, f"build/bin/{os.path.basename(bin_rel)}")
             
             # Format default arguments with DTS parameters
             args_template = plugin_info.get('default_args', [])
@@ -650,7 +654,10 @@ def main():
                     arg = arg.replace("{mock_file}", mfile)
                 formatted_args.append(arg)
                 
-            cmd = [bin_path] + formatted_args
+            if bin_path.endswith('.py'):
+                cmd = [sys.executable, bin_path] + formatted_args
+            else:
+                cmd = [bin_path] + formatted_args
             print(f"[Python] Starting PPA Plugin ({compat}): {' '.join(cmd)}")
             try:
                 proc = subprocess.Popen(cmd, stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)

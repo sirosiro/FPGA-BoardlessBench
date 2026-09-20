@@ -434,6 +434,127 @@ F-BBは、コアとなる透過エミュレーション層に加えて、開発�
 - **波形デバッグサポート**: シミュレーション中の全信号を VCD 形式で出力。GTKWave 等の波形ビューアを用いて、ハードウェア内部のタイミング詳細をデバッグ可能です。
   ![GTKWave Waveform](docs/assets/gtkwave.png)
 
+## プラグイン開発ガイド (PPA & DPPA Plugin Guide)
+
+F-BB は、ハードウェア側（ペリフェラルエミュレータ）と UI 側（Web ダッシュボードペイン）の双方において、**既存コードを1行も改変せず、ダッシュボードの再ビルド（`npm run build`）も一切行わずに機能拡張できる「100% 完全なプラグ＆プレイ（Zero-Touch / ゼロリビルド）」** アーキテクチャを標準搭載しています。
+
+### 1. PPA (Peripheral Plugin Architecture) の開発手順
+
+物理・仮想ペリフェラル（I2C, SPI, UART 等のセンサー、ディスプレイ、メモリ）は、Python 実行系や C-Shim を書き換えることなく誰でも追加・流通させることができます。
+
+#### ディレクトリ構成
+プラグインリポジトリまたはローカルフォルダを作成します：
+```text
+my_sensor_plugin/
+├── fbb-plugin.json      # プラグインマニフェスト（必須）
+├── my_sensor.cpp        # C++ エミュレータソース（または my_sensor.py）
+├── board.svg            # [任意] 基板ベクター外形図（ダッシュボード実寸表示用）
+└── pane/                # [任意] 専用の DPPA 動的ペイン
+    └── MySensorPane.js
+```
+
+#### ① マニフェスト (`fbb-plugin.json`) の定義
+```json
+{
+  "name": "fbb-plugin-my-sensor",
+  "vendor": "Acme Corp",
+  "version": "1.0.0",
+  "peripherals": [
+    {
+      "bus": "i2c",
+      "compatible": "acme,my-sensor",
+      "binary": "fbb_my_sensor",
+      "default_args": ["--socket", "{socket_path}"],
+      "ui_widget": {
+        "title": "Acme 3-Axis Accel Sensor",
+        "board_svg": "board.svg",
+        "controls": [
+          { "type": "slider", "name": "accel_x", "label": "X-Axis (g)", "min": -2.0, "max": 2.0, "default": 0.0 }
+        ]
+      }
+    }
+  ]
+}
+```
+
+#### ② C++ エミュレータの実装
+`src/peripherals/common/` に配置された共通基底クラス（`I2cSlave`, `SpiSlave`, `UartDevice`）および CLI パーサー（`fbb::PluginCLI`）をインクルードして実装します。
+```cpp
+#include "i2c_slave.hpp"
+#include "cli_helper.hpp"
+
+class MySensor : public I2cSlave {
+public:
+    MySensor(uint8_t addr) : I2cSlave(addr) {}
+protected:
+    void onWrite(const std::vector<uint8_t>& data) override { /* マスターからの書込処理 */ }
+    std::vector<uint8_t> onRead(size_t length) override { return { 0x12, 0x34 }; }
+};
+
+int main(int argc, char* argv[]) {
+    fbb::PluginCLI cli("My Sensor", "Acme Accelerometer Emulator");
+    auto opt = cli.parse(argc, argv);
+    if (opt.show_help || opt.socket_path.empty()) return opt.show_help ? 0 : 1;
+    MySensor dev(0x68);
+    return dev.start(opt.socket_path) ? 0 : 1;
+}
+```
+
+#### ③ ワンコマンド導入（Zero-Touch Auto-Builder）
+```bash
+# Git リポジトリまたはローカルパスから導入（C++ は自動検知されワンショットコンパイルされます）
+fbb plugin install https://github.com/vendor/fbb-plugin-my-sensor
+
+# インストール済みプラグインの確認（ビルドステータスも一覧表示）
+fbb plugin list
+```
+※ Python スクリプト（`binary: "my_sensor.py"`）で実装した場合は、コンパイル不要で直接実行されます。
+
+---
+
+### 2. DPPA (Dashboard Pane Plugin Architecture) の開発手順
+
+ダッシュボードに専用の計測器や操作卓（例: 3Dビュー、専用波形、カスタムコンソール）を追加する場合、**ダッシュボードを一切リビルド（`npm run build`）することなく、ブラウザのリロード（F5）だけで即座に反映** できます。
+
+#### ① シナリオ配下にペイン（`.js`）を配置
+テストシナリオフォルダ配下の `panes/` に単一の JavaScript ファイルを配置します：
+```text
+tests/scenarios/my_scenario/
+├── config.dts
+├── main.c
+└── panes/
+    └── CustomMonitorPane.js    # 置くだけで即有効化！
+```
+
+#### ② ペインの実装 (Native ES Module)
+ホストが提供する `window.FBB` から React やフックを参照してコンポーネントを記述します（npm install もビルドツールも不要です）：
+```javascript
+// tests/scenarios/my_scenario/panes/CustomMonitorPane.js
+const { React, hooks: { useState, useEffect }, useDashboard } = window.FBB;
+
+export default function CustomMonitorPane() {
+  const { connected } = useDashboard();
+  const [val, setVal] = useState(0);
+
+  return React.createElement(
+    'div',
+    { style: { padding: '16px', background: '#0b0f19', color: '#38bdf8', height: '100%' } },
+    React.createElement('h3', { style: { color: '#4ade80' } }, '🚀 Custom Live Monitor'),
+    React.createElement('p', null, `Status: ${connected ? 'Connected' : 'Offline'}`),
+    React.createElement('button', {
+      onClick: () => setVal(v => v + 1),
+      style: { background: '#2563eb', color: '#fff', border: 'none', padding: '6px 12px', borderRadius: '4px', cursor: 'pointer' }
+    }, `Value: ${val}`)
+  );
+}
+```
+
+#### ③ 動作確認
+ブラウザでダッシュボード（`http://localhost:8080`）を開いてリロードするだけで、「+ Add Pane」メニューの `Add-ons & Robotics` カテゴリに `Custom Monitor Pane` が自動出現します。
+※ Dockview のマルチ画面ポップアウト（`createPortal`）や別モニタへの子ウィンドウ切り離しも 100% 自動でサポートされます。
+
+---
+
 ## プロジェクト構成
 
 - `src/shim/`: システムコールインターセプト層（自動生成）

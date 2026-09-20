@@ -1097,8 +1097,154 @@ app.get('/api/scenario/robot-manifest', (req, res) => {
         return res.status(500).json({ error: e.message });
     }
 });
+// =============================================================================
+// DPPA (Dashboard Pane Plugin Architecture) - Dynamic Pane Loader API
+// =============================================================================
+function discoverDynamicPanes() {
+    const panes = [];
+    const os = require('os');
+    const searchDirs = [];
 
-// GET /api/layout - Load layout file from the active scenario folder (supports ?screen=<id>)
+    // 1. Active scenario panes: <scenario_dir>/panes
+    const scnDir = getActiveScenarioDir();
+    if (scnDir) {
+        searchDirs.push(path.join(scnDir, 'panes'));
+    }
+
+    // 2. Project local: <project_root>/.fbb/panes
+    const projRoot = manifest.project_root || path.join(__dirname, '..');
+    searchDirs.push(path.join(projRoot, '.fbb/panes'));
+
+    // 3. User global: ~/.fbb/panes and ~/.fbb/plugins/*/pane
+    const userFbbPanes = path.join(os.homedir(), '.fbb/panes');
+    searchDirs.push(userFbbPanes);
+
+    const userPluginsDir = path.join(os.homedir(), '.fbb/plugins');
+    if (fs.existsSync(userPluginsDir)) {
+        try {
+            const entries = fs.readdirSync(userPluginsDir);
+            for (const entry of entries) {
+                const subPaneDir = path.join(userPluginsDir, entry, 'pane');
+                if (fs.existsSync(subPaneDir)) {
+                    searchDirs.push(subPaneDir);
+                }
+                const subPanesDir = path.join(userPluginsDir, entry, 'panes');
+                if (fs.existsSync(subPanesDir)) {
+                    searchDirs.push(subPanesDir);
+                }
+            }
+        } catch (e) {}
+    }
+
+    const seenIds = new Set();
+
+    for (const sDir of searchDirs) {
+        if (!fs.existsSync(sDir)) continue;
+        try {
+            // Check if sDir itself has a pane.json
+            let dirPaneMeta = null;
+            const dirPaneJson = path.join(sDir, 'pane.json');
+            if (fs.existsSync(dirPaneJson)) {
+                try {
+                    dirPaneMeta = JSON.parse(fs.readFileSync(dirPaneJson, 'utf8'));
+                } catch (e) {}
+            }
+
+            const entries = fs.readdirSync(sDir, { withFileTypes: true });
+            for (const entry of entries) {
+                if (entry.isDirectory()) {
+                    const subDir = path.join(sDir, entry.name);
+                    const paneJsonPath = path.join(subDir, 'pane.json');
+                    let paneMeta = null;
+                    if (fs.existsSync(paneJsonPath)) {
+                        try {
+                            paneMeta = JSON.parse(fs.readFileSync(paneJsonPath, 'utf8'));
+                        } catch (e) {}
+                    }
+                    const jsFile = paneMeta?.entry || (fs.existsSync(path.join(subDir, 'index.js')) ? 'index.js' : null);
+                    if (jsFile && fs.existsSync(path.join(subDir, jsFile))) {
+                        const paneId = paneMeta?.id || entry.name;
+                        if (!seenIds.has(paneId)) {
+                            seenIds.add(paneId);
+                            panes.push({
+                                id: paneId,
+                                title: paneMeta?.title || entry.name,
+                                iconName: paneMeta?.icon || 'Monitor',
+                                category: paneMeta?.category || 'Add-ons & Robotics',
+                                scriptUrl: `/api/plugins/panes/${encodeURIComponent(paneId)}/${encodeURIComponent(jsFile)}`,
+                                baseDir: subDir,
+                                entryFile: jsFile
+                            });
+                        }
+                    }
+                } else if (entry.isFile() && entry.name.endsWith('.js') && !entry.name.endsWith('.test.js')) {
+                    const baseName = entry.name.replace('.js', '');
+                    const paneId = (dirPaneMeta && (dirPaneMeta.entry === entry.name || !dirPaneMeta.entry) && dirPaneMeta.id) || baseName;
+                    const paneTitle = (dirPaneMeta && (dirPaneMeta.entry === entry.name || !dirPaneMeta.entry) && dirPaneMeta.title) || baseName.replace(/([A-Z])/g, ' $1').trim();
+                    const iconName = (dirPaneMeta && (dirPaneMeta.entry === entry.name || !dirPaneMeta.entry) && dirPaneMeta.icon) || 'Monitor';
+                    const category = (dirPaneMeta && (dirPaneMeta.entry === entry.name || !dirPaneMeta.entry) && dirPaneMeta.category) || 'Add-ons & Robotics';
+
+                    if (!seenIds.has(paneId)) {
+                        seenIds.add(paneId);
+                        panes.push({
+                            id: paneId,
+                            title: paneTitle,
+                            iconName: iconName,
+                            category: category,
+                            scriptUrl: `/api/plugins/panes/${encodeURIComponent(paneId)}/${encodeURIComponent(entry.name)}`,
+                            baseDir: sDir,
+                            entryFile: entry.name
+                        });
+                    }
+                }
+            }
+        } catch (e) {
+            console.error(`[DPPA] Error scanning dynamic panes in ${sDir}:`, e.message);
+        }
+    }
+
+    return panes;
+}
+
+// GET /api/plugins/panes - List all discovered dynamic ESM panes
+app.get('/api/plugins/panes', (req, res) => {
+    try {
+        const panes = discoverDynamicPanes();
+        res.json(panes.map(p => ({
+            id: p.id,
+            title: p.title,
+            iconName: p.iconName,
+            category: p.category,
+            scriptUrl: p.scriptUrl
+        })));
+    } catch (e) {
+        res.status(500).json({ error: e.message });
+    }
+});
+
+// GET /api/plugins/panes/:pluginId/:filename - Serve dynamic ESM pane script
+app.get('/api/plugins/panes/:pluginId/:filename', (req, res) => {
+    try {
+        const pluginId = req.params.pluginId;
+        const filename = req.params.filename;
+        const panes = discoverDynamicPanes();
+        const matched = panes.find(p => p.id === pluginId && p.entryFile === filename);
+        if (!matched) {
+            return res.status(404).send('Dynamic pane file not found');
+        }
+        const filePath = path.join(matched.baseDir, filename);
+        if (fs.existsSync(filePath)) {
+            res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
+            return res.sendFile(filePath);
+        } else {
+            return res.status(404).send('File missing');
+        }
+    } catch (e) {
+        res.status(500).send(e.message);
+    }
+});
+
+
 app.get('/api/layout', (req, res) => {
     const projRoot = manifest.project_root || path.join(__dirname, '..');
     const scnDir = manifest.scenario_dir || '.';

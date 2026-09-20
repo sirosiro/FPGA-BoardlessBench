@@ -8,12 +8,10 @@ import DockHeaderActions from './components/DockHeaderActions';
 import {
   getDockviewComponentsMap,
   getGroupedPanesForMenu,
-  getPaneDefinition
+  getPaneDefinition,
+  loadExternalPanes
 } from './panes/paneRegistry';
 import './App.css';
-
-// Dynamic Dockview components mapping from DPPA registry
-const components = getDockviewComponentsMap();
 
 function DashboardInner() {
   const { connected, manifest } = useDashboard();
@@ -21,7 +19,15 @@ function DashboardInner() {
   const [saveStatus, setSaveStatus] = useState('Save Layout');
   const [isAddPaneOpen, setIsAddPaneOpen] = useState(false);
   const [poppedOutPanels, setPoppedOutPanels] = useState([]);
+  const [components, setComponents] = useState(() => getDockviewComponentsMap());
   const dropdownRef = useRef(null);
+
+  // DPPA: Load zero-rebuild external ESM panes at startup or scenario change
+  useEffect(() => {
+    loadExternalPanes(() => {
+      setComponents(getDockviewComponentsMap());
+    });
+  }, [manifest?.scenario_dir]);
 
   // URL query parameter resolution
   const searchParams = typeof window !== 'undefined' ? new URLSearchParams(window.location.search) : new URLSearchParams();

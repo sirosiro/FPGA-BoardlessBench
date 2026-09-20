@@ -18,6 +18,7 @@ import argparse
 import shutil
 import subprocess
 import json
+import glob
 
 # Ensure scripts directory is in sys.path (using realpath to resolve symlinks)
 SCRIPT_REAL_PATH = os.path.realpath(__file__)
@@ -396,27 +397,145 @@ def command_plugin_list(args):
                         bus = p0.get("bus", "generic")
                         compat = p0.get("compatible", "N/A")
                         widget = p0.get("ui_widget", {}).get("title", "No Title")
+                        bin_name = p0.get("binary")
                     else:
                         bus = data.get("bus_type", "generic")
                         compat = data.get("compatible", "N/A")
                         widget = data.get("ui_widget", {}).get("title", "No Title")
-                    found_plugins.append((name, bus, compat, widget, path))
+                        bin_name = data.get("binary")
+
+                    status = "Unknown"
+                    if bin_name:
+                        if bin_name.endswith(".py") or bin_name.endswith(".sh"):
+                            status = "Ready (Script)"
+                        elif (
+                            os.path.exists(os.path.join(plugin_dir, bin_name)) or
+                            os.path.exists(os.path.join(plugin_dir, "bin", os.path.basename(bin_name))) or
+                            os.path.exists(os.path.join(PROJECT_ROOT, "build/bin", os.path.basename(bin_name)))
+                        ):
+                            status = "Ready (Binary)"
+                        elif glob.glob(os.path.join(plugin_dir, "*.cpp")) or os.path.exists(os.path.join(plugin_dir, "CMakeLists.txt")):
+                            status = "Source Only"
+
+                    found_plugins.append((name, bus, compat, status, widget, path))
                 except Exception:
                     pass
 
-    print("-" * 95)
-    print(f"{'Plugin Name':<32} | {'Bus':<8} | {'Compatible':<22} | {'UI Title':<25}")
-    print("-" * 95)
+    print("-" * 110)
+    print(f"{'Plugin Name':<28} | {'Bus':<6} | {'Compatible':<22} | {'Status':<15} | {'UI Title':<25}")
+    print("-" * 110)
     for p in found_plugins:
-        print(f"{p[0]:<32} | {p[1]:<8} | {p[2]:<22} | {p[3]:<25}")
-    print("-" * 95)
+        print(f"{p[0]:<28} | {p[1]:<6} | {p[2]:<22} | {p[3]:<15} | {p[4]:<25}")
+    print("-" * 110)
     print(f"Total discovered PPA plugins: {len(found_plugins)}")
+
+
+def auto_build_plugin(plugin_dir):
+    """
+    @intent:responsibility
+      インストールされた PPA プラグインディレクトリ内のソースコードを自動検知し、
+      CMake または g++ により Zero-Touch でワンショットコンパイルを実行する。
+    """
+    manifest_file = os.path.join(plugin_dir, "fbb-plugin.json")
+    if not os.path.exists(manifest_file):
+        return True
+
+    try:
+        with open(manifest_file, "r", encoding="utf-8") as f:
+            manifest_data = json.load(f)
+    except Exception as e:
+        print(f"⚠️ Warning: Failed to parse {manifest_file}: {e}")
+        return False
+
+    periphs = manifest_data.get("peripherals", [])
+    binary_name = None
+    if periphs and isinstance(periphs, list):
+        binary_name = periphs[0].get("binary")
+    elif "binary" in manifest_data:
+        binary_name = manifest_data.get("binary")
+
+    if not binary_name:
+        return True
+
+    # 1. Script type (.py, .sh)
+    if binary_name.endswith(".py") or binary_name.endswith(".sh"):
+        script_path = os.path.join(plugin_dir, binary_name)
+        if os.path.exists(script_path):
+            os.chmod(script_path, 0o755)
+            print(f"⚡ Recognized executable script plugin: {binary_name}")
+        return True
+
+    bin_dir = os.path.join(plugin_dir, "bin")
+    os.makedirs(bin_dir, exist_ok=True)
+    target_bin = os.path.join(bin_dir, os.path.basename(binary_name))
+
+    # 2. CMakeLists.txt build
+    cmake_file = os.path.join(plugin_dir, "CMakeLists.txt")
+    if os.path.exists(cmake_file):
+        print(f"🔨 Auto-building plugin with CMake: {plugin_dir}...")
+        try:
+            res1 = subprocess.run(["cmake", "-B", "build", "-DCMAKE_BUILD_TYPE=Release"], cwd=plugin_dir, capture_output=True, text=True)
+            if res1.returncode != 0:
+                print(f"❌ CMake configure failed:\n{res1.stderr}")
+                return False
+            res2 = subprocess.run(["cmake", "--build", "build"], cwd=plugin_dir, capture_output=True, text=True)
+            if res2.returncode != 0:
+                print(f"❌ CMake build failed:\n{res2.stderr}")
+                return False
+            print(f"✅ CMake build succeeded for {binary_name}!")
+            return True
+        except Exception as e:
+            print(f"❌ Error during CMake build: {e}")
+            return False
+
+    # 3. Direct C++ source compilation
+    cpp_sources = glob.glob(os.path.join(plugin_dir, "*.cpp")) + glob.glob(os.path.join(plugin_dir, "src", "*.cpp"))
+    if cpp_sources:
+        print(f"🔨 Zero-Touch Auto-compiling C++ plugin '{binary_name}'...")
+        all_cpp_content = ""
+        for src in cpp_sources:
+            try:
+                with open(src, "r", encoding="utf-8", errors="ignore") as sf:
+                    all_cpp_content += sf.read()
+            except Exception:
+                pass
+
+        common_dir = os.path.join(PROJECT_ROOT, "src/peripherals/common")
+        helper_src = os.path.join(common_dir, "i2c_slave.cpp")
+        if "SpiSlave" in all_cpp_content:
+            helper_src = os.path.join(common_dir, "spi_slave.cpp")
+        elif "UartDevice" in all_cpp_content:
+            helper_src = os.path.join(common_dir, "uart_device.cpp")
+
+        compile_cmd = [
+            "g++", "-std=c++17", "-O2",
+            f"-I{common_dir}",
+            f"-I{plugin_dir}",
+            *cpp_sources,
+            helper_src,
+            "-lpthread", "-lrt",
+            "-o", target_bin
+        ]
+        try:
+            res = subprocess.run(compile_cmd, capture_output=True, text=True)
+            if res.returncode != 0:
+                print(f"❌ C++ Compilation failed for '{binary_name}':\n{res.stderr}")
+                return False
+            os.chmod(target_bin, 0o755)
+            print(f"✅ Successfully compiled '{target_bin}'!")
+            return True
+        except Exception as e:
+            print(f"❌ Execution error during compilation: {e}")
+            return False
+
+    return True
 
 
 def command_plugin_install(args):
     """
     @intent:responsibility
-      ローカルフォルダまたは Git リポジトリから ~/.fbb/plugins 配下へプラグインを導入する。
+      ローカルフォルダまたは Git リポジトリから ~/.fbb/plugins 配下へプラグインを導入し、
+      自動コンパイル（PPA Zero-Touch Auto-Builder）を実行する。
     """
     target_repo = args.source
     dest_base = os.path.join(os.path.expanduser("~"), ".fbb/plugins")
@@ -441,7 +560,12 @@ def command_plugin_install(args):
             print(f"❌ Failed to clone plugin repository: {target_repo}")
             sys.exit(1)
 
-    print(f"✅ Plugin '{plugin_name}' successfully installed to {dest_dir}!")
+    # Trigger Zero-Touch Auto-Builder
+    build_ok = auto_build_plugin(dest_dir)
+    if not build_ok:
+        print(f"⚠️ Warning: Plugin files installed, but auto-compilation encountered issues.")
+    else:
+        print(f"✅ Plugin '{plugin_name}' successfully installed and ready at {dest_dir}!")
 
 
 def command_plugin_remove(args):
