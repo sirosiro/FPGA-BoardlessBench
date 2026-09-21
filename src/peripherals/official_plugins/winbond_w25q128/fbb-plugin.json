@@ -1,4 +1,5 @@
 {
+  "schema_version": 1,
   "name": "fbb-plugin-winbond-w25q128",
   "vendor": "Winbond",
   "version": "1.0.0",
@@ -9,13 +10,19 @@
       "compatible": "winbond,w25q128",
       "binary": "fbb_spi_flash",
       "default_args": [
-        "--socket", "{socket_path}",
-        "--file", "{mock_file}"
+        "--socket",
+        "{socket_path}",
+        "--file",
+        "{mock_file}"
       ],
       "ui_widget": {
         "title": "Winbond W25Q128 SPI Flash",
         "controls": [
-          { "type": "status", "name": "capacity", "label": "16MB SPI Flash" }
+          {
+            "type": "status",
+            "name": "capacity",
+            "label": "16MB SPI Flash"
+          }
         ]
       }
     }

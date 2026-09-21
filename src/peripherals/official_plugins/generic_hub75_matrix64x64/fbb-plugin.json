@@ -1,4 +1,5 @@
 {
+  "schema_version": 1,
   "name": "fbb-plugin-generic-hub75-matrix64x64",
   "vendor": "Generic / Open-Source Hardware",
   "version": "1.0.0",
@@ -24,7 +25,10 @@
           {
             "type": "framebuffer",
             "name": "HUB75 64x64 RGB LED Panel",
-            "grid_size": [64, 64],
+            "grid_size": [
+              64,
+              64
+            ],
             "format": "rgb24",
             "render_mode": "led_matrix",
             "shm_file": "fbb_hub75_0",

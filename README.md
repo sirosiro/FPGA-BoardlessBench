@@ -454,8 +454,10 @@ my_sensor_plugin/
 ```
 
 #### ① マニフェスト (`fbb-plugin.json`) の定義
+マニフェストにはプラグイン情報に加え、PPA 仕様バージョン（`schema_version: 1`）を明記します（コントローラが自動検証し、スキーマ違反や未サポートのバージョンをフェイルファーストに検出します）：
 ```json
 {
+  "schema_version": 1,
   "name": "fbb-plugin-my-sensor",
   "vendor": "Acme Corp",
   "version": "1.0.0",
@@ -505,8 +507,19 @@ int main(int argc, char* argv[]) {
 # Git リポジトリまたはローカルパスから導入（C++ は自動検知されワンショットコンパイルされます）
 fbb plugin install https://github.com/vendor/fbb-plugin-my-sensor
 
-# インストール済みプラグインの確認（ビルドステータスも一覧表示）
+# インストール済みプラグインの確認（スキーマバージョンやビルドステータスも一覧表示）
 fbb plugin list
+```
+**出力例：**
+```text
+🔌 Scanning F-BB Plug-and-Play Architecture (PPA 5.1) Plugins...
+----------------------------------------------------------------------------------------------------------------------
+Plugin Name                  | Schema  | Bus    | Compatible             | Status          | UI Title                 
+----------------------------------------------------------------------------------------------------------------------
+fbb-plugin-winbond-w25q128   | v1      | spi    | winbond,w25q128        | Ready (Binary)  | Winbond W25Q128 SPI Flash
+fbb-plugin-adafruit-ht16k33  | v1      | i2c    | adafruit,ht16k33-red   | Ready (Binary)  | Adafruit 4-Digit 7-Segment LED (Red)
+fbb-plugin-microchip-at24c02c | v1      | i2c    | atmel,24c02            | Ready (Binary)  | AT24C02C I2C EEPROM      
+...
 ```
 ※ Python スクリプト（`binary: "my_sensor.py"`）で実装した場合は、コンパイル不要で直接実行されます。
 
@@ -527,9 +540,11 @@ tests/scenarios/my_scenario/
 ```
 
 #### ② ペインの実装 (Native ES Module)
-ホストが提供する `window.FBB` から React やフックを参照してコンポーネントを記述します（npm install もビルドツールも不要です）：
+ホストが提供する `window.FBB`（`apiVersion: 1`）から React やフックを参照してコンポーネントを記述します。`minApiVersion` をエクスポートすることで、互換性のない環境での読み込みを未然に防止（フェイルファースト検査）できます（npm install もビルドツールも不要です）：
 ```javascript
 // tests/scenarios/my_scenario/panes/CustomMonitorPane.js
+export const minApiVersion = 1; // DPPA API v1 準拠宣言
+
 const { React, hooks: { useState, useEffect }, useDashboard } = window.FBB;
 
 export default function CustomMonitorPane() {
@@ -655,7 +670,7 @@ F-BB 独自のプロジェクトコードのみ（`--cleanall` 時）で**純プ
 プロジェクトの設計思想や技術仕様の詳細については、以下のドキュメントを参照してください。
 
 - **[技術仕様書 (spec.md)](spec.md)**: 各コンポーネントの機能詳細とインターフェース定義。
-- **[アーキテクチャ・マニフェスト](ARCHITECTURE_MANIFEST.md)**: プロジェクトの設計原則と主要な決定事項の記録。
+- **[アーキテクチャ・マニフェスト](ARCHITECTURE_MANIFEST.md)**: プロジェクトの設計原則、主要な決定事項（ADR）、および構造的トレードオフ・非対象スコープ（Wall-clock time拘束、ARMメモリバリア規約、カーネル空間の除外等）の公式記録。
 - **[なぜ Zynq をリファレンスアーキテクチャに選んだのか](./docs/architecture/AddInfo_WhyZynq.md)**: 認知的アンカーとしての Zynq 選定理由と、NXP 等の他社 SoC・オリジナル仮想 SoC への汎用性解説。
 - **[組み込み・FPGA技術研修ソリューション提案書](./docs/architecture/AddInfo_Technical_Training_Proposal.md)**: 実機基板なしで製品レベルの組み込みLinux・RTOS・FPGA協調設計技術を修得できる技術研修提案ソリューション。
 - **[F-BBにおけるGDBデバッグ活用ガイド](./docs/architecture/AddInfo_GDB.md)**: 物理JTAG機器なしでAコアLinux・MコアRTOS・VerilatorシミュレーションをGDB/VS Codeでデバッグする活用ガイド。

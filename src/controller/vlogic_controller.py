@@ -46,6 +46,47 @@ LAUNCHER_REGISTRY = {
 }
 
 
+SUPPORTED_PPA_SCHEMA_VERSION = 1
+
+def validate_plugin_manifest(mfile, data):
+    """
+    Validates a PPA plugin manifest against the PPA Schema specification.
+    Returns (is_valid, errors, schema_version)
+    """
+    errors = []
+    if not isinstance(data, dict):
+        return False, ["Root element must be a JSON object"], 0
+
+    schema_ver = data.get("schema_version")
+    if schema_ver is None:
+        schema_ver = 1
+    elif not isinstance(schema_ver, int) or schema_ver < 1:
+        errors.append(f"Invalid 'schema_version': {schema_ver}. Must be a positive integer.")
+    elif schema_ver > SUPPORTED_PPA_SCHEMA_VERSION:
+        errors.append(f"Unsupported 'schema_version': {schema_ver} (Max supported: {SUPPORTED_PPA_SCHEMA_VERSION}). Please upgrade F-BB.")
+
+    name = data.get("name")
+    if not name or not isinstance(name, str):
+        errors.append("Missing or invalid 'name' in manifest.")
+
+    periphs = data.get("peripherals")
+    if periphs is not None:
+        if not isinstance(periphs, list):
+            errors.append("'peripherals' must be a list of objects.")
+        else:
+            for idx, p in enumerate(periphs):
+                if not isinstance(p, dict):
+                    errors.append(f"peripherals[{idx}] must be a JSON object.")
+                    continue
+                if not p.get("compatible"):
+                    errors.append(f"peripherals[{idx}] is missing required field 'compatible'.")
+                if not p.get("bus"):
+                    errors.append(f"peripherals[{idx}] is missing required field 'bus'.")
+    elif not data.get("compatible"):
+        errors.append("Manifest missing 'peripherals' list and 'compatible' property.")
+
+    return len(errors) == 0, errors, schema_ver
+
 def discover_plugins(scenario_dir=None):
     """
     Scans 5 plugin search locations for fbb-plugin.json manifests (PPA ADR #005):
@@ -99,7 +140,12 @@ def discover_plugins(scenario_dir=None):
                 plugin_dir = os.path.dirname(mfile)
                 with open(mfile, "r", encoding="utf-8") as f:
                     data = json.load(f)
-                
+
+                is_valid, errors, schema_ver = validate_plugin_manifest(mfile, data)
+                if not is_valid:
+                    print(f"[Python] ⚠️ Warning: Rejecting invalid plugin manifest {mfile}: {', '.join(errors)}")
+                    continue
+
                 peripherals = data.get("peripherals", [])
                 for p in peripherals:
                     compat = p.get("compatible")
@@ -116,6 +162,7 @@ def discover_plugins(scenario_dir=None):
                         discovered[compat] = {
                             "manifest_path": mfile,
                             "plugin_dir": plugin_dir,
+                            "schema_version": schema_ver,
                             "binary": p.get("binary"),
                             "default_args": p.get("default_args", []),
                             "ui_widget": ui_widget,

@@ -6,10 +6,12 @@ import { useDashboard } from './components/DashboardContext'
 import './index.css'
 import App from './App.jsx'
 
-// DPPA: Expose unified global runtime bridge for zero-rebuild external panes
+// DPPA: Expose unified global runtime bridge for zero-rebuild external panes (API v1)
 window.React = React;
 window.ReactDOM = ReactDOM;
 window.FBB = {
+  version: '1.0.0',
+  apiVersion: 1,
   React,
   ReactDOM,
   hooks: { useState, useEffect, useRef, useMemo, useCallback },

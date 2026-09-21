@@ -1,4 +1,5 @@
 {
+  "schema_version": 1,
   "name": "fbb-plugin-solomon-ssd1306",
   "vendor": "Solomon Systech",
   "version": "1.0.0",
@@ -9,7 +10,8 @@
       "compatible": "solomon,ssd1306",
       "binary": "fbb_i2c_oled",
       "default_args": [
-        "--socket", "{socket_path}"
+        "--socket",
+        "{socket_path}"
       ],
       "ui_widget": {
         "title": "SSD1306 OLED Display (128x64)",
@@ -21,13 +23,16 @@
           "height": "36.75%"
         },
         "controls": [
-          { 
-            "type": "framebuffer", 
-            "name": "display", 
-            "width": 128, 
-            "height": 64, 
+          {
+            "type": "framebuffer",
+            "name": "display",
+            "width": 128,
+            "height": 64,
             "format": "mono_page_8",
-            "palette": { "bg": "#040604", "fg": "#00ff50" }
+            "palette": {
+              "bg": "#040604",
+              "fg": "#00ff50"
+            }
           }
         ]
       }

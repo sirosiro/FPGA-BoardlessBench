@@ -1,4 +1,5 @@
 {
+  "schema_version": 1,
   "name": "fbb-plugin-adafruit-ht16k33",
   "vendor": "Adafruit / Holtek",
   "version": "1.0.0",
@@ -9,13 +10,20 @@
       "compatible": "adafruit,ht16k33-red",
       "binary": "fbb_i2c_ht16k33",
       "default_args": [
-        "--socket", "{socket_path}"
+        "--socket",
+        "{socket_path}"
       ],
       "ui_widget": {
         "title": "Adafruit 4-Digit 7-Segment LED (Red)",
         "board_svg": "board.svg",
         "controls": [
-          { "type": "segment_array", "name": "display_7seg", "digit_count": 4, "has_colon": true, "color": "red" }
+          {
+            "type": "segment_array",
+            "name": "display_7seg",
+            "digit_count": 4,
+            "has_colon": true,
+            "color": "red"
+          }
         ]
       }
     },
@@ -24,13 +32,20 @@
       "compatible": "adafruit,ht16k33-green",
       "binary": "fbb_i2c_ht16k33",
       "default_args": [
-        "--socket", "{socket_path}"
+        "--socket",
+        "{socket_path}"
       ],
       "ui_widget": {
         "title": "Adafruit 4-Digit 7-Segment LED (Green)",
         "board_svg": "board.svg",
         "controls": [
-          { "type": "7seg_display", "name": "display_7seg", "digits": 4, "has_colon": true, "color": "green" }
+          {
+            "type": "7seg_display",
+            "name": "display_7seg",
+            "digits": 4,
+            "has_colon": true,
+            "color": "green"
+          }
         ]
       }
     },
@@ -39,13 +54,20 @@
       "compatible": "adafruit,ht16k33-yellow",
       "binary": "fbb_i2c_ht16k33",
       "default_args": [
-        "--socket", "{socket_path}"
+        "--socket",
+        "{socket_path}"
       ],
       "ui_widget": {
         "title": "Adafruit 4-Digit 7-Segment LED (Yellow)",
         "board_svg": "board.svg",
         "controls": [
-          { "type": "7seg_display", "name": "display_7seg", "digits": 4, "has_colon": true, "color": "yellow" }
+          {
+            "type": "7seg_display",
+            "name": "display_7seg",
+            "digits": 4,
+            "has_colon": true,
+            "color": "yellow"
+          }
         ]
       }
     },
@@ -54,13 +76,20 @@
       "compatible": "adafruit,ht16k33-blue",
       "binary": "fbb_i2c_ht16k33",
       "default_args": [
-        "--socket", "{socket_path}"
+        "--socket",
+        "{socket_path}"
       ],
       "ui_widget": {
         "title": "Adafruit 4-Digit 7-Segment LED (Blue)",
         "board_svg": "board.svg",
         "controls": [
-          { "type": "7seg_display", "name": "display_7seg", "digits": 4, "has_colon": true, "color": "blue" }
+          {
+            "type": "7seg_display",
+            "name": "display_7seg",
+            "digits": 4,
+            "has_colon": true,
+            "color": "blue"
+          }
         ]
       }
     },
@@ -69,13 +98,20 @@
       "compatible": "adafruit,ht16k33-white",
       "binary": "fbb_i2c_ht16k33",
       "default_args": [
-        "--socket", "{socket_path}"
+        "--socket",
+        "{socket_path}"
       ],
       "ui_widget": {
         "title": "Adafruit 4-Digit 7-Segment LED (White)",
         "board_svg": "board.svg",
         "controls": [
-          { "type": "7seg_display", "name": "display_7seg", "digits": 4, "has_colon": true, "color": "white" }
+          {
+            "type": "7seg_display",
+            "name": "display_7seg",
+            "digits": 4,
+            "has_colon": true,
+            "color": "white"
+          }
         ]
       }
     },
@@ -84,13 +120,20 @@
       "compatible": "holtek,ht16k33",
       "binary": "fbb_i2c_ht16k33",
       "default_args": [
-        "--socket", "{socket_path}"
+        "--socket",
+        "{socket_path}"
       ],
       "ui_widget": {
         "title": "Adafruit 4-Digit 7-Segment LED",
         "board_svg": "board.svg",
         "controls": [
-          { "type": "segment_array", "name": "display_7seg", "digit_count": 4, "has_colon": true, "color": "red" }
+          {
+            "type": "segment_array",
+            "name": "display_7seg",
+            "digit_count": 4,
+            "has_colon": true,
+            "color": "red"
+          }
         ]
       }
     }

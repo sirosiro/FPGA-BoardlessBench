@@ -391,6 +391,7 @@ def command_plugin_list(args):
                     with open(manifest_file, "r", encoding="utf-8") as f:
                         data = json.load(f)
                     name = data.get("name", entry)
+                    schema_ver = f"v{data.get('schema_version', 1)}"
                     periphs = data.get("peripherals", [])
                     if periphs and isinstance(periphs, list):
                         p0 = periphs[0]
@@ -417,16 +418,16 @@ def command_plugin_list(args):
                         elif glob.glob(os.path.join(plugin_dir, "*.cpp")) or os.path.exists(os.path.join(plugin_dir, "CMakeLists.txt")):
                             status = "Source Only"
 
-                    found_plugins.append((name, bus, compat, status, widget, path))
+                    found_plugins.append((name, schema_ver, bus, compat, status, widget, path))
                 except Exception:
                     pass
 
-    print("-" * 110)
-    print(f"{'Plugin Name':<28} | {'Bus':<6} | {'Compatible':<22} | {'Status':<15} | {'UI Title':<25}")
-    print("-" * 110)
+    print("-" * 118)
+    print(f"{'Plugin Name':<28} | {'Schema':<7} | {'Bus':<6} | {'Compatible':<22} | {'Status':<15} | {'UI Title':<25}")
+    print("-" * 118)
     for p in found_plugins:
-        print(f"{p[0]:<28} | {p[1]:<6} | {p[2]:<22} | {p[3]:<15} | {p[4]:<25}")
-    print("-" * 110)
+        print(f"{p[0]:<28} | {p[1]:<7} | {p[2]:<6} | {p[3]:<22} | {p[4]:<15} | {p[5]:<25}")
+    print("-" * 118)
     print(f"Total discovered PPA plugins: {len(found_plugins)}")
 
 

@@ -1,4 +1,5 @@
 {
+  "schema_version": 1,
   "name": "fbb-plugin-generic-uart-loopback",
   "vendor": "F-BB Core",
   "version": "1.0.0",
@@ -9,12 +10,17 @@
       "compatible": "uart_loopback",
       "binary": "fbb_uart_loopback",
       "default_args": [
-        "--pts-file", "{pts_file}"
+        "--pts-file",
+        "{pts_file}"
       ],
       "ui_widget": {
         "title": "UART Loopback Diagnostic Device",
         "controls": [
-          { "type": "terminal", "name": "console", "label": "Loopback Console" }
+          {
+            "type": "terminal",
+            "name": "console",
+            "label": "Loopback Console"
+          }
         ]
       }
     }

@@ -220,6 +220,16 @@ export async function loadExternalPanes(onLoaded) {
           continue;
         }
 
+        // DPPA Semantic Versioning & Compatibility Check (Fail-Fast)
+        const requiredApiVersion = module.minApiVersion || module.apiVersion || 1;
+        const currentApiVersion = window.FBB?.apiVersion || 1;
+        if (requiredApiVersion > currentApiVersion) {
+          console.error(
+            `[DPPA] ❌ Incompatible pane '${p.id}'. Required API v${requiredApiVersion} > current FBB API v${currentApiVersion}. Skipping registration.`
+          );
+          continue;
+        }
+
         const iconComponent = (p.iconName && window.FBB?.icons?.[p.iconName]) || module.icon || Monitor;
 
         registerCustomPane({
