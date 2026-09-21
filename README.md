@@ -183,28 +183,43 @@ FPGA-BoardlessBench (F-BB)が「Zynqを想定した実働FW（ファームウェ
 F-BB では、テスト実行、DTS アドレスマップ検査、新規シナリオスカフォールディング（雛形作成）、サードパーティ製 PPA アドオンペリフェラルのワンコマンドインストールを単一コマンド `fbb` に集約しています。環境起動時にパスおよび Tab キー補完機能が自動有効化されます。
 
 ```bash
-# 1. 全自動テストスイートの実行 (全35シナリオの合否一括判定)
+# 1. 全自動テストスイートの実行 (全36シナリオの合否一括判定)
 fbb test
 
-# 2. 特定シナリオのテスト実行 (シナリオ名、相対/絶対パス、補完 01_<Tab> 対応)
+# 2. 特定シナリオ・複数シナリオのテスト実行 (あいまいプレフィックス 01, 02 対応)
 fbb test 01_standard_uio
-fbb test tests/scenarios/01_standard_uio/
+fbb test 01 01b 02                      # 複数シナリオの一括バッチ実行
+fbb test 01 -b                          # ビルドのみ実行 (--build-only)
+fbb test 01 -s                          # ビルドをスキップして即座に実行 (--skip-build)
+fbb test 01 -c                          # クリーン＆テスト実行 (--clean)
 
 # 3. 決定論的カオス・障害注入モードでの実行 (--chaos, --seed, --chaos-rate, --chaos-targets)
 fbb test 01d_chaos_fault_injection --chaos --seed 12345 --chaos-rate 0.05
 fbb test 02_multi_i2c --chaos --chaos-targets i2c,spi
 
-# 4. シナリオの 32-bit MMIO ベースアドレス・サイズ・ノード情報の視覚化
-fbb inspect 01_standard_uio
-fbb inspect S01_cpp_lfsr_sequencer
+# 4. フルスタック対話型Webラボ＆シミュレータ環境のワンショット起動 (別名: fbb start)
+fbb lab 01
+fbb lab 10_st7789_spi
 
-# 5. 新しいテストシナリオの雛形（DTS / C / Verilog / CMake）を一発自動生成
+# 5. ビルド成果物・共有メモリ・一時ファイルの一括安全破棄
+fbb clean                               # プロジェクト全体のクリーンアップ
+fbb clean 01                            # 特定シナリオのクリーンアップ
+fbb clean --cleanall                    # 外部RTOSソースを含む完全ディストクリーン
+
+# 6. シナリオの 32-bit MMIO ベースアドレス・IRQ・レジスタ・I2C/SPIスレーブのツリー視覚化
+fbb inspect 01_standard_uio
+fbb inspect 02b_multi_spi
+
+# 7. 新しいテストシナリオの雛形（DTS / C / Verilog / CMake）を一発自動生成
 fbb new my_custom_scenario --target zynq7000
 
-# 6. 発見された PPA 5.1 ペリフェラルプラグイン一覧の確認
+# 8. 発見された PPA/DPPA プラグイン・UIペイン一覧の確認 (左側固定幅整列)
 fbb plugin list
 
-# 7. サードパーティ製 PPA プラグインのワンコマンドインストール
+# 9. プラグイン仕様 (v1.0) の静的検証
+fbb plugin validate src/peripherals/official_plugins/solomon_ssd1306
+
+# 10. サードパーティ製 PPA プラグインのワンコマンドインストール
 fbb plugin install https://github.com/vendor/fbb-plugin-st7789
 ```
 
@@ -507,19 +522,24 @@ int main(int argc, char* argv[]) {
 # Git リポジトリまたはローカルパスから導入（C++ は自動検知されワンショットコンパイルされます）
 fbb plugin install https://github.com/vendor/fbb-plugin-my-sensor
 
-# インストール済みプラグインの確認（スキーマバージョンやビルドステータスも一覧表示）
+# インストール済みプラグインの確認（PPA/DPPA両対応、左側固定幅整列で視認性向上）
 fbb plugin list
 ```
 **出力例：**
 ```text
-🔌 Scanning F-BB Plug-and-Play Architecture (PPA 5.1) Plugins...
-----------------------------------------------------------------------------------------------------------------------
-Plugin Name                  | Schema  | Bus    | Compatible             | Status          | UI Title                 
-----------------------------------------------------------------------------------------------------------------------
-fbb-plugin-winbond-w25q128   | v1      | spi    | winbond,w25q128        | Ready (Binary)  | Winbond W25Q128 SPI Flash
-fbb-plugin-adafruit-ht16k33  | v1      | i2c    | adafruit,ht16k33-red   | Ready (Binary)  | Adafruit 4-Digit 7-Segment LED (Red)
-fbb-plugin-microchip-at24c02c | v1      | i2c    | atmel,24c02            | Ready (Binary)  | AT24C02C I2C EEPROM      
-...
+🔌 Scanning F-BB Plug-and-Play Architecture (PPA 5.1 & DPPA v1.0) Plugins & Panes...
+------------------------------------------------------------------------------------------------------------------------------
+Type   | Schema | Bus    | Status          | Plugin Name                  | Compatible / Target      | UI Title / Details        
+------------------------------------------------------------------------------------------------------------------------------
+Hybrid | v1     | i2c    | Ready (Binary)  | fbb-plugin-adafruit-ht16k33  | adafruit,ht16k33-red     | Adafruit 4-Digit 7-Segment
+Hybrid | v1     | i2c    | Ready (Binary)  | fbb-plugin-generic-hub75-mat | generic,hub75-matrix64x6 | HUB75 64x64 RGB LED Matrix
+Hybrid | v1     | uart   | Ready (Binary)  | fbb-plugin-generic-uart-loop | uart_loopback            | UART Loopback Diagnostic D
+Hybrid | v1     | i2c    | Ready (Binary)  | fbb-plugin-microchip-at24c02 | atmel,24c02              | AT24C02C I2C EEPROM       
+Hybrid | v1     | spi    | Ready (Binary)  | fbb-plugin-microchip-mcp3208 | microchip,mcp3208        | MCP3208 12-Bit SPI ADC    
+Hybrid | v1     | i2c    | Ready (Binary)  | fbb-plugin-solomon-ssd1306   | solomon,ssd1306          | SSD1306 OLED Display (128x
+Hybrid | v1     | spi    | Ready (Binary)  | fbb-plugin-winbond-w25q128   | winbond,w25q128          | Winbond W25Q128 SPI Flash 
+------------------------------------------------------------------------------------------------------------------------------
+Total discovered plugins: 7 (PPA: 0, DPPA: 0, Hybrid: 7)
 ```
 ※ Python スクリプト（`binary: "my_sensor.py"`）で実装した場合は、コンパイル不要で直接実行されます。
 
@@ -594,28 +614,28 @@ F-BBは、ハードウェア記述言語（RTL）から、低レイヤーのシ�
 
 ビルド成果物（`build`, `dist`）、外部パッケージ（`node_modules`）、および一時ファイルを除外したリポジトリ全体の静的ソースコードを `cloc` (Count Lines of Code v1.90) にて正確に計測した結果です。
 
-F-BB 独自のプロジェクトコードのみ（`--cleanall` 時）で**純プログラムステップ数（Pure Code） 44,536 行 (約 44.5k LOC)**、総行数 **56,364 行**（全 402 ファイル）で構成されています。また、シナリオ 10〜15 で動的ロードされる外部 RTOS カーネル（FreeRTOS, ThreadX, CMSIS_5）のソース群を含むフル状態では **約 92,000 行 (92.0k+ LOC)** / **全 170,000 行**（全 780 ファイル）の規模となります。
+F-BB 独自のプロジェクトコードのみ（`--cleanall` 時）で**純プログラムステップ数（Pure Code） 45,923 行 (約 45.9k LOC)**、総行数 **57,996 行**（全 402 ファイル）で構成されています。また、シナリオ 10〜15 で動的ロードされる外部 RTOS カーネル（FreeRTOS, ThreadX, CMSIS_5）のソース群を含むフル状態では **約 93,000 行 (93.0k+ LOC)** / **全 172,000 行**（全 780 ファイル）の規模となります。
 
 > **Project Scale Summary (`cloc` 計測値):**
-> - **Pure F-BB Code (F-BB独自コードのみ):** **44,536 Lines of Code** *(総行数 56,364行 / 402ファイル / コメント 3,605行 / 空行 8,223行)*
-> - **Full Environment (外部RTOSカーネル同梱時):** **約 92,000 Lines of Code** *(総行数 約 170,000行 / 780ファイル)*
-> - **主要言語構成:** *(Markdown/Doc: ~11.7k LOC, JSON: ~7.1k LOC, C/C++: ~12.7k LOC (全シナリオFW/Shim/PPA), React/JSX/JS/CSS: ~7.5k LOC, Python: ~2.2k LOC)*
+> - **Pure F-BB Code (F-BB独自コードのみ):** **45,923 Lines of Code** *(総行数 57,996行 / 402ファイル / コメント 3,697行 / 空行 8,376行)*
+> - **Full Environment (外部RTOSカーネル同梱時):** **約 93,000 Lines of Code** *(総行数 約 172,000行 / 780ファイル)*
+> - **主要言語構成:** *(Markdown/Doc: ~12.0k LOC, JSON: ~7.3k LOC, C/C++: ~12.7k LOC (全シナリオFW/Shim/PPA), React/JSX/JS/CSS: ~7.8k LOC, Python: ~2.8k LOC)*
 
 | 言語分類 (cloc) | 拡張子 | ファイル数 | 空行 (Blank) | コメント (Comment) | 純コード (Pure LOC) | 総行数 (Total Lines) | 主な構成要素と役割 |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **Markdown** | `.md` | 125 | 4,523 | 0 | **11,735行** | **16,258行** | システム仕様書、ADR、初学者学習ロードマップ、全36シナリオREADME/ADVANCED仕様書、PPA 5.1 開発ガイド |
-| **JSON / Manifest** | `.json` | 35 | 0 | 0 | **7,060行** | **7,060行** | PPAペリフェラルマニフェスト (`fbb-plugin.json`)、ボード構造メタデータ、AMR ロボット定義 (`amr_manifest.json`) |
-| **C++** | `.cpp` | 25 | 977 | 983 | **6,129行** | **8,089行** | Verilator シミュレーションコア、PPA ペリフェラルプラグイン実装、Scenario 22 & P02 AMR ros2_control ハードウェア層・運動学エンジン |
-| **JSX** | `.jsx` | 22 | 508 | 173 | **5,820行** | **6,501行** | Vite + React 19 UI（Dockview, DPPA `paneRegistry.jsx`, `PopoutWindow.jsx`, `DockHeaderActions.jsx`, Recharts, AMR 4特化型コックピットペイン, 各種診断ペイン） |
-| **C** | `.c` | 35 | 835 | 701 | **5,379行** | **6,915行** | システムコール横取り Shim、エミュレータデーモン、カオス障害注入エンジン、全シナリオ FW |
-| **Python** | `.py` / CLI | 14 | 408 | 794 | **2,201行** | **3,403行** | DTSパース・診断エンジン (`DTSParserError`)、コード自動生成、統一 CLI (`bin/fbb`), PPA |
-| **JavaScript** | `.js` | 3 | 158 | 70 | **1,345行** | **1,573行** | ダッシュボード WebSockets サーバー（`dashboard/server.js`）、マルチスクリーンレイアウト永続化 API、AMR コマンド/テレメトリ仲介 |
+| **Markdown** | `.md` | 125 | 4,578 | 0 | **11,977行** | **16,555行** | システム仕様書、ADR、初学者学習ロードマップ、全36シナリオREADME/ADVANCED仕様書、PPA 5.1 開発ガイド |
+| **JSON / Manifest** | `.json` | 35 | 0 | 0 | **7,264行** | **7,264行** | PPAペリフェラルマニフェスト (`fbb-plugin.json`)、ボード構造メタデータ、AMR ロボット定義 (`amr_manifest.json`) |
+| **C++** | `.cpp` | 25 | 978 | 984 | **6,146行** | **8,108行** | Verilator シミュレーションコア、PPA ペリフェラルプラグイン実装、Scenario 22 & P02 AMR ros2_control ハードウェア層・運動学エンジン |
+| **JSX** | `.jsx` | 22 | 526 | 185 | **5,985行** | **6,696行** | Vite + React 19 UI（Dockview, DPPA `paneRegistry.jsx`, `PopoutWindow.jsx`, `DockHeaderActions.jsx`, Recharts, AMR 4特化型コックピットペイン, 各種診断ペイン） |
+| **C** | `.c` | 35 | 835 | 700 | **5,389行** | **6,924行** | システムコール横取り Shim、エミュレータデーモン、カオス障害注入エンジン、全シナリオ FW |
+| **Python** | `.py` / CLI | 14 | 475 | 866 | **2,815行** | **4,156行** | 統合 CLI (`bin/fbb`), DTSパース・診断エンジン (`DTSParserError`)、コード自動生成、PPA プラグイン自動ビルド・起動 |
+| **JavaScript** | `.js` | 3 | 170 | 78 | **1,471行** | **1,719行** | ダッシュボード WebSockets サーバー（`dashboard/server.js`）、マルチスクリーンレイアウト永続化 API、AMR コマンド/テレメトリ仲介 |
 | **C/C++ Header** | `.h` / `.hpp` | 38 | 206 | 320 | **1,151行** | **1,677行** | 統一 CLI パーサー (`cli_helper.hpp`)、デバイス共通ヘッダー、レジスタ定義、Shimマクロ、hardware_interface ゼロインストール互換層 |
-| **Verilog** | `.v` | 20 | 115 | 201 | **1,030行** | **1,346行** | シミュレーション対象の FPGA ハードウェア記述 (RTL: PWM/QEI/E-STOP回路含む) |
-| **Bourne Shell** | `.sh` | 40 | 206 | 189 | **985行** | **1,380行** | 自動検証ランナー（`run_tests.sh`）、シナリオ単体ランナー（`scenario_runner.sh`）、ラボ起動スクリプト（`start_lab.sh`） |
+| **Verilog** | `.v` | 20 | 115 | 202 | **1,014行** | **1,331行** | シミュレーション対象の FPGA ハードウェア記述 (RTL: PWM/QEI/E-STOP回路含む) |
+| **Bourne Shell** | `.sh` | 40 | 206 | 188 | **1,010行** | **1,404行** | 自動検証ランナー（`run_tests.sh`）、シナリオ単体ランナー（`scenario_runner.sh`）、ラボ起動スクリプト（`start_lab.sh`） |
 | **CMake** | `CMakeLists.txt` / `.cmake` | 24 | 128 | 69 | **839行** | **1,036行** | マルチターゲットビルド設定（シナリオ・PPA・カーネル・ハードウェア抽象化層） |
 | **Other / Rust** | `.rs` / `.css` / 他 | 21 | 159 | 105 | **862行** | **1,126行** | UIスタイルシート (CSS), Mコア Rust FW, 各種設定メタデータ |
-| **合計 (SUM Total)** | **-** | **402** | **8,223** | **3,605** | **44,536行** | **56,364行** | **F-BB プラットフォーム全体の静的ソースコード総数** |
+| **合計 (SUM Total)** | **-** | **402** | **8,376** | **3,697** | **45,923行** | **57,996行** | **F-BB プラットフォーム全体の静的ソースコード総数** |
 
 
 > **コード生成エンジンによる動的コード**

@@ -3,11 +3,14 @@
 FPGA-BoardlessBench (F-BB) Unified CLI Toolkit (fbb-cli)
 
 @intent:responsibility
-  開発者が F-BB のシナリオ作成（new）、テスト実行（test）、DTS アドレス空間検査（inspect）、
-  および PPA 5.1 プラグイン管理（plugin list/install/remove）を単一のエントリポイントから直感的に操作できる統合 CLI を提供する。
+  開発者が F-BB のシナリオ作成（new）、テスト実行（test）、インタラクティブ環境起動（lab/start）、
+  キャッシュ破棄（clean）、DTS アドレス空間・ペリフェラル検査（inspect）、
+  および PPA/DPPA プラグイン・UIペイン管理（plugin list/install/remove/validate）を
+  単一のエントリポイントから直感的に操作できる統合 CLI を提供する。
 @intent:rationale
-  個別のシェルスクリプトや手動コマンド（run.sh, gen_vfpga.py, regression_test.py）の構文を統一し、
-  あいまい検索（前方一致）や自動クリーンアップ（Ctrl+C 時のバックグラウンドプロセス一括停止）を内包して開発体験を向上させる。
+  個別のシェルスクリプトや手動コマンド（run.sh, start_lab.sh, regression_test.py, scenario_runner.sh）
+  の構文を統一し、あいまい検索（前方一致）や自動クリーンアップ（Ctrl+C 時のバックグラウンドプロセス一括停止）
+  を内包して開発体験と保守性を飛躍的に向上させる。
 @intent:pre-condition
   Python 3.8 以上が利用可能であり、PROJECT_ROOT 配下に scripts/, tests/scenarios/ が配置されていること。
 """
@@ -33,12 +36,85 @@ if PROJECT_ROOT not in sys.path:
 from vfpga.parser import DTSParser
 
 
+def resolve_scenario_name_or_path(input_str):
+    """
+    @intent:responsibility
+      あいまい入力（プレフィックス "01" や相対パス "tests/scenarios/01_standard_uio"）から
+      正確なシナリオディレクトリ絶対パスを解決する。
+    @intent:rationale
+      ユーザーがフルパスを入力することなく、最小限のタイピング（例: fbb test 01）で目的のシナリオを実行可能にする。
+    """
+    if not input_str:
+        return None
+
+    clean_input = input_str.rstrip("/")
+
+    # Check 1: Direct path containing run.sh
+    direct_run = os.path.join(clean_input, "run.sh")
+    if os.path.exists(direct_run):
+        return os.path.abspath(os.path.dirname(direct_run))
+
+    # Check 2: Path or scenario name under PROJECT_ROOT/tests/scenarios
+    scenarios_base = os.path.join(PROJECT_ROOT, "tests/scenarios")
+
+    # Handle paths like "tests/scenarios/01_standard_uio"
+    if clean_input.startswith("tests/scenarios/"):
+        rel_sub = clean_input.replace("tests/scenarios/", "")
+        cand_dir = os.path.join(scenarios_base, rel_sub)
+        if os.path.exists(os.path.join(cand_dir, "run.sh")):
+            return cand_dir
+
+    cand_dir = os.path.join(scenarios_base, os.path.basename(clean_input))
+    if os.path.exists(os.path.join(cand_dir, "run.sh")):
+        return cand_dir
+
+    # Check 3: Fuzzy prefix match (e.g. "01" -> "01_standard_uio")
+    if os.path.exists(scenarios_base):
+        candidates = [
+            d for d in os.listdir(scenarios_base)
+            if d.startswith(clean_input) and os.path.isdir(os.path.join(scenarios_base, d))
+        ]
+        if len(candidates) == 1:
+            return os.path.join(scenarios_base, candidates[0])
+        elif len(candidates) > 1:
+            if clean_input in candidates:
+                return os.path.join(scenarios_base, clean_input)
+            exact_prefix = [d for d in candidates if d.startswith(clean_input + "_")]
+            if len(exact_prefix) == 1:
+                return os.path.join(scenarios_base, exact_prefix[0])
+            candidates.sort()
+            return os.path.join(scenarios_base, candidates[0])
+
+    return None
+
+
+def resolve_dts_path(input_str):
+    """
+    @intent:responsibility
+      シナリオ名、フォルダパス、または直接の DTS ファイルパスから対象 config.dts の絶対パスを解決する。
+    """
+    if not input_str:
+        return None
+
+    clean_input = input_str.rstrip("/")
+
+    if os.path.isfile(clean_input):
+        return os.path.abspath(clean_input)
+
+    if os.path.isdir(clean_input) and os.path.exists(os.path.join(clean_input, "config.dts")):
+        return os.path.abspath(os.path.join(clean_input, "config.dts"))
+
+    s_dir = resolve_scenario_name_or_path(clean_input)
+    if s_dir and os.path.exists(os.path.join(s_dir, "config.dts")):
+        return os.path.join(s_dir, "config.dts")
+
+    return None
+
+
 def command_new(args):
     """
     @intent:responsibility
       新規シナリオ用ディレクトリ・DTS・Verilog RTL・CMakeLists.txt・Cソース・README のスケルトンを一括自動生成する。
-    @intent:rationale
-      初学者がゼロから構成ファイルを作成する手間を省き、ベストプラクティスに沿った構成を即座に提供する。
     """
     scenario_name = args.name
     target = args.target or "zynq7000"
@@ -223,121 +299,183 @@ Scaffolded F-BB scenario target: {target}.
     print(f"✨ Successfully scaffolded scenario at: {target_dir}")
 
 
-def resolve_scenario_name_or_path(input_str):
-    """
-    @intent:responsibility
-      あいまい入力（プレフィックス "01" や相対パス "tests/scenarios/01_standard_uio"）から正確なシナリオディレクトリ絶対パスを解決する。
-    @intent:rationale
-      ユーザーがフルパスを入力することなく、最小限のタイピング（例: fbb test 01）で目的のシナリオを実行可能にする。
-    """
-    if not input_str:
-        return None
-
-    clean_input = input_str.rstrip("/")
-
-    # Check 1: Direct path containing run.sh
-    direct_run = os.path.join(clean_input, "run.sh")
-    if os.path.exists(direct_run):
-        return os.path.abspath(os.path.dirname(direct_run))
-
-    # Check 2: Path or scenario name under PROJECT_ROOT/tests/scenarios
-    scenarios_base = os.path.join(PROJECT_ROOT, "tests/scenarios")
-    
-    # Handle paths like "tests/scenarios/01_standard_uio"
-    if clean_input.startswith("tests/scenarios/"):
-        rel_sub = clean_input.replace("tests/scenarios/", "")
-        cand_dir = os.path.join(scenarios_base, rel_sub)
-        if os.path.exists(os.path.join(cand_dir, "run.sh")):
-            return cand_dir
-
-    cand_dir = os.path.join(scenarios_base, os.path.basename(clean_input))
-    if os.path.exists(os.path.join(cand_dir, "run.sh")):
-        return cand_dir
-
-    # Check 3: Fuzzy prefix match (e.g. "01" -> "01_standard_uio")
-    if os.path.exists(scenarios_base):
-        candidates = [d for d in os.listdir(scenarios_base) if d.startswith(clean_input) and os.path.isdir(os.path.join(scenarios_base, d))]
-        if len(candidates) == 1:
-            return os.path.join(scenarios_base, candidates[0])
-
-    return None
-
-
-def resolve_dts_path(input_str):
-    """
-    @intent:responsibility
-      シナリオ名、フォルダパス、または直接の DTS ファイルパスから対象 config.dts の絶対パスを解決する。
-    """
-    if not input_str:
-        return None
-
-    clean_input = input_str.rstrip("/")
-
-    if os.path.isfile(clean_input):
-        return os.path.abspath(clean_input)
-
-    if os.path.isdir(clean_input) and os.path.exists(os.path.join(clean_input, "config.dts")):
-        return os.path.abspath(os.path.join(clean_input, "config.dts"))
-
-    s_dir = resolve_scenario_name_or_path(clean_input)
-    if s_dir and os.path.exists(os.path.join(s_dir, "config.dts")):
-        return os.path.join(s_dir, "config.dts")
-
-    return None
-
-
 def command_test(args):
     """
     @intent:responsibility
-      単一シナリオ（run.sh）またはフルリグレッションテストスイート（regression_test.py）を実行し、Ctrl+C 時にシミュレータプロセスを確実に回収する。
-    @intent:rationale
-      テスト中断時に孤立プロセス（vlogic_controller, vfpga_sim）が残存してポートや共有メモリを占有するのを防ぐ。
+      単一シナリオ、複数シナリオ、または全シナリオのリグレッションテストを実行する。
+      ビルド分離（-b/--build-only, -s/--skip-build, -c/--clean）やカオス障害注入（--chaos）に対応。
+      Ctrl+C 中断時には孤立プロセスを確実に回収する。
     """
-    scenario_input = args.scenario
+    scenarios_input = args.scenarios
     try:
-        if scenario_input:
-            s_dir = resolve_scenario_name_or_path(scenario_input)
+        if not scenarios_input:
+            if getattr(args, "build_only", False):
+                print("🔨 Building all scenarios (simulation engine & test binaries)...")
+                scenarios_base = os.path.join(PROJECT_ROOT, "tests/scenarios")
+                all_dirs = sorted([
+                    d for d in os.listdir(scenarios_base)
+                    if os.path.isdir(os.path.join(scenarios_base, d)) and os.path.exists(os.path.join(scenarios_base, d, "run.sh"))
+                ])
+                for s in all_dirs:
+                    s_path = os.path.join(scenarios_base, s)
+                    print(f"\n[Build] Building scenario: {s}")
+                    cmd = [os.path.join(PROJECT_ROOT, "tests/scenario_runner.sh"), s_path, "--build-only"]
+                    res = subprocess.run(cmd, cwd=PROJECT_ROOT)
+                    if res.returncode != 0:
+                        print(f"❌ Build failed for scenario {s}")
+                        sys.exit(res.returncode)
+                print("\n✨ All scenarios built successfully!")
+                sys.exit(0)
+            else:
+                print("🧪 Running full F-BB automated regression test suite via regression_test.py...")
+                runner = os.path.join(PROJECT_ROOT, "tests/regression_test.py")
+                res = subprocess.run([sys.executable, "-u", runner], cwd=PROJECT_ROOT)
+                sys.exit(res.returncode)
+        elif len(scenarios_input) == 1:
+            s_input = scenarios_input[0]
+            s_dir = resolve_scenario_name_or_path(s_input)
             if not s_dir:
-                print(f"❌ Error: Could not find scenario '{scenario_input}'")
-                print("💡 Tip: You can pass a scenario name (e.g. 01_standard_uio) or a path (e.g. tests/scenarios/01_standard_uio/)")
+                print(f"❌ Error: Could not find scenario '{s_input}'")
+                print("💡 Tip: You can pass a scenario name (e.g. 01_standard_uio), prefix (e.g. 01), or path")
                 sys.exit(1)
 
-            run_script = os.path.join(s_dir, "run.sh")
             scenario_name = os.path.basename(s_dir)
-            print(f"🧪 Running scenario '{scenario_name}'...")
-            run_cmd = [run_script]
+            runner_script = os.path.join(PROJECT_ROOT, "tests/scenario_runner.sh")
+            cmd = [runner_script, s_dir]
+
+            if getattr(args, "clean", False):
+                cmd.append("--clean")
+            if getattr(args, "build_only", False):
+                cmd.append("--build-only")
+            if getattr(args, "skip_build", False):
+                cmd.append("--skip-build")
+            if getattr(args, "chaos", False):
+                cmd.append("--chaos")
+            if getattr(args, "seed", None):
+                cmd.append(f"--seed={args.seed}")
+            if getattr(args, "chaos_rate", None):
+                cmd.append(f"--chaos-rate={args.chaos_rate}")
+            if getattr(args, "chaos_targets", None):
+                cmd.append(f"--chaos-targets={args.chaos_targets}")
+
             env = os.environ.copy()
             if getattr(args, "chaos", False):
-                run_cmd.append("--chaos")
                 env["FBB_CHAOS_MODE"] = "1"
             if getattr(args, "seed", None):
-                run_cmd.append(f"--seed={args.seed}")
                 env["FBB_CHAOS_SEED"] = str(args.seed)
             if getattr(args, "chaos_rate", None):
-                run_cmd.append(f"--chaos-rate={args.chaos_rate}")
                 env["FBB_CHAOS_RATE"] = str(args.chaos_rate)
             if getattr(args, "chaos_targets", None):
-                run_cmd.append(f"--chaos-targets={args.chaos_targets}")
                 env["FBB_CHAOS_TARGETS"] = str(args.chaos_targets)
 
-            res = subprocess.run(run_cmd, cwd=s_dir, env=env)
+            action_desc = "Testing"
+            if getattr(args, "build_only", False):
+                action_desc = "Building"
+            elif getattr(args, "clean", False):
+                action_desc = "Cleaning & Testing"
+            print(f"🧪 {action_desc} scenario '{scenario_name}'...")
+            res = subprocess.run(cmd, cwd=PROJECT_ROOT, env=env)
             sys.exit(res.returncode)
         else:
-            print("🧪 Running full F-BB automated regression test suite via regression_test.py...")
-            runner = os.path.join(PROJECT_ROOT, "tests/regression_test.py")
-            res = subprocess.run([sys.executable, "-u", runner], cwd=PROJECT_ROOT)
-            sys.exit(res.returncode)
+            resolved_dirs = []
+            scenario_names = []
+            for s_input in scenarios_input:
+                s_dir = resolve_scenario_name_or_path(s_input)
+                if not s_dir:
+                    print(f"❌ Error: Could not resolve scenario '{s_input}'")
+                    sys.exit(1)
+                resolved_dirs.append(s_dir)
+                scenario_names.append(os.path.basename(s_dir))
+
+            if getattr(args, "build_only", False) or getattr(args, "skip_build", False) or getattr(args, "clean", False):
+                for s_dir in resolved_dirs:
+                    s_name = os.path.basename(s_dir)
+                    cmd = [os.path.join(PROJECT_ROOT, "tests/scenario_runner.sh"), s_dir]
+                    if getattr(args, "clean", False):
+                        cmd.append("--clean")
+                    if getattr(args, "build_only", False):
+                        cmd.append("--build-only")
+                    if getattr(args, "skip_build", False):
+                        cmd.append("--skip-build")
+                    print(f"\n🧪 Processing scenario '{s_name}'...")
+                    res = subprocess.run(cmd, cwd=PROJECT_ROOT)
+                    if res.returncode != 0:
+                        sys.exit(res.returncode)
+                sys.exit(0)
+            else:
+                print(f"🧪 Running {len(scenario_names)} selected scenarios via regression harness: {', '.join(scenario_names)}")
+                runner = os.path.join(PROJECT_ROOT, "tests/regression_test.py")
+                cmd = [sys.executable, "-u", runner] + scenario_names
+                res = subprocess.run(cmd, cwd=PROJECT_ROOT)
+                sys.exit(res.returncode)
+
     except KeyboardInterrupt:
         print("\n🛑 Test execution interrupted by user (Ctrl+C). Cleaning up...")
         subprocess.run(["pkill", "-9", "-f", "vlogic_controller"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
         subprocess.run(["pkill", "-9", "-f", "vfpga_sim"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+        subprocess.run(["pkill", "-9", "-f", "dashboard/server.js"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
         sys.exit(130)
+
+
+def command_lab(args):
+    """
+    @intent:responsibility
+      指定シナリオのフルスタック環境（シミュレータ + コントローラ + Webダッシュボード）をワンショット起動する。
+    """
+    scenario_input = args.scenario or "01_standard_uio"
+    s_dir = resolve_scenario_name_or_path(scenario_input)
+    if not s_dir:
+        print(f"❌ Error: Could not find scenario '{scenario_input}'")
+        sys.exit(1)
+
+    scenario_name = os.path.basename(s_dir)
+    print(f"🚀 Launching F-BB Interactive Lab for scenario '{scenario_name}'...")
+    lab_script = os.path.join(PROJECT_ROOT, "start_lab.sh")
+    try:
+        res = subprocess.run([lab_script, s_dir], cwd=PROJECT_ROOT)
+        sys.exit(res.returncode)
+    except KeyboardInterrupt:
+        print("\n🛑 Stopping F-BB Interactive Lab...")
+        subprocess.run(["pkill", "-9", "-f", "vlogic_controller"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+        subprocess.run(["pkill", "-9", "-f", "vfpga_sim"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+        subprocess.run(["pkill", "-9", "-f", "dashboard/server.js"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+        sys.exit(130)
+
+
+def command_clean(args):
+    """
+    @intent:responsibility
+      プロジェクト全体または特定シナリオのビルド成果物、共有メモリ、一時ログを安全に一括破棄する。
+    """
+    scenario_input = args.scenario
+    cleanall = getattr(args, "cleanall", False)
+
+    if scenario_input:
+        s_dir = resolve_scenario_name_or_path(scenario_input)
+        if not s_dir:
+            print(f"❌ Error: Could not find scenario '{scenario_input}'")
+            sys.exit(1)
+        s_name = os.path.basename(s_dir)
+        print(f"🧹 Cleaning scenario artifacts for '{s_name}'...")
+        cmd = [os.path.join(PROJECT_ROOT, "tests/scenario_runner.sh"), s_dir, "--clean"]
+        if cleanall:
+            cmd.append("--cleanall")
+        res = subprocess.run(cmd, cwd=PROJECT_ROOT)
+        sys.exit(res.returncode)
+    else:
+        print("🧹 Cleaning all F-BB build artifacts, logs, and shared memories...")
+        cmd = [os.path.join(PROJECT_ROOT, "tests/run_tests.sh"), "--clean"]
+        if cleanall:
+            cmd.append("--cleanall")
+        res = subprocess.run(cmd, cwd=PROJECT_ROOT)
+        sys.exit(res.returncode)
 
 
 def command_inspect(args):
     """
     @intent:responsibility
-      指定された config.dts またはシナリオの 32-bit MMIO アドレス空間とペリフェラル一覧を表形式で整形出力する。
+      指定された config.dts またはシナリオの 32-bit MMIO アドレス空間、ペリフェラル属性、
+      レジスタマップ（Offset, Direction, Mode）、割り込み（IRQ）、およびサブスレーブ（I2C/SPI）をツリー整形出力する。
     """
     dts_input = args.dts
     dts_file = resolve_dts_path(dts_input)
@@ -354,33 +492,74 @@ def command_inspect(args):
         print(f"❌ Failed to parse DTS: {e}")
         sys.exit(1)
 
-    print("-" * 80)
-    print(f"{'Device Name':<25} | {'Base Address':<14} | {'Size':<10} | {'Type':<15}")
-    print("-" * 80)
+    model_name = getattr(model, "model_name", "vfpga")
+    print(f"Target Model : {model_name}")
+    print("=" * 95)
+    print(f"{'Device Name':<22} | {'Base Addr':<12} | {'Size':<10} | {'Type':<10} | {'IRQ':<6} | {'Label / Path':<22}")
+    print("=" * 95)
     for dev in model.devices:
         base_str = f"0x{dev.base_addr:08X}" if dev.base_addr is not None else "N/A"
         size_str = f"0x{dev.size:X}" if dev.size is not None else "N/A"
-        dev_type = dev.type if getattr(dev, 'type', None) else "generic"
-        print(f"{dev.name:<25} | {base_str:<14} | {size_str:<10} | {dev_type:<15}")
-    print("-" * 80)
+        dev_type = dev.type if getattr(dev, "type", None) else "generic"
+        irq_str = dev.extra_props.get("interrupts", "-")
+        label_str = dev.extra_props.get("label", dev.path if getattr(dev, "path", None) else "-")
+        print(f"{dev.name:<22} | {base_str:<12} | {size_str:<10} | {dev_type:<10} | {irq_str:<6} | {label_str:<22}")
+
+        # Registers
+        if getattr(dev, "registers", None) and len(dev.registers) > 0:
+            print("  ├─ [Registers]")
+            print(f"  │    {'Offset':<8} | {'Register Name':<16} | {'Access':<8} | {'Logical / Direction Mode':<24}")
+            print(f"  │    {'-'*8}-+-{'-'*16}-+-{'-'*8}-+-{'-'*24}")
+            for r in dev.registers:
+                acc = getattr(r, "direction", "RW")
+                mode_info = getattr(r, "direction_mode", None) or getattr(r, "logical_name", "") or "-"
+                print(f"  │    {r.offset:<8} | {r.name:<16} | {acc:<8} | {mode_info:<24}")
+
+        # Sub-slaves (I2C)
+        if getattr(dev, "i2c_slaves", None) and len(dev.i2c_slaves) > 0:
+            print("  ├─ [I2C Slaves]")
+            for s in dev.i2c_slaves:
+                addr_str = f"0x{s.addr:02X}" if isinstance(s.addr, int) else str(s.addr)
+                print(f"  │    • Addr: {addr_str:<6} | Name: {s.name:<14} | Compatible: \"{s.compatible}\"")
+
+        # Sub-slaves (SPI)
+        if getattr(dev, "spi_slaves", None) and len(dev.spi_slaves) > 0:
+            print("  ├─ [SPI Slaves]")
+            for s in dev.spi_slaves:
+                cs_str = f"CS{s.cs}" if isinstance(s.cs, int) else str(s.cs)
+                print(f"  │    • CS: {cs_str:<8} | Name: {s.name:<14} | Compatible: \"{s.compatible}\"")
+
+    print("=" * 95)
 
 
 def command_plugin_list(args):
     """
     @intent:responsibility
-      ~/.fbb/plugins, official_plugins 等の標準パスを探索し、PPA 5.1 マニフェスト（fbb-plugin.json）をパースして一覧表示する。
+      PPA (Peripheral Plugin Architecture) および DPPA (Dashboard Dynamic Pane Architecture) の
+      両プラグインを探索し、固定幅フィールド（Type, Schema, Bus, Status）を左端に整列配置して一覧表示する。
+    @intent:rationale
+      文字長の揃った項目（Type, Schema, Bus, Status）を左側に配置することで、
+      縦に一覧を眺めた際の視線移動時の段差（ジャギー）を排除し、視認性と開発体験を向上させる。
     """
-    print("🔌 Scanning F-BB Plug-and-Play Architecture (PPA 5.1) Plugins...")
-    
-    discovery_paths = [
-        os.path.join(os.path.expanduser("~"), ".fbb/plugins"),
+    print("🔌 Scanning F-BB Plug-and-Play Architecture (PPA 5.1 & DPPA v1.0) Plugins & Panes...")
+
+    # 5 PPA & DPPA Discovery Paths
+    ppa_paths = [
+        os.path.join(PROJECT_ROOT, ".fbb/plugins"),
         os.path.join(PROJECT_ROOT, "src/peripherals/official_plugins"),
+        os.path.join(os.path.expanduser("~"), ".fbb/plugins"),
         "/usr/local/share/fbb/plugins"
     ]
+    if os.environ.get("FBB_PLUGIN_PATH"):
+        for p in os.environ.get("FBB_PLUGIN_PATH").split(":"):
+            if p.strip():
+                ppa_paths.append(p.strip())
 
-    found_plugins = []
+    found_entries = []
+    seen_keys = set()
 
-    for path in discovery_paths:
+    # 1. Discover PPA & Hybrid Plugins
+    for path in ppa_paths:
         if not os.path.exists(path):
             continue
         for entry in os.listdir(path):
@@ -393,17 +572,27 @@ def command_plugin_list(args):
                     name = data.get("name", entry)
                     schema_ver = f"v{data.get('schema_version', 1)}"
                     periphs = data.get("peripherals", [])
+                    has_ui_widget = False
                     if periphs and isinstance(periphs, list):
                         p0 = periphs[0]
                         bus = p0.get("bus", "generic")
                         compat = p0.get("compatible", "N/A")
-                        widget = p0.get("ui_widget", {}).get("title", "No Title")
+                        ui_w = p0.get("ui_widget", {})
+                        widget = ui_w.get("title", "No Title")
+                        has_ui_widget = bool(ui_w)
                         bin_name = p0.get("binary")
                     else:
                         bus = data.get("bus_type", "generic")
                         compat = data.get("compatible", "N/A")
-                        widget = data.get("ui_widget", {}).get("title", "No Title")
+                        ui_w = data.get("ui_widget", {})
+                        widget = ui_w.get("title", "No Title")
+                        has_ui_widget = bool(ui_w)
                         bin_name = data.get("binary")
+
+                    # Check for pane subdirectory
+                    has_pane_dir = os.path.exists(os.path.join(plugin_dir, "pane")) or os.path.exists(os.path.join(plugin_dir, "panes"))
+
+                    plugin_type = "Hybrid" if (has_ui_widget or has_pane_dir) else "PPA"
 
                     status = "Unknown"
                     if bin_name:
@@ -417,18 +606,253 @@ def command_plugin_list(args):
                             status = "Ready (Binary)"
                         elif glob.glob(os.path.join(plugin_dir, "*.cpp")) or os.path.exists(os.path.join(plugin_dir, "CMakeLists.txt")):
                             status = "Source Only"
+                        else:
+                            status = "Missing Bin"
 
-                    found_plugins.append((name, schema_ver, bus, compat, status, widget, path))
+                    key = f"{plugin_type}:{name}"
+                    if key not in seen_keys:
+                        seen_keys.add(key)
+                        found_entries.append({
+                            "type": plugin_type,
+                            "schema": schema_ver,
+                            "bus": bus,
+                            "status": status,
+                            "name": name,
+                            "compat": compat,
+                            "title": widget,
+                            "path": plugin_dir
+                        })
                 except Exception:
                     pass
 
-    print("-" * 118)
-    print(f"{'Plugin Name':<28} | {'Schema':<7} | {'Bus':<6} | {'Compatible':<22} | {'Status':<15} | {'UI Title':<25}")
-    print("-" * 118)
-    for p in found_plugins:
-        print(f"{p[0]:<28} | {p[1]:<7} | {p[2]:<6} | {p[3]:<22} | {p[4]:<15} | {p[5]:<25}")
-    print("-" * 118)
-    print(f"Total discovered PPA plugins: {len(found_plugins)}")
+    # 2. Discover DPPA Dynamic Panes
+    dppa_dirs = [
+        os.path.join(PROJECT_ROOT, ".fbb/panes"),
+        os.path.join(PROJECT_ROOT, "dashboard/plugins/panes"),
+        os.path.join(os.path.expanduser("~"), ".fbb/panes")
+    ]
+    if os.environ.get("FBB_PANE_PATH"):
+        for p in os.environ.get("FBB_PANE_PATH").split(":"):
+            if p.strip():
+                dppa_dirs.append(p.strip())
+
+    # Check scenarios for panes
+    scenarios_base = os.path.join(PROJECT_ROOT, "tests/scenarios")
+    if os.path.exists(scenarios_base):
+        for s in os.listdir(scenarios_base):
+            sp = os.path.join(scenarios_base, s, "panes")
+            if os.path.isdir(sp):
+                dppa_dirs.append(sp)
+
+    for pdir in dppa_dirs:
+        if not os.path.exists(pdir):
+            continue
+        for root, dirs, files in os.walk(pdir):
+            for f in files:
+                if f.endswith(".js") and not f.endswith(".test.js"):
+                    pane_name = f.replace(".js", "")
+                    rel_p = os.path.relpath(os.path.join(root, f), PROJECT_ROOT)
+                    key = f"DPPA:{pane_name}"
+                    if key not in seen_keys:
+                        seen_keys.add(key)
+                        found_entries.append({
+                            "type": "DPPA",
+                            "schema": "v1",
+                            "bus": "esm",
+                            "status": "Ready (Pane)",
+                            "name": pane_name,
+                            "compat": os.path.basename(os.path.dirname(root)),
+                            "title": pane_name.replace("Pane", " Live Display"),
+                            "path": rel_p
+                        })
+
+    # Sort entries: Hybrid -> PPA -> DPPA, then by Name
+    type_priority = {"Hybrid": 0, "PPA": 1, "DPPA": 2}
+    found_entries.sort(key=lambda e: (type_priority.get(e["type"], 9), e["name"]))
+
+    # Table formatting: Uniform width items placed on the left side to eliminate vertical jaggedness
+    # Column ordering: Type (6) | Schema (6) | Bus (6) | Status (15) | Plugin Name (28) | Compatible / Target (24) | UI Title / Details (26)
+    print("-" * 126)
+    print(f"{'Type':<6} | {'Schema':<6} | {'Bus':<6} | {'Status':<15} | {'Plugin Name':<28} | {'Compatible / Target':<24} | {'UI Title / Details':<26}")
+    print("-" * 126)
+    for p in found_entries:
+        t = p["type"][:6]
+        sch = p["schema"][:6]
+        b = p["bus"][:6]
+        st = p["status"][:15]
+        nm = p["name"][:28]
+        cp = p["compat"][:24]
+        ti = p["title"][:26]
+        print(f"{t:<6} | {sch:<6} | {b:<6} | {st:<15} | {nm:<28} | {cp:<24} | {ti:<26}")
+    print("-" * 126)
+
+    ppa_cnt = sum(1 for e in found_entries if e["type"] == "PPA")
+    dppa_cnt = sum(1 for e in found_entries if e["type"] == "DPPA")
+    hyb_cnt = sum(1 for e in found_entries if e["type"] == "Hybrid")
+    print(f"Total discovered plugins: {len(found_entries)} (PPA: {ppa_cnt}, DPPA: {dppa_cnt}, Hybrid: {hyb_cnt})")
+
+
+def command_plugin_validate(args):
+    """
+    @intent:responsibility
+      PPA マニフェスト (fbb-plugin.json) または DPPA ペイン定義 (pane.json / ESM script)
+      が仕様 (v1.0) に準拠しているかを静的検証し、構文・型・必須キー・バイナリ適合性をレポートする。
+    """
+    target_path = os.path.abspath(args.path)
+    if not os.path.exists(target_path):
+        print(f"❌ Error: Path does not exist: {target_path}")
+        sys.exit(1)
+
+    manifest_path = None
+    is_dppa = False
+    if os.path.isdir(target_path):
+        p_ppa = os.path.join(target_path, "fbb-plugin.json")
+        p_dppa = os.path.join(target_path, "pane.json")
+        if os.path.exists(p_ppa):
+            manifest_path = p_ppa
+        elif os.path.exists(p_dppa):
+            manifest_path = p_dppa
+            is_dppa = True
+        else:
+            js_files = [f for f in os.listdir(target_path) if f.endswith(".js") and not f.endswith(".test.js")]
+            if js_files:
+                manifest_path = os.path.join(target_path, js_files[0])
+                is_dppa = True
+            else:
+                print(f"❌ Error: No fbb-plugin.json, pane.json, or ESM pane script found in: {target_path}")
+                sys.exit(1)
+    else:
+        manifest_path = target_path
+        if manifest_path.endswith("pane.json") or manifest_path.endswith(".js") or manifest_path.endswith(".jsx"):
+            is_dppa = True
+
+    rel_path = os.path.relpath(manifest_path, PROJECT_ROOT)
+    print("=" * 85)
+    print(f"🔍 Validating {'DPPA Dynamic Pane' if is_dppa else 'PPA Peripheral Plugin'}: {rel_path}")
+    print("=" * 85)
+
+    errors = []
+    warnings = []
+
+    if not is_dppa:
+        # PPA Validation
+        try:
+            with open(manifest_path, "r", encoding="utf-8") as f:
+                data = json.load(f)
+        except Exception as e:
+            print(f"❌ JSON Syntax Error: {e}")
+            sys.exit(1)
+
+        print("  ✓ JSON Syntax: Valid")
+
+        # 1. schema_version
+        schema_ver = data.get("schema_version")
+        if schema_ver is None:
+            warnings.append("Missing 'schema_version' (Defaulting to legacy v1). Recommendation: Add \"schema_version\": 1")
+            print("  ⚠️ Schema Version: Undefined (Legacy fallback)")
+        elif schema_ver != 1:
+            errors.append(f"Unsupported schema_version: {schema_ver}. Current supported specification is 1.")
+            print(f"  ❌ Schema Version: v{schema_ver} (Unsupported)")
+        else:
+            print("  ✓ Schema Version: v1 (Specification v1.0 compliant)")
+
+        # 2. name
+        name = data.get("name")
+        if not name or not isinstance(name, str):
+            errors.append("Field 'name' is required and must be a non-empty string.")
+        else:
+            print(f"  ✓ Plugin Name: {name}")
+
+        # 3. peripherals
+        peripherals = data.get("peripherals")
+        if not peripherals:
+            if "compatible" not in data or "binary" not in data:
+                errors.append("Plugin must define 'peripherals' list or top-level 'compatible'/'binary'.")
+            else:
+                peripherals = [{
+                    "bus": data.get("bus_type", "generic"),
+                    "compatible": data.get("compatible"),
+                    "binary": data.get("binary"),
+                    "ui_widget": data.get("ui_widget")
+                }]
+
+        if peripherals and isinstance(peripherals, list):
+            print(f"  ✓ Peripherals: {len(peripherals)} defined")
+            valid_buses = {"i2c", "spi", "uart", "can", "gpio", "axil", "uio", "generic", "shm"}
+            p_dir = target_path if os.path.isdir(target_path) else os.path.dirname(target_path)
+            for idx, p in enumerate(peripherals):
+                p_bus = p.get("bus", "generic")
+                p_compat = p.get("compatible")
+                p_bin = p.get("binary")
+                if p_bus not in valid_buses:
+                    warnings.append(f"Peripheral #{idx+1} bus '{p_bus}' is non-standard.")
+                if not p_compat:
+                    errors.append(f"Peripheral #{idx+1} is missing 'compatible' string.")
+                if not p_bin:
+                    errors.append(f"Peripheral #{idx+1} is missing 'binary' executable.")
+                else:
+                    bin_found = False
+                    if (
+                        p_bin.endswith(".py") or p_bin.endswith(".sh") or
+                        os.path.exists(os.path.join(p_dir, p_bin)) or
+                        os.path.exists(os.path.join(p_dir, "bin", os.path.basename(p_bin))) or
+                        os.path.exists(os.path.join(PROJECT_ROOT, "build/bin", os.path.basename(p_bin))) or
+                        glob.glob(os.path.join(p_dir, "*.cpp")) or
+                        os.path.exists(os.path.join(p_dir, "CMakeLists.txt"))
+                    ):
+                        bin_found = True
+                    if not bin_found:
+                        warnings.append(f"Binary '{p_bin}' is not compiled and no C++ sources were found in {p_dir}")
+                print(f"    • Peripheral #{idx+1}: Bus={p_bus}, Compatible={p_compat}, Binary={p_bin}")
+                if "ui_widget" in p:
+                    print(f"      - UI Widget: {p['ui_widget'].get('title', 'Untitled')}")
+
+    else:
+        # DPPA Validation
+        p_dir = target_path if os.path.isdir(target_path) else os.path.dirname(target_path)
+        if manifest_path.endswith(".json"):
+            try:
+                with open(manifest_path, "r", encoding="utf-8") as f:
+                    data = json.load(f)
+                print("  ✓ JSON Syntax: Valid")
+                pane_id = data.get("id")
+                pane_title = data.get("title")
+                entry = data.get("entry", "index.js")
+                if not pane_id:
+                    errors.append("DPPA pane.json is missing required field 'id'")
+                if not os.path.exists(os.path.join(p_dir, entry)):
+                    errors.append(f"DPPA entry file '{entry}' not found in pane directory: {p_dir}")
+                print(f"  ✓ DPPA Pane: ID='{pane_id}', Title='{pane_title}'")
+            except Exception as e:
+                print(f"❌ JSON Syntax Error: {e}")
+                sys.exit(1)
+        else:
+            try:
+                with open(manifest_path, "r", encoding="utf-8") as f:
+                    content = f.read()
+                print("  ✓ ESM Script: Read successfully")
+                if "export" not in content:
+                    warnings.append("ESM pane script does not appear to contain an 'export' statement.")
+                if "minApiVersion" in content or "apiVersion" in content or "export default" in content:
+                    print("  ✓ DPPA Signature: React ESM component export detected")
+            except Exception as e:
+                print(f"❌ File Read Error: {e}")
+                sys.exit(1)
+
+    print("-" * 85)
+    if warnings:
+        print(f"⚠️ Warnings ({len(warnings)}):")
+        for w in warnings:
+            print(f"  - {w}")
+    if errors:
+        print(f"❌ Errors ({len(errors)}):")
+        for er in errors:
+            print(f"  - {er}")
+        print("\n💥 Result: VALIDATION FAILED")
+        sys.exit(1)
+    else:
+        print(f"✨ Result: 100% VALID {'DPPA DYNAMIC PANE' if is_dppa else 'PPA PLUGIN'} SPECIFICATION")
+        sys.exit(0)
 
 
 def auto_build_plugin(plugin_dir):
@@ -550,7 +974,6 @@ def command_plugin_install(args):
             shutil.rmtree(dest_dir)
         shutil.copytree(target_repo, dest_dir)
     else:
-        # Git repo URL
         plugin_name = target_repo.rstrip("/").split("/")[-1].replace(".git", "")
         dest_dir = os.path.join(dest_base, plugin_name)
         print(f"📦 Cloning and installing plugin '{plugin_name}' from {target_repo}...")
@@ -561,10 +984,9 @@ def command_plugin_install(args):
             print(f"❌ Failed to clone plugin repository: {target_repo}")
             sys.exit(1)
 
-    # Trigger Zero-Touch Auto-Builder
     build_ok = auto_build_plugin(dest_dir)
     if not build_ok:
-        print(f"⚠️ Warning: Plugin files installed, but auto-compilation encountered issues.")
+        print("⚠️ Warning: Plugin files installed, but auto-compilation encountered issues.")
     else:
         print(f"✅ Plugin '{plugin_name}' successfully installed and ready at {dest_dir}!")
 
@@ -587,12 +1009,18 @@ def command_plugin_remove(args):
 
 def main():
     main_epilog = """Examples:
-  fbb test                                Run all test scenarios
-  fbb test 01_standard_uio                Run scenario by name
-  fbb test tests/scenarios/01_standard_uio/  Run scenario by relative or absolute path
+  fbb test                                Run all regression test scenarios
+  fbb test 01                             Run scenario matching fuzzy prefix '01'
+  fbb test 01 02 10                       Run multiple selected scenarios
+  fbb test 01 -b                          Build simulation engine only (no run)
+  fbb test 01 -s                          Skip build and run immediately (fast replay)
   fbb test 01d --chaos --seed=12345       Run scenario with deterministic chaos fault injection
-  fbb inspect 01_standard_uio             Inspect 32-bit MMIO address map of scenario
-  fbb plugin list                         List all discovered PPA 5.1 peripheral plugins
+  fbb lab 01                              Launch interactive web lab & dashboard for scenario 01
+  fbb clean                               Clean all project build artifacts and logs
+  fbb clean 01                            Clean specific scenario build artifacts
+  fbb inspect 01_standard_uio             Inspect 32-bit MMIO address map & devices of scenario
+  fbb plugin list                         List all discovered PPA & DPPA plugins and UI panes
+  fbb plugin validate src/peripherals/official_plugins/solomon_ssd1306  Validate PPA/DPPA specification
   fbb new my_scenario --target zynq7000   Scaffold a new scenario workspace
 """
     parser = argparse.ArgumentParser(
@@ -619,9 +1047,11 @@ def main():
     # 2. test
     test_epilog = """Examples:
   fbb test                                Run full regression test suite
-  fbb test 01_standard_uio                Run specific scenario by name
-  fbb test tests/scenarios/01_standard_uio/  Run specific scenario by directory path
-  fbb test 01b                            Run scenario matching fuzzy prefix
+  fbb test 01                             Run scenario matching fuzzy prefix (e.g. 01_standard_uio)
+  fbb test 01 02 10                       Run multiple scenarios in batch
+  fbb test 01 -b                          Build simulation engine and test binary only (no execution)
+  fbb test 01 -s                          Skip build phase and execute immediately
+  fbb test 01 -c                          Clean artifacts before executing scenario
   fbb test 01d --chaos                    Run scenario with automated chaos mode (random seed)
   fbb test 01d --chaos --seed=12345       Run scenario with deterministic chaos reproduction
   fbb test 01d --chaos --chaos-rate=0.30  Run scenario with 30% fault injection probability
@@ -629,46 +1059,92 @@ def main():
 """
     parser_test = subparsers.add_parser(
         "test",
-        help="Run scenario tests (supports --chaos, --seed, etc.)",
+        help="Run scenario tests (supports multi-scenario, -b, -s, -c, --chaos, etc.)",
         epilog=test_epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser_test.add_argument("scenario", nargs="?", help="Scenario name (e.g. 01_standard_uio), path (e.g. tests/scenarios/01_standard_uio/), or omit to run all")
+    parser_test.add_argument("scenarios", nargs="*", help="One or more scenario names, fuzzy prefixes, or paths (omit to run all)")
+    parser_test.add_argument("-b", "--build-only", action="store_true", help="Build simulation engine & test binary without executing")
+    parser_test.add_argument("-s", "--skip-build", action="store_true", help="Skip build phase and execute immediately")
+    parser_test.add_argument("-c", "--clean", action="store_true", help="Clean scenario build artifacts before executing")
     parser_test.add_argument("--chaos", action="store_true", help="Enable automated chaos & fault injection engine")
     parser_test.add_argument("--seed", type=str, default=None, help="Deterministic 64-bit seed for chaos injection")
     parser_test.add_argument("--chaos-rate", type=str, default=None, help="Fault injection probability (0.0 - 1.0 or percentage)")
     parser_test.add_argument("--chaos-targets", type=str, default=None, help="Target interfaces (i2c, spi, uio, can, cdma, all)")
 
-    # 3. inspect
+    # 3. lab / start
+    lab_epilog = """Examples:
+  fbb lab 01                              Launch interactive lab for scenario matching '01'
+  fbb lab 10_st7789_spi                   Launch interactive lab for ST7789 display scenario
+  fbb start 01                            Alias for 'fbb lab 01'
+"""
+    parser_lab = subparsers.add_parser(
+        "lab",
+        help="Launch interactive full-stack web lab & simulator environment",
+        epilog=lab_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser_lab.add_argument("scenario", nargs="?", default="01_standard_uio", help="Scenario name, fuzzy prefix, or directory path (default: 01_standard_uio)")
+
+    parser_start = subparsers.add_parser(
+        "start",
+        help="Alias for 'fbb lab'",
+        epilog=lab_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser_start.add_argument("scenario", nargs="?", default="01_standard_uio", help="Scenario name, fuzzy prefix, or directory path (default: 01_standard_uio)")
+
+    # 4. clean
+    clean_epilog = """Examples:
+  fbb clean                               Clean all build artifacts, logs, and shared memories
+  fbb clean 01                            Clean specific scenario build artifacts
+  fbb clean --cleanall                    Deep clean including external RTOS sources (FreeRTOS, ThreadX)
+"""
+    parser_clean = subparsers.add_parser(
+        "clean",
+        help="Clean build artifacts, shared memories, and temporary logs",
+        epilog=clean_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser_clean.add_argument("scenario", nargs="?", default=None, help="Scenario name or fuzzy prefix (omit to clean entire project)")
+    parser_clean.add_argument("--cleanall", action="store_true", help="Deep clean including external RTOS sources")
+
+    # 5. inspect
     inspect_epilog = """Examples:
   fbb inspect 01_standard_uio
+  fbb inspect 02_multi_i2c
   fbb inspect tests/scenarios/01_standard_uio/config.dts
   fbb inspect config.dts
 """
     parser_inspect = subparsers.add_parser(
         "inspect",
-        help="Inspect DTS address map and devices",
+        help="Inspect DTS address map, register permissions, IRQs, and sub-slaves",
         epilog=inspect_epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser_inspect.add_argument("dts", help="Path to config.dts file, scenario folder, or scenario name")
 
-    # 4. plugin
+    # 6. plugin
     plugin_epilog = """Examples:
   fbb plugin list
+  fbb plugin validate src/peripherals/official_plugins/solomon_ssd1306
   fbb plugin install https://github.com/vendor/fbb-plugin-st7789
   fbb plugin remove fbb-plugin-st7789
 """
     parser_plugin = subparsers.add_parser(
         "plugin",
-        help="Manage PPA 5.1 peripheral plugins",
+        help="Manage PPA & DPPA peripheral plugins and UI panes",
         epilog=plugin_epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     plugin_subparsers = parser_plugin.add_subparsers(dest="plugin_command", help="Plugin subcommands")
 
     # plugin list
-    plugin_subparsers.add_parser("list", help="List all discovered PPA plugins")
+    plugin_subparsers.add_parser("list", help="List all discovered PPA & DPPA plugins and UI panes")
+
+    # plugin validate
+    parser_p_validate = plugin_subparsers.add_parser("validate", help="Validate a PPA plugin or DPPA pane against specification v1.0")
+    parser_p_validate.add_argument("path", help="Path to plugin directory, fbb-plugin.json, or ESM pane script")
 
     # plugin install
     parser_p_install = plugin_subparsers.add_parser("install", help="Install a PPA plugin from Git URL or local directory")
@@ -684,11 +1160,17 @@ def main():
         command_new(args)
     elif args.command == "test":
         command_test(args)
+    elif args.command in ("lab", "start"):
+        command_lab(args)
+    elif args.command == "clean":
+        command_clean(args)
     elif args.command == "inspect":
         command_inspect(args)
     elif args.command == "plugin":
         if args.plugin_command == "list":
             command_plugin_list(args)
+        elif args.plugin_command == "validate":
+            command_plugin_validate(args)
         elif args.plugin_command == "install":
             command_plugin_install(args)
         elif args.plugin_command == "remove":
