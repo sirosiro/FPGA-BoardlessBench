@@ -18,6 +18,7 @@
 
 int main() {
     printf("--- AXI GPIO Test Start ---\n");
+    fflush(stdout);
 
     int fd = open(UIO_DEVICE, O_RDWR);
     if (fd == -1) {
@@ -40,10 +41,12 @@ int main() {
 
     // Set Channel 1 (DATA) as output (TRI = 0x00000000)
     printf("[App] Configuring Channel 1 as output...\n");
+    fflush(stdout);
     regs[1] = 0x00000000;
 
     // Set Channel 2 (DATA2) as input (TRI2 = 0xFFFFFFFF)
     printf("[App] Configuring Channel 2 as input...\n");
+    fflush(stdout);
     regs[3] = 0xFFFFFFFF;
 
     // Toggle some outputs on Channel 1
@@ -56,6 +59,7 @@ int main() {
     } else {
         printf("[App] Automated test mode detected. Running for 5 iterations...\n");
     }
+    fflush(stdout);
     
     int i = 0;
     while (is_interactive || i < 5) {
@@ -66,13 +70,18 @@ int main() {
         // Read from Channel 2
         uint32_t in_val = regs[2];
         printf("[App] Read 0x%08X from DATA2 (Channel 2)...\n", in_val);
+        fflush(stdout);
         
-        sleep(1);
+        if (is_interactive) {
+            sleep(1);
+        } else {
+            usleep(50000); // 50ms in batch test
+        }
         i++;
     }
 
-    // This part is unreachable in an infinite loop, but good practice
     printf("[App] GPIO Test Complete.\n");
+    fflush(stdout);
 
     munmap((void *)regs, REG_SIZE);
     close(fd);

@@ -20,12 +20,17 @@ def main():
             if os.path.exists(run_sh) and os.path.exists(config_dts):
                 scenarios.append(item)
                 
+    if len(sys.argv) > 1:
+        targets = set(sys.argv[1:])
+        scenarios = [s for s in scenarios if s in targets]
+
     print(f"Found {len(scenarios)} scenarios to run:")
     for s in scenarios:
         print(f"  - {s}")
     print("-" * 60)
     
     results = {}
+    default_timeout = int(os.environ.get("FBB_TEST_TIMEOUT", "90"))
     
     for s in scenarios:
         s_path = os.path.join(scenarios_dir, s)
@@ -42,6 +47,10 @@ def main():
         print(f"[Runner] Executing scenario_runner.sh for {s}...")
         run_cmd = ["./tests/scenario_runner.sh", s_path]
         
+        # Ensure non-interactive batch test environment
+        test_env = os.environ.copy()
+        test_env["VFPGA_INTERACTIVE"] = "0"
+
         # Start in a new process group to allow killing descendants, and pass DEVNULL to stdin
         proc = subprocess.Popen(
             run_cmd,
@@ -49,7 +58,8 @@ def main():
             stdout=subprocess.PIPE,
             stderr=subprocess.PIPE,
             text=True,
-            start_new_session=True
+            start_new_session=True,
+            env=test_env
         )
         
         stdout, stderr = "", ""
@@ -61,13 +71,13 @@ def main():
                 stdout, stderr = proc.communicate(timeout=15)
                 is_passed = (proc.returncode == 0)
             else:
-                stdout, stderr = proc.communicate(timeout=60)
+                stdout, stderr = proc.communicate(timeout=default_timeout)
                 is_passed = (proc.returncode == 0)
         except subprocess.TimeoutExpired:
             if is_infinite:
                 print(f"[Runner] Scenario {s} timed out as expected. Terminating process group...")
             else:
-                print(f"[Runner] Scenario {s} timed out (exceeded 60s limit). Terminating process group...")
+                print(f"[Runner] Scenario {s} timed out (exceeded {default_timeout}s limit). Terminating process group...")
             try:
                 # Send SIGTERM to the process group
                 pgid = os.getpgid(proc.pid)

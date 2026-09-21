@@ -7,8 +7,8 @@ export LANG=C
 # F-BB Scenario Runner (Shared Infrastructure)
 # ==============================================================================
 # このスクリプトは、個別のテストシナリオを実行するための共通ロジックです。
-# 1. DTSからのコード生成 2. シミュレーションエンジンのビルド 3. バックグラウンド起動
-# 4. アプリケーションのコンパイルと実行 5. プロセスの自動クリーンアップ
+# 1. DTSからのコード生成 2. シミュレーションエンジンとアプリのビルド 3. バックグラウンド起動
+# 4. アプリケーションの実行 5. プロセスの自動クリーンアップ
 # を行います。
 # ==============================================================================
 
@@ -144,11 +144,11 @@ echo -e "\n[Runner] >>> Starting Scenario: ${SCENARIO_NAME} <<<"
 echo "[Runner] Generating code from ${DTS}..."
 python3 "${PROJECT_ROOT}/scripts/gen_vfpga.py" "${DTS}"
 
-# 2. エンジンのビルド
+# 2. エンジンとアプリケーションのビルド
 # 【重要】コントローラ起動時にDTSで定義された周辺デバイスデーモン (fbb_spi_adc等) を正常に
 # 立ち上げるため、バックグラウンド起動前にプロジェクト全体 (周辺デバイスを含む) をビルド完了させておく。
 # そうしないと、対向デーモン不在によるソケット接続待ちでシミュレータがデッドロックします。
-echo "[Runner] Building simulation engine (this may take a few seconds)..."
+echo "[Runner] Building simulation engine and application (this may take a few seconds)..."
 cd "${PROJECT_ROOT}"
 if [ -d "build" ]; then rm -rf build/* build/.[!.]* 2>/dev/null; fi
 cmake -B build -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DSCENARIO_DIR="${SCENARIO_DIR}" || exit 1
@@ -169,11 +169,7 @@ fi
 # 通信の準備が整うまで少し待機
 sleep 2
 
-# 4. アプリケーションのビルド
-echo "[Runner] Building application via CMake..."
-cmake --build build || exit 1
-
-# 5. アプリケーションの実行 (LD_PRELOADを使用)
+# 4. アプリケーションの実行 (LD_PRELOADを使用)
 echo "[Runner] Executing application with LD_PRELOAD..."
 cd "${SCENARIO_DIR}"
 chmod +x ./run.sh
