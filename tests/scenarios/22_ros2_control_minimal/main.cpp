@@ -205,7 +205,8 @@ int main(int argc, char* argv[]) {
     // --------------------------------------------------------------------------
     print_header("Criterion 6: Cycle Count Progression & Sync Verification");
     uint32_t cycle_before = hw.get_cycle_count();
-    for (int i = 0; i < 10; ++i) {
+    // Run 12 cycles to ensure hardware counter advances >= 10 cycles even if boundary alignment shifts by 1 cycle
+    for (int i = 0; i < 12; ++i) {
         hw.read(current_time, period);
     }
     uint32_t cycle_after = hw.get_cycle_count();

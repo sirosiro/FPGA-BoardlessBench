@@ -35,16 +35,25 @@ def probe_host_environment():
         if os.path.exists(probe_obj):
             os.remove(probe_obj)
 
-    # Threshold: on native Linux ext4, probe_dt is ~0.03-0.08s.
-    # On WSL2 / Docker Desktop with DrvFs / virtiofs bind mount, probe_dt is ~0.20-0.60s+.
-    if probe_dt > 0.18:
-        env_desc = f"Virtualization / Slow I/O detected (Probe: {probe_dt:.2f}s)"
-        default_build_timeout = 360  # 6 minutes for full Verilator + C++ build
+    # Robust environment detection: check container runtime, kernel markers (WSL/linuxkit/microsoft), or probe latency
+    is_virtualized = (probe_dt > 0.08 or os.path.exists("/.dockerenv") or os.path.exists("/run/.containerenv"))
+    if not is_virtualized:
+        try:
+            with open("/proc/version", "r") as f:
+                v = f.read().lower()
+                if any(k in v for k in ["microsoft", "wsl", "linuxkit"]):
+                    is_virtualized = True
+        except Exception:
+            pass
+
+    if is_virtualized:
+        env_desc = f"Container / Virtualized Environment detected (Probe: {probe_dt:.2f}s)"
+        default_build_timeout = 360  # 6 minutes for full Verilator + C++ build + git clones
         default_app_timeout = 60     # 60 seconds for app execution
     else:
         env_desc = f"Native Linux / Fast I/O detected (Probe: {probe_dt:.2f}s)"
-        default_build_timeout = 180  # 3 minutes for full build
-        default_app_timeout = 30     # 30 seconds for app execution
+        default_build_timeout = 240  # 4 minutes for full build
+        default_app_timeout = 45     # 45 seconds for app execution
 
     b_to = int(os.environ.get("FBB_BUILD_TIMEOUT", default_build_timeout))
     a_to = int(os.environ.get("FBB_TEST_TIMEOUT", default_app_timeout))

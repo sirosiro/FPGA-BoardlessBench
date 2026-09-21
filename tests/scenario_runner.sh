@@ -174,7 +174,22 @@ if [ "$SKIP_BUILD" = false ]; then
     cd "${PROJECT_ROOT}"
     if [ -d "build" ]; then rm -rf build/* build/.[!.]* 2>/dev/null; fi
     cmake -B build -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DSCENARIO_DIR="${SCENARIO_DIR}" || exit 1
-    cmake --build build || exit 1
+    PARALLEL_JOBS=$(nproc 2>/dev/null || echo 4)
+    if [ "$PARALLEL_JOBS" -gt 8 ]; then PARALLEL_JOBS=8; fi
+    cmake --build build --parallel "${PARALLEL_JOBS}" || exit 1
+
+    # Pre-build M-Core Rust firmware if present, ensuring heavy crates (e.g. Embassy)
+    # compile during Phase 1 (Build Phase) rather than within the 30s Execution Phase
+    if [ -f "${SCENARIO_DIR}/m_core/Cargo.toml" ]; then
+        echo "[Runner] Pre-building M-Core Rust firmware with Cargo..."
+        cargo build --manifest-path "${SCENARIO_DIR}/m_core/Cargo.toml" --release -j 2 || exit 1
+        if [ -f "${SCENARIO_DIR}/m_core/target/release/mcore_embassy" ]; then
+            cp "${SCENARIO_DIR}/m_core/target/release/mcore_embassy" "${SCENARIO_DIR}/mcore_embassy.elf"
+        fi
+        if [ -f "${SCENARIO_DIR}/m_core/target/release/mcore_rtic" ]; then
+            cp "${SCENARIO_DIR}/m_core/target/release/mcore_rtic" "${SCENARIO_DIR}/mcore_rtic.elf"
+        fi
+    fi
 fi
 
 if [ "$BUILD_ONLY" = true ]; then
