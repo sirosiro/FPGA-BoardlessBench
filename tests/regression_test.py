@@ -5,6 +5,51 @@ import sys
 import signal
 import time
 
+def probe_host_environment():
+    """
+    Measure host compilation and filesystem latency to automatically
+    calibrate appropriate build and execution timeouts.
+    """
+    if "FBB_BUILD_TIMEOUT" in os.environ and "FBB_TEST_TIMEOUT" in os.environ:
+        b_to = int(os.environ["FBB_BUILD_TIMEOUT"])
+        a_to = int(os.environ["FBB_TEST_TIMEOUT"])
+        return b_to, a_to, f"User configured (Build: {b_to}s, Test: {a_to}s)"
+
+    probe_file = "fbb_probe_tmp.c"
+    probe_obj = "fbb_probe_tmp.o"
+    probe_start = time.time()
+    try:
+        with open(probe_file, "w") as f:
+            f.write("int main(void) { return 0; }\n")
+        subprocess.run(
+            ["gcc", "-O2", "-c", probe_file, "-o", probe_obj],
+            capture_output=True,
+            timeout=10
+        )
+        probe_dt = time.time() - probe_start
+    except Exception:
+        probe_dt = 0.50
+    finally:
+        if os.path.exists(probe_file):
+            os.remove(probe_file)
+        if os.path.exists(probe_obj):
+            os.remove(probe_obj)
+
+    # Threshold: on native Linux ext4, probe_dt is ~0.03-0.08s.
+    # On WSL2 / Docker Desktop with DrvFs / virtiofs bind mount, probe_dt is ~0.20-0.60s+.
+    if probe_dt > 0.18:
+        env_desc = f"Virtualization / Slow I/O detected (Probe: {probe_dt:.2f}s)"
+        default_build_timeout = 360  # 6 minutes for full Verilator + C++ build
+        default_app_timeout = 60     # 60 seconds for app execution
+    else:
+        env_desc = f"Native Linux / Fast I/O detected (Probe: {probe_dt:.2f}s)"
+        default_build_timeout = 180  # 3 minutes for full build
+        default_app_timeout = 30     # 30 seconds for app execution
+
+    b_to = int(os.environ.get("FBB_BUILD_TIMEOUT", default_build_timeout))
+    a_to = int(os.environ.get("FBB_TEST_TIMEOUT", default_app_timeout))
+    return b_to, a_to, env_desc
+
 def main():
     scenarios_dir = "tests/scenarios"
     if not os.path.exists(scenarios_dir):
@@ -24,13 +69,19 @@ def main():
         targets = set(sys.argv[1:])
         scenarios = [s for s in scenarios if s in targets]
 
-    print(f"Found {len(scenarios)} scenarios to run:")
+    build_timeout, app_timeout, env_desc = probe_host_environment()
+
+    print("=" * 60)
+    print(f"F-BB Regression Test Harness (Auto-Calibrating)")
+    print(f"Host Environment : {env_desc}")
+    print(f"Timeouts         : Build Phase = {build_timeout}s | Execution Phase = {app_timeout}s")
+    print(f"Total Scenarios  : {len(scenarios)}")
+    print("=" * 60)
     for s in scenarios:
         print(f"  - {s}")
     print("-" * 60)
     
     results = {}
-    default_timeout = int(os.environ.get("FBB_TEST_TIMEOUT", "90"))
     
     for s in scenarios:
         s_path = os.path.join(scenarios_dir, s)
@@ -43,15 +94,54 @@ def main():
         if os.path.exists("/tmp/fbb_memory_violation"):
             os.remove("/tmp/fbb_memory_violation")
         
-        # 2. Run
-        print(f"[Runner] Executing scenario_runner.sh for {s}...")
-        run_cmd = ["./tests/scenario_runner.sh", s_path]
-        
-        # Ensure non-interactive batch test environment
+        # Ensure non-interactive batch test environment by completely unsetting VFPGA_INTERACTIVE
         test_env = os.environ.copy()
-        test_env["VFPGA_INTERACTIVE"] = "0"
+        test_env.pop("VFPGA_INTERACTIVE", None)
 
-        # Start in a new process group to allow killing descendants, and pass DEVNULL to stdin
+        # 2. Phase 1: Build Phase (Generous timeout, fails fast on compiler errors)
+        print(f"[Runner] [Phase 1/2] Building simulation engine & application (timeout: {build_timeout}s)...")
+        build_cmd = ["./tests/scenario_runner.sh", s_path, "--build-only"]
+        build_proc = subprocess.Popen(
+            build_cmd,
+            stdin=subprocess.DEVNULL,
+            stdout=subprocess.PIPE,
+            stderr=subprocess.PIPE,
+            text=True,
+            start_new_session=True,
+            env=test_env
+        )
+        b_stdout, b_stderr = "", ""
+        try:
+            b_stdout, b_stderr = build_proc.communicate(timeout=build_timeout)
+            build_passed = (build_proc.returncode == 0)
+        except subprocess.TimeoutExpired:
+            print(f"[Runner] Scenario {s} build timed out (exceeded {build_timeout}s limit). Terminating...")
+            try:
+                pgid = os.getpgid(build_proc.pid)
+                os.killpg(pgid, signal.SIGKILL)
+            except ProcessLookupError:
+                pass
+            b_stdout, b_stderr = build_proc.communicate()
+            results[s] = "FAILED (Build Timeout)"
+            print(f"[Runner] RESULT: {s} FAILED (Build Timeout)")
+            continue
+
+        if not build_passed:
+            results[s] = f"FAILED (Build Error: {build_proc.returncode})"
+            print(f"[Runner] RESULT: {s} FAILED (Build Error: {build_proc.returncode})")
+            print("--- Build Output (last 30 lines) ---")
+            lines = b_stdout.splitlines() + b_stderr.splitlines()
+            for line in lines[-30:]:
+                print(line)
+            print("-" * 60)
+            continue
+
+        # 3. Phase 2: App Execution Phase (Monitored for hangs, deadlocks, and assertions)
+        is_infinite = s in ("S01_cpp_lfsr_sequencer",)
+        scenario_app_timeout = 15 if is_infinite else app_timeout
+        print(f"[Runner] [Phase 2/2] Executing scenario with RTL simulator (timeout: {scenario_app_timeout}s)...")
+        run_cmd = ["./tests/scenario_runner.sh", s_path, "--skip-build"]
+        
         proc = subprocess.Popen(
             run_cmd,
             stdin=subprocess.DEVNULL,
@@ -64,28 +154,18 @@ def main():
         
         stdout, stderr = "", ""
         is_passed = False
-        is_infinite = s in ("S01_cpp_lfsr_sequencer",)
         try:
-            if is_infinite:
-                # Wait for 15 seconds, then raise TimeoutExpired
-                stdout, stderr = proc.communicate(timeout=15)
-                is_passed = (proc.returncode == 0)
-            else:
-                stdout, stderr = proc.communicate(timeout=default_timeout)
-                is_passed = (proc.returncode == 0)
+            stdout, stderr = proc.communicate(timeout=scenario_app_timeout)
+            is_passed = (proc.returncode == 0)
         except subprocess.TimeoutExpired:
             if is_infinite:
                 print(f"[Runner] Scenario {s} timed out as expected. Terminating process group...")
             else:
-                print(f"[Runner] Scenario {s} timed out (exceeded {default_timeout}s limit). Terminating process group...")
+                print(f"[Runner] Scenario {s} execution timed out (exceeded {scenario_app_timeout}s limit)...")
             try:
-                # Send SIGTERM to the process group
                 pgid = os.getpgid(proc.pid)
                 os.killpg(pgid, signal.SIGTERM)
-                
-                # Give it a moment to clean up and read outputs
                 time.sleep(1)
-                # Force kill if still alive
                 os.killpg(pgid, signal.SIGKILL)
             except ProcessLookupError:
                 pass
@@ -101,8 +181,10 @@ def main():
             print(f"[Runner] RESULT: {s} PASSED")
             results[s] = "PASSED"
         else:
-            print(f"[Runner] RESULT: {s} FAILED (Exit Code: {proc.returncode})")
-            results[s] = f"FAILED ({proc.returncode})"
+            exit_code = proc.returncode
+            fail_reason = "Execution Timeout" if exit_code == -15 else f"Exit Code: {exit_code}"
+            print(f"[Runner] RESULT: {s} FAILED ({fail_reason})")
+            results[s] = f"FAILED ({fail_reason})"
             
             # Print last 30 lines of runner output
             print("--- Runner Output (last 30 lines) ---")

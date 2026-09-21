@@ -16,6 +16,8 @@ PROJECT_ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SCENARIO_PATH=""
 CLEAN=false
 CLEAN_TARGETS=""
+BUILD_ONLY=false
+SKIP_BUILD=false
 
 SCENARIO_ARGS=()
 
@@ -26,6 +28,14 @@ while [[ $# -gt 0 ]]; do
             CLEAN=true 
             target=${1#--}
             CLEAN_TARGETS="$CLEAN_TARGETS $target"
+            shift
+            ;;
+        --build-only|-b)
+            BUILD_ONLY=true
+            shift
+            ;;
+        --skip-build|-s)
+            SKIP_BUILD=true
             shift
             ;;
         --chaos)
@@ -64,7 +74,7 @@ done
 CLEAN_TARGETS=$(echo "$CLEAN_TARGETS" | xargs)
 
 if [ -z "$SCENARIO_PATH" ] && [ "$CLEAN" = false ]; then
-    echo "Usage: $0 <scenario_directory_path> [--clean|-c] [--chaos] [--seed=<seed>]"
+    echo "Usage: $0 <scenario_directory_path> [--clean|-c] [--build-only|-b] [--skip-build|-s] [--chaos] [--seed=<seed>]"
     exit 1
 fi
 
@@ -80,6 +90,9 @@ if [ "$CLEAN" = true ]; then
         CLEAN_TARGETS="clean"
     fi
     echo "[Runner] Cleaning artifacts for scenario: ${SCENARIO_NAME} with targets: ${CLEAN_TARGETS}..."
+    pkill -f "fbb_" 2>/dev/null || true
+    pkill -f vlogic_controller 2>/dev/null || true
+    pkill -f vfpga_sim 2>/dev/null || true
     if [ -d "build" ]; then rm -rf build/* build/.[!.]* 2>/dev/null; fi
     rm -f libfpgashim.so vfpga_sim 2>/dev/null
     rm -rf logs obj_dir 2>/dev/null
@@ -107,9 +120,17 @@ DTS="${SCENARIO_DIR}/config.dts"
 
 # --- プロセス掃除関数 ---
 cleanup() {
+    if [ "$CLEAN" = true ] || [ "$BUILD_ONLY" = true ]; then
+        return
+    fi
     echo -e "\n[Runner] Stopping background processes..."
     pkill -f vlogic_controller || true
     pkill -f vfpga_sim || true
+    pkill -f "/bin/fbb_" || true
+    pkill -f "fbb_i2c_" || true
+    pkill -f "fbb_spi_" || true
+    pkill -f "fbb_uart_" || true
+    pkill -f "fbb_hub75_" || true
     
     # remoteproc M-core processes cleanup (supports multiple M-cores)
     for pid_file in /tmp/fbb/sys/class/remoteproc/*/pid; do
@@ -140,19 +161,26 @@ mkdir -p /lib/firmware 2>/dev/null || true
 
 echo -e "\n[Runner] >>> Starting Scenario: ${SCENARIO_NAME} <<<"
 
-# 1. DTSからコード生成
-echo "[Runner] Generating code from ${DTS}..."
-python3 "${PROJECT_ROOT}/scripts/gen_vfpga.py" "${DTS}"
+if [ "$SKIP_BUILD" = false ]; then
+    # 1. DTSからコード生成
+    echo "[Runner] Generating code from ${DTS}..."
+    python3 "${PROJECT_ROOT}/scripts/gen_vfpga.py" "${DTS}" || exit 1
 
-# 2. エンジンとアプリケーションのビルド
-# 【重要】コントローラ起動時にDTSで定義された周辺デバイスデーモン (fbb_spi_adc等) を正常に
-# 立ち上げるため、バックグラウンド起動前にプロジェクト全体 (周辺デバイスを含む) をビルド完了させておく。
-# そうしないと、対向デーモン不在によるソケット接続待ちでシミュレータがデッドロックします。
-echo "[Runner] Building simulation engine and application (this may take a few seconds)..."
-cd "${PROJECT_ROOT}"
-if [ -d "build" ]; then rm -rf build/* build/.[!.]* 2>/dev/null; fi
-cmake -B build -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DSCENARIO_DIR="${SCENARIO_DIR}" || exit 1
-cmake --build build || exit 1
+    # 2. エンジンとアプリケーションのビルド
+    # 【重要】コントローラ起動時にDTSで定義された周辺デバイスデーモン (fbb_spi_adc等) を正常に
+    # 立ち上げるため、バックグラウンド起動前にプロジェクト全体 (周辺デバイスを含む) をビルド完了させておく。
+    # そうしないと、対向デーモン不在によるソケット接続待ちでシミュレータがデッドロックします。
+    echo "[Runner] Building simulation engine and application (this may take a few seconds)..."
+    cd "${PROJECT_ROOT}"
+    if [ -d "build" ]; then rm -rf build/* build/.[!.]* 2>/dev/null; fi
+    cmake -B build -DCMAKE_POLICY_VERSION_MINIMUM=3.5 -DSCENARIO_DIR="${SCENARIO_DIR}" || exit 1
+    cmake --build build || exit 1
+fi
+
+if [ "$BUILD_ONLY" = true ]; then
+    echo "[Runner] Build completed successfully (--build-only specified)."
+    exit 0
+fi
 
 # 3. バックグラウンドプロセスの起動
 echo "[Runner] Starting Backend Controller & RTL Simulator..."
