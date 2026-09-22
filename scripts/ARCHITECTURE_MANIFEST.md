@@ -45,6 +45,7 @@ DTS の論理構造を抽象化したデータモデル。
 - **RTLGenerator**: Verilog トップモジュール (`vfpga_top.v`) を生成
 - **SimulatorGenerator**: Verilator 用 C++ ラッパー (`sim_main.cpp`) を生成。共有メモリとRTLレジスタ間の同期を行うとともに、仮想IPI（`TRIG`）レジスタへの書き込み検知時にAコアへシグナル（`SIGUSR2`）を自動中継。また 118 ピン標準インターフェース（`l_pins_i` [117:0]）向けに C++17 SFINAE トレイト `has_l_pins_i<T>` を介した型安全な 4 ワード一括代入を生成する。
 - **ManifestGenerator**: Webダッシュボード用メタデータ (`board_manifest.json`) を生成
+- **GdbExtensionGenerator**: GDB / LLDB 用 Python デバッガ拡張スクリプト (`fbb_gdb.py` および `.gdbinit`) を生成。DTS 由来のレジスタ名、オフセット、アクセス属性、仮想デバイス情報を埋め込み、デバッグコンソールから直感的なレジスタ監視・書き込み（`fbb-regs`, `fbb-write`, `fbb-fds`, `fbb-info`）を可能にする。
 
 ## 4. クラス構造概略 (Class Diagram)
 
@@ -94,6 +95,9 @@ classDiagram
     class ManifestGenerator {
         +generate(model) String
     }
+    class GdbExtensionGenerator {
+        +generate(model) String
+    }
 
     DTSParser ..> BoardModel : creates
     BoardModel "1" *-- "*" Device
@@ -105,6 +109,7 @@ classDiagram
     BaseGenerator <|-- RTLGenerator
     BaseGenerator <|-- SimulatorGenerator
     BaseGenerator <|-- ManifestGenerator
+    BaseGenerator <|-- GdbExtensionGenerator
 ```
 
 ## 5. 開発・修正プロトコル (Protocols)

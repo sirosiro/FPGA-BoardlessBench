@@ -1,0 +1,111 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "F-BB: Debug Active Scenario (F5)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${fileDirname}/test_bin",
+      "args": [],
+      "stopAtEntry": true,
+      "cwd": "${fileDirname}",
+      "environment": [
+        {
+          "name": "LD_PRELOAD",
+          "value": "${workspaceFolder}/build/libfpgashim.so"
+        },
+        {
+          "name": "FBB_ACTIVE",
+          "value": "1"
+        },
+        {
+          "name": "LD_BIND_NOW",
+          "value": "1"
+        }
+      ],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        },
+        {
+          "description": "Load F-BB DTS GDB Extension",
+          "text": "source ${fileDirname}/fbb_gdb.py",
+          "ignoreFailures": true
+        }
+      ],
+      "preLaunchTask": "fbb-pre-debug-active",
+      "postDebugTask": "fbb-post-debug"
+    },
+    {
+      "name": "F-BB: Debug Scenario (Prompt Selection)",
+      "type": "cppdbg",
+      "request": "launch",
+      "program": "${workspaceFolder}/tests/scenarios/${input:scenarioName}/test_bin",
+      "args": [],
+      "stopAtEntry": true,
+      "cwd": "${workspaceFolder}/tests/scenarios/${input:scenarioName}",
+      "environment": [
+        {
+          "name": "LD_PRELOAD",
+          "value": "${workspaceFolder}/build/libfpgashim.so"
+        },
+        {
+          "name": "FBB_ACTIVE",
+          "value": "1"
+        },
+        {
+          "name": "LD_BIND_NOW",
+          "value": "1"
+        }
+      ],
+      "externalConsole": false,
+      "MIMode": "gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        },
+        {
+          "description": "Load F-BB DTS GDB Extension",
+          "text": "source ${workspaceFolder}/tests/scenarios/${input:scenarioName}/fbb_gdb.py",
+          "ignoreFailures": true
+        }
+      ],
+      "preLaunchTask": "fbb-pre-debug-prompt",
+      "postDebugTask": "fbb-post-debug"
+    },
+    {
+      "name": "F-BB: Attach to Running Process (GDB)",
+      "type": "cppdbg",
+      "request": "attach",
+      "program": "${fileDirname}/test_bin",
+      "processId": "${command:pickProcess}",
+      "MIMode": "gdb",
+      "setupCommands": [
+        {
+          "description": "Enable pretty-printing for gdb",
+          "text": "-enable-pretty-printing",
+          "ignoreFailures": true
+        },
+        {
+          "description": "Load F-BB DTS GDB Extension",
+          "text": "source ${fileDirname}/fbb_gdb.py",
+          "ignoreFailures": true
+        }
+      ]
+    }
+  ],
+  "inputs": [
+    {
+      "id": "scenarioName",
+      "type": "promptString",
+      "description": "Enter F-BB Scenario name or prefix (e.g. 01b, 21, P02):",
+      "default": "01b"
+    }
+  ]
+}

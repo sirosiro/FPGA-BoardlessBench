@@ -1,0 +1,45 @@
+{
+  "version": "2.0.0",
+  "tasks": [
+    {
+      "label": "fbb-pre-debug-active",
+      "type": "shell",
+      "command": "${workspaceFolder}/bin/fbb debug \"${fileDirname}\" --server-only",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "fbb-pre-debug-prompt",
+      "type": "shell",
+      "command": "${workspaceFolder}/bin/fbb debug \"${input:scenarioName}\" --server-only",
+      "presentation": {
+        "reveal": "always",
+        "panel": "shared",
+        "clear": true
+      },
+      "problemMatcher": []
+    },
+    {
+      "label": "fbb-post-debug",
+      "type": "shell",
+      "command": "${workspaceFolder}/bin/fbb debug --stop-server",
+      "presentation": {
+        "reveal": "silent",
+        "panel": "shared"
+      },
+      "problemMatcher": []
+    }
+  ],
+  "inputs": [
+    {
+      "id": "scenarioName",
+      "type": "promptString",
+      "description": "Enter F-BB Scenario name or prefix (e.g. 01b, 21, P02):",
+      "default": "01b"
+    }
+  ]
+}

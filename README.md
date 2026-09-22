@@ -221,6 +221,12 @@ fbb plugin validate src/peripherals/official_plugins/solomon_ssd1306
 
 # 10. サードパーティ製 PPA プラグインのワンコマンドインストール
 fbb plugin install https://github.com/vendor/fbb-plugin-st7789
+
+# 11. 対話型 GDB デバッグ起動 (DTS駆動 GDB 拡張 fbb_gdb.py 自動ロード)
+fbb debug 01_standard_uio               # Debugビルド＆シミュレータ＆対話型GDB起動
+fbb debug 01b --server-only             # IDEデバッグ用シミュレーションサーバーのみ起動
+fbb debug --stop-server                 # バックグラウンドデバッグサーバーの停止
+fbb debug --status                      # 起動中のデバッグサーバー状態・PID表示
 ```
 
 ---
@@ -275,7 +281,21 @@ fbb test
 - **外部UARTコンソール**: ポート **`3000`**（UART1用）/ **`3001`**（UART2用）で待ち受けています（`nc localhost 3000` や Tera Term 等で接続）。Webダッシュボード側と完全に画面同期され、過去ログのリプレイ機能が有効です。  
   *(※内部の Python PTY ブリッジはポート `2000`〜 でローカルバインドされています)*
 
-### 4. クリーンアップ
+### 4. 対話型 GDB デバッグ ＆ IDE (VS Code / Antigravity) ワンクリックデバッグ
+
+実機同様のハードウェアレジスタの観察・操作や、C/C++ アプリケーションのステップ実行が可能です。
+
+* **Antigravity IDE / VS Code でのワンクリックデバッグ (F5):**
+  デバッグしたいシナリオの `main.c` や `main.cpp` をエディタで開いた状態で **`F5` キー**（または `Ctrl+Shift+D` で「実行とデバッグ」パネルを開いて実行）を押すだけで、自動的にシミュレータがバックグラウンド起動し、`main()` の先頭でブレークします。
+* **CLI からの対話型 GDB デバッグ:**
+  ```bash
+  fbb debug 01_standard_uio
+  ```
+* **DTS 駆動 GDB 拡張コマンド:**
+  デバッガプロンプト（または IDE のデバッグコンソール）から `fbb-regs`（全レジスタ生値表示）、`fbb-write <reg> <val>`（レジスタ直接書き込み＆リードバック確認）、`fbb-fds`（仮想デバイスFD状態）、`fbb-info`（ボード情報）が即座に利用可能です。
+  *(詳細は [GDB / IDE デバッグ活用ガイド](./docs/architecture/AddInfo_GDB.md) を参照)*
+
+### 5. クリーンアップ
 
 ビルド成果物やログを削除して環境をリセットします：
 
@@ -614,32 +634,32 @@ F-BBは、ハードウェア記述言語（RTL）から、低レイヤーのシ�
 
 ビルド成果物（`build`, `dist`）、外部パッケージ（`node_modules`）、および一時ファイルを除外したリポジトリ全体の静的ソースコードを `cloc` (Count Lines of Code v1.90) にて正確に計測した結果です。
 
-F-BB 独自のプロジェクトコードのみ（`--cleanall` 時）で**純プログラムステップ数（Pure Code） 46,585 行 (約 46.6k LOC)**、総行数 **58,872 行**（全 404 ファイル）で構成されています。また、シナリオ 10〜15 で動的ロードされる外部 RTOS カーネル（FreeRTOS, ThreadX, CMSIS_5）のソース群を含むフル状態では **約 93,000 行 (93.0k+ LOC)** / **全 172,000 行**（全 780 ファイル）の規模となります。
+F-BB 独自のプロジェクトコードのみ（`--cleanall` 時）で**純プログラムステップ数（Pure Code） 46,769 行 (約 46.8k LOC)**、総行数 **59,378 行**（全 405 ファイル）で構成されています。また、シナリオ 10〜15 で動的ロードされる外部 RTOS カーネル（FreeRTOS, ThreadX, CMSIS_5）のソース群を含むフル状態では **約 93,000 行 (93.0k+ LOC)** / **全 172,000 行**（全 780 ファイル）の規模となります。
 
 > **Project Scale Summary (`cloc` 計測値):**
-> - **Pure F-BB Code (F-BB独自コードのみ):** **46,585 Lines of Code** *(総行数 58,872行 / 404ファイル / コメント 3,700行 / 空行 8,587行)*
+> - **Pure F-BB Code (F-BB独自コードのみ):** **46,769 Lines of Code** *(総行数 59,378行 / 405ファイル / コメント 3,935行 / 空行 8,674行)*
 > - **Full Environment (外部RTOSカーネル同梱時):** **約 93,000 Lines of Code** *(総行数 約 172,000行 / 780ファイル)*
-> - **主要言語構成:** *(Markdown/Doc: ~12.6k LOC, JSON: ~7.3k LOC, C/C++: ~12.7k LOC (全シナリオFW/Shim/PPA), React/JSX/JS/CSS: ~7.8k LOC, Python: ~2.8k LOC)*
+> - **主要言語構成:** *(Markdown/Doc: ~12.6k LOC, JSON: ~7.3k LOC, C/C++: ~12.7k LOC (全シナリオFW/Shim/PPA), React/JSX/JS/CSS: ~7.8k LOC, Python: ~3.1k LOC)*
 
 | 言語分類 (cloc) | 拡張子 | ファイル数 | 空行 (Blank) | コメント (Comment) | 純コード (Pure LOC) | 総行数 (Total Lines) | 主な構成要素と役割 |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **Markdown** | `.md` | 127 | 4,787 | 0 | **12,591行** | **17,378行** | システム仕様書、ADR、初学者学習ロードマップ、全36シナリオREADME/ADVANCED仕様書、PPA 5.1 開発ガイド |
-| **JSON / Manifest** | `.json` | 35 | 0 | 0 | **7,274行** | **7,274行** | PPAペリフェラルマニフェスト (`fbb-plugin.json`)、ボード構造メタデータ、AMR ロボット定義 (`amr_manifest.json`) |
+| **Markdown** | `.md` | 127 | 4,784 | 0 | **12,555行** | **17,339行** | システム仕様書、ADR、初学者学習ロードマップ、全36シナリオREADME/ADVANCED仕様書、PPA 5.1 開発ガイド |
+| **JSON / Manifest** | `.json` | 35 | 0 | 0 | **7,264行** | **7,264行** | PPAペリフェラルマニフェスト (`fbb-plugin.json`)、ボード構造メタデータ、AMR ロボット定義 (`amr_manifest.json`) |
 | **C++** | `.cpp` | 25 | 978 | 986 | **6,146行** | **8,110行** | Verilator シミュレーションコア、PPA ペリフェラルプラグイン実装、Scenario 22 & P02 AMR ros2_control ハードウェア層・運動学エンジン |
 | **JSX** | `.jsx` | 22 | 526 | 185 | **5,985行** | **6,696行** | Vite + React 19 UI（Dockview, DPPA `paneRegistry.jsx`, `PopoutWindow.jsx`, `DockHeaderActions.jsx`, Recharts, AMR 4特化型コックピットペイン, 各種診断ペイン） |
 | **C** | `.c` | 35 | 835 | 700 | **5,390行** | **6,925行** | システムコール横取り Shim、エミュレータデーモン、カオス障害注入エンジン、全シナリオ FW |
-| **Python** | `.py` / CLI | 14 | 476 | 865 | **2,824行** | **4,165行** | 統合 CLI (`bin/fbb`), DTSパース・診断エンジン (`DTSParserError`)、コード自動生成、PPA プラグイン自動ビルド・起動 |
+| **Python** | `.py` / CLI | 15 | 566 | 1,100 | **3,074行** | **4,740行** | 統合 CLI (`bin/fbb`), DTSパース・診断エンジン (`DTSParserError`)、コード自動生成、GDB 拡張自動生成 (`generator_gdb.py`)、PPA プラグイン自動ビルド・起動 |
 | **JavaScript** | `.js` | 3 | 170 | 78 | **1,471行** | **1,719行** | ダッシュボード WebSockets サーバー（`dashboard/server.js`）、マルチスクリーンレイアウト永続化 API、AMR コマンド/テレメトリ仲介 |
 | **C/C++ Header** | `.h` / `.hpp` | 38 | 206 | 320 | **1,151行** | **1,677行** | 統一 CLI パーサー (`cli_helper.hpp`)、デバイス共通ヘッダー、レジスタ定義、Shimマクロ、hardware_interface ゼロインストール互換層 |
-| **Verilog** | `.v` | 20 | 115 | 202 | **1,030行** | **1,347行** | シミュレーション対象の FPGA ハードウェア記述 (RTL: PWM/QEI/E-STOP回路含む) |
 | **Bourne Shell** | `.sh` | 40 | 207 | 190 | **1,022行** | **1,419行** | 自動検証ランナー（`run_tests.sh`）、シナリオ単体ランナー（`scenario_runner.sh`）、ラボ起動スクリプト（`start_lab.sh`） |
+| **Verilog** | `.v` | 20 | 115 | 202 | **1,010行** | **1,327行** | シミュレーション対象の FPGA ハードウェア記述 (RTL: PWM/QEI/E-STOP回路含む) |
 | **CMake** | `CMakeLists.txt` / `.cmake` | 24 | 128 | 69 | **839行** | **1,036行** | マルチターゲットビルド設定（シナリオ・PPA・カーネル・ハードウェア抽象化層） |
 | **Other / Rust** | `.rs` / `.css` / 他 | 21 | 159 | 105 | **862行** | **1,126行** | UIスタイルシート (CSS), Mコア Rust FW, 各種設定メタデータ |
-| **合計 (SUM Total)** | **-** | **404** | **8,587** | **3,700** | **46,585行** | **58,872行** | **F-BB プラットフォーム全体の静的ソースコード総数** |
+| **合計 (SUM Total)** | **-** | **405** | **8,674** | **3,935** | **46,769行** | **59,378行** | **F-BB プラットフォーム全体の静的ソースコード総数** |
 
 
 > **コード生成エンジンによる動的コード**
-> 上記の静的コードに加えて、DTSを読み込んだ際に Python スクリプトが、外部テンプレート `libfpgashim.c.template` を基にして **C言語 Shim (`libfpgashim.c` / 約680行)** を動的生成するほか、**C++ シミュレーションラッパー (`sim_main.cpp` / 約100行)**、**Verilog スケルトン (`vfpga_top.v` / 約40行)**、**Rust PAC (`fbb_pac.rs` / 約80行)** などをビルド時に自動生成します。
+> 上記の静的コードに加えて、DTSを読み込んだ際に Python スクリプトが、外部テンプレート `libfpgashim.c.template` を基にして **C言語 Shim (`libfpgashim.c` / 約680行)** を動的生成するほか、**C++ シミュレーションラッパー (`sim_main.cpp` / 約100行)**、**Verilog スケルトン (`vfpga_top.v` / 約40行)**、**Rust PAC (`fbb_pac.rs` / 約80行)**、**GDB 拡張スクリプト (`fbb_gdb.py` / 約250行)** および **`.gdbinit`** などをビルド・デバッグ時に自動生成します。
 
 ### アーキテクチャにおける各言語の役割
 - **Verilog (RTL)**: テスト対象となるFPGA内の回路ロジック。

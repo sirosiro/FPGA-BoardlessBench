@@ -29,6 +29,8 @@ tests/scenarios/*/CMSIS_5
 src/sim/sim_main.cpp
 tests/scenarios/*/test_bin
 tests/scenarios/*/fbb_pac.rs
+tests/scenarios/*/.gdbinit
+tests/scenarios/*/fbb_gdb.py
 spi_flash.bin
 
 

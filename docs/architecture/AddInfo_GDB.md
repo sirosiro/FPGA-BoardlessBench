@@ -16,38 +16,76 @@ F-BB では、すべてのコンポーネント（Aコア Linux アプリケー�
 
 ## 2. 3 つの GDB デバッグパターン
 
-### パターン 1: コマンドライン GDB による Aコア Linux FW デバッグ
+### パターン 1: 統合 CLI (`bin/fbb debug`) による自動協調デバッグ（推奨）
 
-C-Shim 共有ライブラリ (`libfpgashim.so`) を `LD_PRELOAD` 経由で適用しながら、対象のアプリケーションを GDB の配下で起動します。
+F-BB の統合 CLI ツールキット (`bin/fbb`) に実装された `debug` サブコマンドを使用することで、**「CMake デバッグビルド ➔ Verilator/コントローラのバックグラウンド起動 ➔ DTS レジスタ拡張の読み込み ➔ GDB 起動 ➔ 終了時の自動クリーンアップ」** がワンストップで完結します。
 
 ```bash
-# 1. デバッグビルドが完了しているシナリオディレクトリに移動
-cd tests/scenarios/01_standard_uio
+# シナリオ名または前方一致プレフィックスで即座にデバッグ開始
+bin/fbb debug 01b
 
-# 2. LD_PRELOAD を付与して GDB を起動
-LD_PRELOAD=../../build/libfpgashim.so gdb ./app_main
+# 出力例:
+# 🔨 [F-BB Debug] Building simulation engine & target for scenario: 01b_uio_irq_interrupt (Debug mode)...
+# 🚀 [F-BB Debug] Starting simulation backend (controller & vfpga_sim)...
+# 🐞 [F-BB Debug] Starting GDB on target: .../01b_uio_irq_interrupt/test_bin
+# [F-BB] GDB Extension loaded for model: generic-vfpga. Type 'fbb-info' or 'fbb-regs' to inspect.
+# (gdb) 
+```
 
-# 3. GDB 内での基本操作
-(gdb) break main             # main関数にブレークポイントを設定
-(gdb) break read_sensor      # 任意の制御関数にブレークポイントを設定
-(gdb) run                    # アプリケーションの実行開始
-(gdb) next                   # ステップオーバー (1行実行)
-(gdb) step                   # ステップイン (関数内に入る)
-(gdb) print *reg_ptr         # 仮想FPGAレジスタポインタの値を表示
-(gdb) x/10xw 0x40001000      # 共有メモリ(仮想MMIO空間)のメモリダンプ表示
-(gdb) continue               # 処理の再開
+GDB セッション終了時（`(gdb) quit`）には、バックグラウンドで動いていたシミュレータプロセス群も自動的に綺麗に終了・回収されます。
+
+---
+
+### パターン 2: DTS 自動連携 GDB 拡張コマンド (`fbb-regs`, `fbb-write`)
+
+F-BB では、`config.dts` から各シナリオ専用の GDB 拡張スクリプト（`fbb_gdb.py`）が自動生成されます。生アドレスを手動計算する必要はなく、DTS で定義されたレジスタ名で直感的に監視・変更が可能です。
+
+```bash
+# 1. DTS 定義レジスタと現在のメモリ値（16進/10進）を一覧表示
+(gdb) fbb-regs
+
+# 実行例:
+# === Device: vfpga_irq_timer (uio) @ 0x40000000 (size: 0x1000) ===
+#   Offset   Address      Register                 Dir   Value (Hex)    Value (Dec) 
+#   --------------------------------------------------------------------------------
+#   0x0000   0x40000000   CTRL                     RW    0x00000001     1           
+#   0x0004   0x40000004   STATUS                   RW    0x00000001     1           
+#   0x0008   0x40000008   INT_ACK                  RW    0x00000000     0           
+#   0x000C   0x4000000C   CNT                      RW    0x00000005     5           
+
+# 2. レジスタ名またはアドレスを指定して 32-bit 値を直接書き込み (シミュレータ側へ即時反映)
+(gdb) fbb-write CTRL 0x0
+# [F-BB GDB] Successfully wrote 0x00000000 (0) to vfpga_irq_timer::CTRL
+
+# 3. C-Shim がインターセプトしている仮想デバイスおよび FD 一覧の確認
+(gdb) fbb-fds
+
+# 4. ターゲットモデル・ハードウェア概要の確認
+(gdb) fbb-info
 ```
 
 ---
 
-### パターン 2: 異種マルチコア (AMP) の同時デュアル GDB デバッグ
+### パターン 3: Antigravity IDE / VS Code による「F5」ワンクリック・デバッグ
+
+リポジトリ直下の [`.vscode/launch.json`](file:///workspaces/FPGA-BoardlessBench/.vscode/launch.json) および [`.vscode/tasks.json`](file:///workspaces/FPGA-BoardlessBench/.vscode/tasks.json) に標準デバッグ構成が配備されています。
+
+1. エディタ上で任意のシナリオファイル（例: `tests/scenarios/01b_uio_irq_interrupt/main.c`）を開く。
+2. キーボードの **`F5`** を押す（または「実行とデバッグ」タブから `F-BB: Debug Active Scenario (F5)` を選択）。
+3. **事前タスク (`preLaunchTask`)** により、シミュレータエンジンとコントローラがバックグラウンドで自動起動。
+4. `main` 関数の先頭で自動的にブレークポイント停止。
+5. エディタの「デバッグコンソール」タブで `-exec fbb-regs` と入力すれば、GUI 画面内でそのまま DTS レジスタテーブルをリアルタイム参照可能。
+6. デバッグを停止（`Shift + F5`）すると、**事後タスク (`postDebugTask`)** によりシミュレータプロセスが自動終了。
+
+---
+
+### パターン 4: 異種マルチコア (AMP) の同時デュアル GDB デバッグ
 
 Aコア (Linux) と Mコア (FreeRTOS / ThreadX / Rust ベアメタル) が共有メモリ経由で通信するヘテロジニアス SoC の開発では、2 つのターミナルからそれぞれのプロセスに独立して GDB をアタッチすることで、**両コアのハンドシェイク挙動を1つの画面で同期デバッグ** できます。
 
 ```bash
 # 【ターミナル 1: Aコア Linux 制御プロセスのデバッグ】
-cd tests/scenarios/10_amp_mcore_freertos
-LD_PRELOAD=../../build/libfpgashim.so gdb ./app_acore
+bin/fbb debug 10_amp_mcore_freertos
 
 # 【ターミナル 2: Mコア RTOS ファームウェアのデバッグ】
 cd tests/scenarios/10_amp_mcore_freertos
@@ -57,48 +95,6 @@ gdb ./mcore_fw.elf
 1. ターミナル 1 (Aコア) で共有メモリメッセージ送信直前に `break` を設定。
 2. ターミナル 2 (Mコア) でメッセージ受信割り込み/ループ処理に `break` を設定。
 3. Aコアをステップ実行して共有メモリへ書き込みを行った瞬間、Mコア側でデータが正しく届くかを相互に監視可能です。
-
----
-
-### パターン 3: VS Code 上でのグラフィカル・視覚的デバッグ
-
-DevContainer 環境内の VS Code から、マウス操作によるブレークポイント設定や変数・メモリ・スタックトレースの視覚的デバッグが行えます。
-
-#### `.vscode/launch.json` の設定例
-
-```json
-{
-  "version": "0.2.0",
-  "configurations": [
-    {
-      "name": "F-BB: Debug A-Core App",
-      "type": "cppdbg",
-      "request": "launch",
-      "program": "${workspaceFolder}/tests/scenarios/01_standard_uio/app_main",
-      "args": [],
-      "stopAtEntry": false,
-      "cwd": "${workspaceFolder}/tests/scenarios/01_standard_uio",
-      "environment": [
-        {
-          "name": "LD_PRELOAD",
-          "value": "${workspaceFolder}/build/libfpgashim.so"
-        }
-      ],
-      "externalConsole": false,
-      "MIMode": "gdb",
-      "setupCommands": [
-        {
-          "description": "Enable pretty-printing for gdb",
-          "text": "-enable-pretty-printing",
-          "ignoreFailures": true
-        }
-      ]
-    }
-  ]
-}
-```
-
-VS Code の「実行とデバッグ」タブから `F-BB: Debug A-Core App` を選択して `F5` キーを押すだけで、ソースコードの行番号をクリックして直感的にデバッグできます。
 
 ---
 

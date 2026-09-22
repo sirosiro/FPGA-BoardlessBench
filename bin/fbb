@@ -22,6 +22,7 @@ import shutil
 import subprocess
 import json
 import glob
+import time
 
 # Ensure scripts directory is in sys.path (using realpath to resolve symlinks)
 SCRIPT_REAL_PATH = os.path.realpath(__file__)
@@ -530,6 +531,260 @@ def command_inspect(args):
                 print(f"  │    • CS: {cs_str:<8} | Name: {s.name:<14} | Compatible: \"{s.compatible}\"")
 
     print("=" * 95)
+
+
+DEBUG_SERVER_PID_FILE = "/tmp/fbb_debug_server.json"
+
+
+def stop_debug_server(silent=False):
+    """
+    @intent:responsibility
+      バックグラウンドで稼働している F-BB デバッグ用シミュレータ＆コントローラを確実に停止・回収する。
+    """
+    if not os.path.exists(DEBUG_SERVER_PID_FILE):
+        if not silent:
+            print("[F-BB Debug] No active debug server found.")
+        return True
+
+    try:
+        with open(DEBUG_SERVER_PID_FILE, "r", encoding="utf-8") as f:
+            info = json.load(f)
+    except Exception:
+        info = {}
+
+    pids = info.get("pids", [])
+    stopped = []
+    for pid in pids:
+        try:
+            os.kill(pid, 15)  # SIGTERM
+            stopped.append(pid)
+        except OSError:
+            pass
+
+    time.sleep(0.5)
+    for pid in pids:
+        try:
+            os.kill(pid, 9)  # SIGKILL
+        except OSError:
+            pass
+
+    try:
+        os.remove(DEBUG_SERVER_PID_FILE)
+    except OSError:
+        pass
+
+    if not silent:
+        if stopped:
+            print(f"[F-BB Debug] Stopped debug server processes: {stopped}")
+        else:
+            print("[F-BB Debug] Debug server stopped.")
+    return True
+
+
+def status_debug_server():
+    """
+    @intent:responsibility
+      現在アクティブなデバッグサーバーの稼働状態を表示する。
+    """
+    if not os.path.exists(DEBUG_SERVER_PID_FILE):
+        print("[F-BB Debug] Status: Inactive (no debug server running)")
+        return False
+
+    try:
+        with open(DEBUG_SERVER_PID_FILE, "r", encoding="utf-8") as f:
+            info = json.load(f)
+    except Exception as e:
+        print(f"[F-BB Debug] Status: Error reading pid file: {e}")
+        return False
+
+    alive_pids = []
+    for pid in info.get("pids", []):
+        try:
+            os.kill(pid, 0)
+            alive_pids.append(pid)
+        except OSError:
+            pass
+
+    if alive_pids:
+        print(f"[F-BB Debug] Status: ACTIVE")
+        print(f"  Scenario:      {info.get('scenario_name')}")
+        print(f"  Directory:     {info.get('scenario_dir')}")
+        print(f"  Target Binary: {info.get('target_bin')}")
+        print(f"  Active PIDs:   {alive_pids}")
+        return True
+    else:
+        print("[F-BB Debug] Status: Stale (PIDs no longer running)")
+        try:
+            os.remove(DEBUG_SERVER_PID_FILE)
+        except OSError:
+            pass
+        return False
+
+
+def command_debug(args):
+    """
+    @intent:responsibility
+      F-BB の GDB 協調デバッグ環境を管理・起動する。
+      --server-only: VS Code preLaunchTask 用にシミュレーションエンジンをバックグラウンド起動
+      --stop-server: VS Code postDebugTask 用にシミュレーションエンジンを停止
+      --status: 稼働中デバッグサーバーのステータスを表示
+      引数なし/シナリオ名指定: シミュレーションを立ち上げ、インタラクティブ GDB を起動
+    """
+    if getattr(args, "stop_server", False):
+        stop_debug_server()
+        return
+
+    if getattr(args, "status", False):
+        status_debug_server()
+        return
+
+    scenario_input = getattr(args, "scenario", None)
+    if not scenario_input:
+        cwd = os.getcwd()
+        if os.path.exists(os.path.join(cwd, "config.dts")):
+            s_dir = cwd
+        else:
+            print("❌ Error: Scenario name or path required (e.g. 'fbb debug 01b' or run from scenario directory).")
+            sys.exit(1)
+    else:
+        s_dir = resolve_scenario_name_or_path(scenario_input)
+        if not s_dir:
+            print(f"❌ Error: Could not resolve scenario '{scenario_input}'")
+            sys.exit(1)
+
+    scenario_name = os.path.basename(s_dir)
+    dts_path = os.path.join(s_dir, "config.dts")
+    if not os.path.exists(dts_path):
+        print(f"❌ Error: config.dts not found in scenario directory: {s_dir}")
+        sys.exit(1)
+
+    # Clean up any existing stale server
+    stop_debug_server(silent=True)
+
+    # 1. Build Phase
+    if not getattr(args, "no_build", False):
+        print(f"🔨 [F-BB Debug] Building simulation engine & target for scenario: {scenario_name} (Debug mode)...")
+        if getattr(args, "clean", False):
+            clean_cmd = [os.path.join(PROJECT_ROOT, "tests/scenario_runner.sh"), s_dir, "--clean"]
+            subprocess.run(clean_cmd, cwd=PROJECT_ROOT)
+
+        build_dir = os.path.join(PROJECT_ROOT, "build")
+        os.makedirs(build_dir, exist_ok=True)
+        cmake_cfg = [
+            "cmake", "-B", build_dir,
+            "-DCMAKE_POLICY_VERSION_MINIMUM=3.5",
+            "-DCMAKE_BUILD_TYPE=Debug",
+            f"-DSCENARIO_DIR={s_dir}"
+        ]
+        res = subprocess.run(cmake_cfg, cwd=PROJECT_ROOT)
+        if res.returncode != 0:
+            print(f"❌ CMake configure failed for scenario: {scenario_name}")
+            sys.exit(res.returncode)
+
+        jobs = str(min(os.cpu_count() or 4, 8))
+        cmake_bld = ["cmake", "--build", build_dir, "--parallel", jobs]
+        res = subprocess.run(cmake_bld, cwd=PROJECT_ROOT)
+        if res.returncode != 0:
+            print(f"❌ Build failed for scenario: {scenario_name}")
+            sys.exit(res.returncode)
+
+        # Ensure generator_gdb runs to update fbb_gdb.py & .gdbinit
+        gen_script = os.path.join(PROJECT_ROOT, "scripts/gen_vfpga.py")
+        subprocess.run([sys.executable, gen_script, dts_path], cwd=PROJECT_ROOT)
+
+        # Build M-core Rust firmware if present
+        m_core_cargo = os.path.join(s_dir, "m_core/Cargo.toml")
+        if os.path.exists(m_core_cargo):
+            print("[F-BB Debug] Pre-building M-Core Rust firmware with Cargo (Debug mode)...")
+            subprocess.run(["cargo", "build", "--manifest-path", m_core_cargo], cwd=PROJECT_ROOT)
+
+    # 2. Locate Target Binary
+    target_bin = None
+    if getattr(args, "target_bin", None):
+        custom_bin = os.path.abspath(args.target_bin)
+        if os.path.exists(custom_bin):
+            target_bin = custom_bin
+
+    if not target_bin:
+        cands = [
+            os.path.join(s_dir, "test_bin"),
+            os.path.join(PROJECT_ROOT, "build/scenarios", scenario_name, "test_bin"),
+            os.path.join(s_dir, "app_main")
+        ]
+        for f in os.listdir(s_dir):
+            if f.endswith(".elf"):
+                cands.insert(0, os.path.join(s_dir, f))
+
+        for cand in cands:
+            if os.path.exists(cand) and os.access(cand, os.X_OK):
+                target_bin = cand
+                break
+
+    if not target_bin:
+        bld_bin = os.path.join(PROJECT_ROOT, "build/scenarios", scenario_name, "test_bin")
+        if os.path.exists(bld_bin):
+            target_bin = bld_bin
+        else:
+            target_bin = os.path.join(s_dir, "test_bin")
+
+    # 3. Start Backend Simulation Engine
+    controller_script = os.path.join(PROJECT_ROOT, "src/controller/vlogic_controller.py")
+    simulator_bin = os.path.join(PROJECT_ROOT, "vfpga_sim")
+    if not os.path.exists(simulator_bin):
+        simulator_bin = os.path.join(PROJECT_ROOT, "build/vfpga_sim")
+
+    print(f"🚀 [F-BB Debug] Starting simulation backend (controller & vfpga_sim)...")
+    ctrl_log = open(os.path.join(s_dir, "controller.log"), "w", encoding="utf-8")
+    sim_log = open(os.path.join(s_dir, "simulator.log"), "w", encoding="utf-8")
+
+    ctrl_proc = subprocess.Popen([sys.executable, "-u", controller_script, dts_path], stdout=ctrl_log, stderr=ctrl_log)
+    sim_proc = subprocess.Popen([simulator_bin], stdout=sim_log, stderr=sim_log)
+
+    pids = [ctrl_proc.pid, sim_proc.pid]
+
+    info = {
+        "scenario_name": scenario_name,
+        "scenario_dir": s_dir,
+        "target_bin": target_bin,
+        "pids": pids,
+        "time": time.time()
+    }
+    with open(DEBUG_SERVER_PID_FILE, "w", encoding="utf-8") as f:
+        json.dump(info, f, indent=2)
+
+    # Wait for simulation to initialize
+    time.sleep(1.5)
+
+    if getattr(args, "server_only", False):
+        print(f"✅ [F-BB Debug] Debug server is READY for scenario: {scenario_name}")
+        print(f"  Target Binary: {target_bin}")
+        print(f"  PIDs: {pids}")
+        return
+
+    # 4. Interactive GDB Launch
+    print(f"🐞 [F-BB Debug] Starting GDB on target: {target_bin}")
+    print("  (Type 'fbb-regs' to inspect virtual registers, 'c' to continue, 'q' to quit)")
+
+    gdb_script = os.path.join(s_dir, "fbb_gdb.py")
+    gdb_cmd = ["gdb"]
+    if os.path.exists(gdb_script):
+        gdb_cmd.extend(["-x", gdb_script])
+    gdb_cmd.append(target_bin)
+
+    env = os.environ.copy()
+    shim_path = os.path.join(PROJECT_ROOT, "build/libfpgashim.so")
+    if not os.path.exists(shim_path):
+        shim_path = os.path.join(PROJECT_ROOT, "libfpgashim.so")
+    env["LD_PRELOAD"] = shim_path
+    env["FBB_ACTIVE"] = "1"
+    env["LD_BIND_NOW"] = "1"
+
+    try:
+        subprocess.run(gdb_cmd, env=env, cwd=s_dir)
+    finally:
+        print("\n🧹 [F-BB Debug] Cleaning up simulation server...")
+        stop_debug_server(silent=True)
+        print("✨ [F-BB Debug] Session finished.")
 
 
 def command_plugin_list(args):
@@ -1154,6 +1409,28 @@ def main():
     parser_p_remove = plugin_subparsers.add_parser("remove", help="Remove an installed PPA plugin")
     parser_p_remove.add_argument("name", help="Name of the plugin directory to remove")
 
+    # 7. debug
+    debug_epilog = """Examples:
+  fbb debug 01b                           Start simulation and attach GDB to scenario 01b
+  fbb debug 21_can_socketcan_ecu          Debug CAN SocketCAN scenario interactively
+  fbb debug 01b --server-only             Start simulation server only (used by VS Code / IDE preLaunchTask)
+  fbb debug --stop-server                 Stop running simulation server (used by VS Code postDebugTask)
+  fbb debug --status                      Show status of active debug simulation server
+"""
+    parser_debug = subparsers.add_parser(
+        "debug",
+        help="Interactive GDB debugging with DTS register integration and IDE server lifecycle",
+        epilog=debug_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser_debug.add_argument("scenario", nargs="?", default=None, help="Scenario name, fuzzy prefix, or directory path")
+    parser_debug.add_argument("--server-only", action="store_true", help="Start simulation backend server and exit (for IDE preLaunchTask)")
+    parser_debug.add_argument("--stop-server", action="store_true", help="Stop background simulation backend server (for IDE postDebugTask)")
+    parser_debug.add_argument("--status", action="store_true", help="Check status of background simulation server")
+    parser_debug.add_argument("--no-build", action="store_true", help="Skip build phase")
+    parser_debug.add_argument("-c", "--clean", action="store_true", help="Clean scenario build artifacts before starting")
+    parser_debug.add_argument("--target-bin", type=str, default=None, help="Path to custom executable binary to debug")
+
     args = parser.parse_args()
 
     if args.command == "new":
@@ -1166,6 +1443,8 @@ def main():
         command_clean(args)
     elif args.command == "inspect":
         command_inspect(args)
+    elif args.command == "debug":
+        command_debug(args)
     elif args.command == "plugin":
         if args.plugin_command == "list":
             command_plugin_list(args)

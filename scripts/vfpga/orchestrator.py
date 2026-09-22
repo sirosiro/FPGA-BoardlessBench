@@ -4,6 +4,7 @@ from vfpga.models import BoardModel
 from vfpga.generator_base import SystemConfigGenerator, DeviceConfigGenerator
 from vfpga.generator_shim import ShimGenerator
 from vfpga.generator_rtl import RTLGenerator, SimulatorGenerator, ManifestGenerator, RustPACGenerator
+from vfpga.generator_gdb import GdbExtensionGenerator
 
 class GeneratorOrchestrator:
     def __init__(self, model: BoardModel, dts_path: str = None):
@@ -40,7 +41,7 @@ class GeneratorOrchestrator:
         
         # Check if there is a .rs file in the directory of the DTS file
         if self.dts_path:
-            dts_dir = os.path.dirname(self.dts_path)
+            dts_dir = os.path.dirname(os.path.abspath(self.dts_path))
             if os.path.exists(dts_dir):
                 rs_files = [f for f in os.listdir(dts_dir) if f.endswith('.rs')]
                 if rs_files:
@@ -48,6 +49,27 @@ class GeneratorOrchestrator:
                     pac_path = os.path.join(dts_dir, "fbb_pac.rs")
                     with open(pac_path, "w") as f:
                         f.write(pac_content)
+
+                # Generate fbb_gdb.py and .gdbinit for interactive and IDE GDB debugging
+                gdb_content = GdbExtensionGenerator().generate(self.model)
+                gdb_path = os.path.join(dts_dir, "fbb_gdb.py")
+                with open(gdb_path, "w", encoding="utf-8") as f:
+                    f.write(gdb_content)
+
+                gdbinit_path = os.path.join(dts_dir, ".gdbinit")
+                gdbinit_content = """# Auto-generated .gdbinit for F-BB Scenario
+set pagination off
+set print pretty on
+python
+import os, sys
+scenario_dir = os.path.dirname(os.path.abspath(gdb.current_progspace().filename)) if (hasattr(gdb, 'current_progspace') and gdb.current_progspace() and gdb.current_progspace().filename) else "."
+gdb_script = os.path.join(scenario_dir, "fbb_gdb.py")
+if os.path.exists(gdb_script):
+    gdb.execute(f"source {gdb_script}")
+end
+"""
+                with open(gdbinit_path, "w", encoding="utf-8") as f:
+                    f.write(gdbinit_content)
         
         # /tmp/fbb_compatible を生成
         compatible_path = "/tmp/fbb_compatible"
