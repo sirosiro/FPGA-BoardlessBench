@@ -4,7 +4,9 @@ import { io } from 'socket.io-client';
 
 const DashboardContext = createContext(null);
 
-const socket = io('http://' + window.location.hostname + ':8080');
+const socket = io('http://' + window.location.hostname + ':8080', {
+  transports: ['websocket']
+});
 
 export const DashboardProvider = ({ children }) => {
   const [registers, setRegisters] = useState([]);

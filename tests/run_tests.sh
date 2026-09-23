@@ -82,6 +82,7 @@ if [ "$CLEAN" = true ]; then
     if [ -d "${PROJECT_ROOT}/build" ]; then rm -rf "${PROJECT_ROOT}/build"/* "${PROJECT_ROOT}/build"/.[!.]* 2>/dev/null; fi
     rm -f libfpgashim.so vfpga_sim
     rm -f tests/scenarios/*/test_bin tests/scenarios/*/*.bin tests/scenarios/*/*.elf tests/scenarios/*/*.o
+    rm -f tests/scenarios/*/fbb_gdb.py tests/scenarios/*/.gdbinit tests/scenarios/*/fbb_pac.rs 2>/dev/null
     rm -rf tests/scenarios/*/m_core/target 2>/dev/null
     rm -f tests/scenarios/*/m_core/Cargo.lock 2>/dev/null
     

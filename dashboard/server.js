@@ -148,21 +148,32 @@ function getActiveScenarioDir() {
     return path.isAbsolute(scn) ? scn : path.join(__dirname, '..', scn);
 }
 
-function getDiscoveredCores() {
-    let acoreRunning = false;
-    let acorePid = null;
+let cachedAcorePid = null;
+let cachedAcoreRunning = false;
+
+function refreshAcoreStatus() {
     if (activeScenarioProcess) {
-        acoreRunning = true;
-        acorePid = activeScenarioProcess.pid;
-    } else {
-        try {
-            const pids = execSync('pgrep -x "test_bin"', { encoding: 'utf8', stdio: ['ignore', 'pipe', 'ignore'] }).trim();
-            if (pids) {
-                acoreRunning = true;
-                acorePid = parseInt(pids.split('\n')[0], 10);
-            }
-        } catch (e) {}
+        cachedAcoreRunning = true;
+        cachedAcorePid = activeScenarioProcess.pid;
+        return;
     }
+    const { exec } = require('child_process');
+    exec('pgrep -x "test_bin"', { encoding: 'utf8' }, (err, stdout) => {
+        if (!err && stdout && stdout.trim()) {
+            cachedAcoreRunning = true;
+            cachedAcorePid = parseInt(stdout.trim().split('\n')[0], 10);
+        } else {
+            cachedAcoreRunning = false;
+            cachedAcorePid = null;
+        }
+    });
+}
+setInterval(refreshAcoreStatus, 500);
+refreshAcoreStatus();
+
+function getDiscoveredCores() {
+    const acoreRunning = activeScenarioProcess ? true : cachedAcoreRunning;
+    const acorePid = activeScenarioProcess ? activeScenarioProcess.pid : cachedAcorePid;
 
     const cores = [{ id: 'acore', label: 'A-Core (Linux / test_bin)', pid: acorePid, running: acoreRunning }];
     const remoteprocBase = '/tmp/fbb/sys/class/remoteproc';
@@ -743,6 +754,21 @@ io.on('connection', (socket) => {
         }
     });
 
+    // Send initial AMR telemetry if exists
+    if (lastAmrTelemetry) {
+        socket.emit('amr:telemetry', lastAmrTelemetry);
+    } else {
+        const telemetryPath = '/tmp/fbb_amr_telemetry.json';
+        if (fs.existsSync(telemetryPath)) {
+            try {
+                const raw = fs.readFileSync(telemetryPath, 'utf8');
+                const telemetry = JSON.parse(raw);
+                lastAmrTelemetry = telemetry;
+                socket.emit('amr:telemetry', telemetry);
+            } catch (e) {}
+        }
+    }
+
     socket.on('trace-history-clear', () => {
         traceHistory = [];
         traceIndex = 0;
@@ -1062,6 +1088,7 @@ setInterval(() => {
 }, 200);
 
 let lastAmrTelemetryMtime = 0;
+let lastAmrTelemetry = null;
 function updateAmrTelemetry() {
     const telemetryPath = '/tmp/fbb_amr_telemetry.json';
     if (!fs.existsSync(telemetryPath)) return;
@@ -1071,6 +1098,7 @@ function updateAmrTelemetry() {
             lastAmrTelemetryMtime = stats.mtimeMs;
             const raw = fs.readFileSync(telemetryPath, 'utf8');
             const telemetry = JSON.parse(raw);
+            lastAmrTelemetry = telemetry;
             io.emit('amr:telemetry', telemetry);
         }
     } catch (e) {}

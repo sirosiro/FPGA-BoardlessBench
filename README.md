@@ -277,7 +277,7 @@ fbb test
 
 起動後、以下の方法でシミュレーション環境にアクセスできます：
 
-- **Webダッシュボード**: ブラウザで `http://localhost:8080` にアクセスしてください。複数モニタ環境向けに各ペインのワンクリック別ウィンドウ化（Pop-out）やサブモニタ用プロファイル（`?screen=monitor2`）にも対応しています。
+- **Webダッシュボード**: ブラウザで `http://localhost:8080` にアクセスしてください。複数モニタ環境向けに各ペインのワンクリック別ウィンドウ化（Pop-out）やサブモニタ用プロファイル（`?screen=monitor2`）にも対応しています。通信はネイティブ WebSocket トランスポートに最適化されており、仮想環境（Docker / WSL2等）の多段プロキシ起因のハンドシェイク遅延を排除し、シミュレータ先行起動時でも接続直後に最新テレメトリが即時同期されます。
 - **外部UARTコンソール**: ポート **`3000`**（UART1用）/ **`3001`**（UART2用）で待ち受けています（`nc localhost 3000` や Tera Term 等で接続）。Webダッシュボード側と完全に画面同期され、過去ログのリプレイ機能が有効です。  
   *(※内部の Python PTY ブリッジはポート `2000`〜 でローカルバインドされています)*
 
@@ -634,28 +634,28 @@ F-BBは、ハードウェア記述言語（RTL）から、低レイヤーのシ�
 
 ビルド成果物（`build`, `dist`）、外部パッケージ（`node_modules`）、および一時ファイルを除外したリポジトリ全体の静的ソースコードを `cloc` (Count Lines of Code v1.90) にて正確に計測した結果です。
 
-F-BB 独自のプロジェクトコードのみ（`--cleanall` 時）で**純プログラムステップ数（Pure Code） 46,769 行 (約 46.8k LOC)**、総行数 **59,378 行**（全 405 ファイル）で構成されています。また、シナリオ 10〜15 で動的ロードされる外部 RTOS カーネル（FreeRTOS, ThreadX, CMSIS_5）のソース群を含むフル状態では **約 93,000 行 (93.0k+ LOC)** / **全 172,000 行**（全 780 ファイル）の規模となります。
+F-BB 独自のプロジェクトコードのみ（`--cleanall` 時）で**純プログラムステップ数（Pure Code） 46,862 行 (約 46.9k LOC)**、総行数 **59,483 行**（全 405 ファイル）で構成されています。また、シナリオ 10〜15 で動的ロードされる外部 RTOS カーネル（FreeRTOS, ThreadX, CMSIS_5）のソース群を含むフル状態では **約 93,000 行 (93.0k+ LOC)** / **全 172,000 行**（全 780 ファイル）の規模となります。
 
 > **Project Scale Summary (`cloc` 計測値):**
-> - **Pure F-BB Code (F-BB独自コードのみ):** **46,769 Lines of Code** *(総行数 59,378行 / 405ファイル / コメント 3,935行 / 空行 8,674行)*
+> - **Pure F-BB Code (F-BB独自コードのみ):** **46,862 Lines of Code** *(総行数 59,483行 / 405ファイル / コメント 3,936行 / 空行 8,685行)*
 > - **Full Environment (外部RTOSカーネル同梱時):** **約 93,000 Lines of Code** *(総行数 約 172,000行 / 780ファイル)*
 > - **主要言語構成:** *(Markdown/Doc: ~12.6k LOC, JSON: ~7.3k LOC, C/C++: ~12.7k LOC (全シナリオFW/Shim/PPA), React/JSX/JS/CSS: ~7.8k LOC, Python: ~3.1k LOC)*
 
 | 言語分類 (cloc) | 拡張子 | ファイル数 | 空行 (Blank) | コメント (Comment) | 純コード (Pure LOC) | 総行数 (Total Lines) | 主な構成要素と役割 |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **Markdown** | `.md` | 127 | 4,784 | 0 | **12,555行** | **17,339行** | システム仕様書、ADR、初学者学習ロードマップ、全36シナリオREADME/ADVANCED仕様書、PPA 5.1 開発ガイド |
-| **JSON / Manifest** | `.json` | 35 | 0 | 0 | **7,264行** | **7,264行** | PPAペリフェラルマニフェスト (`fbb-plugin.json`)、ボード構造メタデータ、AMR ロボット定義 (`amr_manifest.json`) |
+| **Markdown** | `.md` | 127 | 4,792 | 0 | **12,587行** | **17,379行** | システム仕様書、ADR、初学者学習ロードマップ、全36シナリオREADME/ADVANCED仕様書、PPA 5.1 開発ガイド |
+| **JSON / Manifest** | `.json` | 35 | 0 | 0 | **7,274行** | **7,274行** | PPAペリフェラルマニフェスト (`fbb-plugin.json`)、ボード構造メタデータ、AMR ロボット定義 (`amr_manifest.json`) |
 | **C++** | `.cpp` | 25 | 978 | 986 | **6,146行** | **8,110行** | Verilator シミュレーションコア、PPA ペリフェラルプラグイン実装、Scenario 22 & P02 AMR ros2_control ハードウェア層・運動学エンジン |
-| **JSX** | `.jsx` | 22 | 526 | 185 | **5,985行** | **6,696行** | Vite + React 19 UI（Dockview, DPPA `paneRegistry.jsx`, `PopoutWindow.jsx`, `DockHeaderActions.jsx`, Recharts, AMR 4特化型コックピットペイン, 各種診断ペイン） |
+| **JSX** | `.jsx` | 22 | 526 | 185 | **5,987行** | **6,698行** | Vite + React 19 UI（Dockview, DPPA `paneRegistry.jsx`, `PopoutWindow.jsx`, `DockHeaderActions.jsx`, Recharts, AMR 4特化型コックピットペイン, 各種診断ペイン） |
 | **C** | `.c` | 35 | 835 | 700 | **5,390行** | **6,925行** | システムコール横取り Shim、エミュレータデーモン、カオス障害注入エンジン、全シナリオ FW |
 | **Python** | `.py` / CLI | 15 | 566 | 1,100 | **3,074行** | **4,740行** | 統合 CLI (`bin/fbb`), DTSパース・診断エンジン (`DTSParserError`)、コード自動生成、GDB 拡張自動生成 (`generator_gdb.py`)、PPA プラグイン自動ビルド・起動 |
-| **JavaScript** | `.js` | 3 | 170 | 78 | **1,471行** | **1,719行** | ダッシュボード WebSockets サーバー（`dashboard/server.js`）、マルチスクリーンレイアウト永続化 API、AMR コマンド/テレメトリ仲介 |
+| **JavaScript** | `.js` | 3 | 173 | 79 | **1,495行** | **1,747行** | ダッシュボード WebSockets サーバー（`dashboard/server.js`）、マルチスクリーンレイアウト永続化 API、AMR コマンド/テレメトリ仲介 |
 | **C/C++ Header** | `.h` / `.hpp` | 38 | 206 | 320 | **1,151行** | **1,677行** | 統一 CLI パーサー (`cli_helper.hpp`)、デバイス共通ヘッダー、レジスタ定義、Shimマクロ、hardware_interface ゼロインストール互換層 |
-| **Bourne Shell** | `.sh` | 40 | 207 | 190 | **1,022行** | **1,419行** | 自動検証ランナー（`run_tests.sh`）、シナリオ単体ランナー（`scenario_runner.sh`）、ラボ起動スクリプト（`start_lab.sh`） |
-| **Verilog** | `.v` | 20 | 115 | 202 | **1,010行** | **1,327行** | シミュレーション対象の FPGA ハードウェア記述 (RTL: PWM/QEI/E-STOP回路含む) |
+| **Verilog** | `.v` | 20 | 115 | 202 | **1,030行** | **1,347行** | シミュレーション対象の FPGA ハードウェア記述 (RTL: PWM/QEI/E-STOP回路含む) |
+| **Bourne Shell** | `.sh` | 40 | 207 | 190 | **1,027行** | **1,424行** | 自動検証ランナー（`run_tests.sh`）、シナリオ単体ランナー（`scenario_runner.sh`）、ラボ起動スクリプト（`start_lab.sh`） |
 | **CMake** | `CMakeLists.txt` / `.cmake` | 24 | 128 | 69 | **839行** | **1,036行** | マルチターゲットビルド設定（シナリオ・PPA・カーネル・ハードウェア抽象化層） |
 | **Other / Rust** | `.rs` / `.css` / 他 | 21 | 159 | 105 | **862行** | **1,126行** | UIスタイルシート (CSS), Mコア Rust FW, 各種設定メタデータ |
-| **合計 (SUM Total)** | **-** | **405** | **8,674** | **3,935** | **46,769行** | **59,378行** | **F-BB プラットフォーム全体の静的ソースコード総数** |
+| **合計 (SUM Total)** | **-** | **405** | **8,685** | **3,936** | **46,862行** | **59,483行** | **F-BB プラットフォーム全体の静的ソースコード総数** |
 
 
 > **コード生成エンジンによる動的コード**
@@ -665,7 +665,7 @@ F-BB 独自のプロジェクトコードのみ（`--cleanall` 時）で**純プ
 - **Verilog (RTL)**: テスト対象となるFPGA内の回路ロジック。
 - **C/C++**: `LD_PRELOAD` によるシステムコールの横取り（`open`/`mmap`/`ioctl`等のリダイレクト）、Verilator シミュレーション実行エンジン（`sim_main.cpp`）、および統一 CLI パーサー（`fbb::PluginCLI`）を備えた公式・サードパーティ製 PPA ペリフェラルデーモン群。
 - **Python**: DTS仕様を読み取ってShimやRTLスケルトンを自動出力するコード生成器、行番号・スニペット・修正Tip付きの親切な構文エラー診断機能（`DTSParserError`）、PPAプラグイン自動起動エンジン、および共有メモリ初期化やシリアル（UART PTY）中継を担うバックエンドコントローラ。
-- **JavaScript (Node.js & React 19)**: 共有メモリのデータをWebSocketでリアルタイム受信・配信するダッシュボードサーバー、開閉原則（OCP）に準拠しペイン定義を完全疎結合化したプラグインレジストリ（DPPA: `paneRegistry.jsx`）、VS Codeライクなドラッグ分割レイアウト（Dockview）、ワンクリックで別ウィンドウへ切り離すマルチモニタPop-out機能、閉じたペインを動的復元する `+ Add Pane` ドロップダウン、および `fbb-plugin.json` の UI スキーマを動的レンダリングする共通ペイン規格 (`GenericPeripheralPane`)。
+- **JavaScript (Node.js & React 19)**: 共有メモリのデータをネイティブ WebSocket（HTTP Polling アップグレード遅延を完全排除）でリアルタイム受信・配信するダッシュボードサーバー（`server.js`）、接続時の最新テレメトリ即時リプレイ、開閉原則（OCP）に準拠しペイン定義を完全疎結合化したプラグインレジストリ（DPPA: `paneRegistry.jsx`）、VS Codeライクなドラッグ分割レイアウト（Dockview）、ワンクリックで別ウィンドウへ切り離すマルチモニタPop-out機能、閉じたペインを動的復元する `+ Add Pane` ドロップダウン、および `fbb-plugin.json` の UI スキーマを動的レンダリングする共通ペイン規格 (`GenericPeripheralPane`)。
 
 ## Antigravity IDE とローカル Ollama の連携 (任意)
 

@@ -239,6 +239,10 @@ unset LD_BIND_NOW
 
 if [ $RESULT -eq 0 ]; then
     echo -e "\n[Runner] RESULT: SUCCESS"
+    if [ -f "${SCENARIO_DIR}/fbb_layout.json" ] && [ "$VFPGA_INTERACTIVE" != "1" ]; then
+        echo -e "\033[1;36m[Runner] 💡 Tip: To interactively control & monitor this scenario via Web Dashboard (http://localhost:8080), run:\033[0m"
+        echo -e "\033[1;36m[Runner]    ./run.sh -i   (or: bin/fbb lab $(basename "${SCENARIO_DIR}"))\033[0m"
+    fi
 else
     echo -e "\n[Runner] RESULT: FAILURE (Exit Code: $RESULT)"
     if [ "$FBB_CHAOS_MODE" = "1" ]; then
