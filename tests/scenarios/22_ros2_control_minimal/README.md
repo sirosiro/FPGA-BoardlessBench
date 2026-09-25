@@ -3,7 +3,7 @@
 
 - **分類:** 基盤技術最小セット検証（アルファベットなし連番）
 - **ステータス:** 実装完了・自動回帰テスト対応
-- **関連ドキュメント:** [ARCHITECTURE_MANIFEST.md](../../ARCHITECTURE_MANIFEST.md), [DESIGN_PHILOSOPHY.md](../../DESIGN_PHILOSOPHY.md), [sandbox/ideas/ros_ideal.md](../../sandbox/ideas/ros_ideal.md)
+- **関連ドキュメント:** [ARCHITECTURE_MANIFEST.md](../../../ARCHITECTURE_MANIFEST.md), [DESIGN_PHILOSOPHY.md](../../../DESIGN_PHILOSOPHY.md), [ros_completed.md](../../../sandbox/completed/ros_completed.md)
 
 ---
 
@@ -95,7 +95,7 @@ cd tests/scenarios/22_ros2_control_minimal
 実行後、ターミナル上に全 6 項目の `[ PASS ]` と `>>> ALL 6 CRITERIA PASSED! Scenario 22 Verification SUCCESS. <<<` が出力されます。
 
 ### ② 全体回帰テストでの一括実行
-F-BB の全 35 シナリオの一括回帰テストに含まれており、以下のコマンドでまとめて検証可能です：
+F-BB の全 36 シナリオの一括回帰テストに含まれており、以下のコマンドでまとめて検証可能です：
 
 ```bash
 ./tests/regression_test.py

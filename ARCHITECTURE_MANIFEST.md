@@ -23,6 +23,7 @@
 - **[Dashboard Interface](./dashboard/ARCHITECTURE_MANIFEST.md)**: 診断ダッシュボードと可視化レイヤーの設計。
 - **[Test Scenarios](./tests/scenarios/ARCHITECTURE_MANIFEST.md)**: 各テストシナリオの共通原則、禁止事項、および個別シナリオの役割定義。
 - **[i.MX HAL Scenario](./tests/scenarios/P01_frdmIMX/hal/ARCHITECTURE_MANIFEST.md)**: 実機とシミュレータ環境における UART/GPIO の差異を吸収し、コードの透過性を担保する i.MX HAL の設計。
+- **[AMR ros2_control Scenario](./tests/scenarios/P02_robot_amr_ros2/ARCHITECTURE_MANIFEST.md)**: 自律移動ロボット（AMR）の差動二輪運動学、UIO 1kHz リアルタイム制御ループ、および Web コックピットの統合設計。
 
 ---
 
@@ -344,7 +345,7 @@ sequenceDiagram
 
 
 ### 7. サポート状況とロードマップ (Support Status & Roadmap)
-Zynq PS ペリフェラルの詳細な対応状況および将来の対応については、[ロードマップ](./docs/architecture/AddInfo_Loadmap.md) を参照してください。
+Zynq PS ペリフェラルの詳細な対応状況および将来の対応については、[ロードマップ](./docs/architecture/AddInfo_Roadmap.md) を参照してください。
 
 ### 8. プラットフォームの構造的トレードオフと非対象スコープ (Structural Trade-offs & Deliberate Non-Goals)
 

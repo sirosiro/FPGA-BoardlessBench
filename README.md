@@ -111,7 +111,7 @@ F-BB上で論理バグ（アドレス指定ミスや状態遷移エラー）を�
 
 ### 注意
 
-主要な SoC ペリフェラル（GPIO, I2C, SPI, UART, CAN/SocketCAN, AXI CDMA, SDカード）および汎用 UIO アクセスを網羅しており、多くの組み込み Linux アプリケーションの開発・デバッグに対応可能です。さらなる特殊なハードIPのサポート状況については、[ロードマップ](./docs/architecture/AddInfo_Loadmap.md)を参照してください。
+主要な SoC ペリフェラル（GPIO, I2C, SPI, UART, CAN/SocketCAN, AXI CDMA, SDカード）および汎用 UIO アクセスを網羅しており、多くの組み込み Linux アプリケーションの開発・デバッグに対応可能です。さらなる特殊なハードIPのサポート状況については、[ロードマップ](./docs/architecture/AddInfo_Roadmap.md)を参照してください。
 
 ---
 
@@ -301,7 +301,7 @@ fbb test
   ./start_lab.sh tests/scenarios/S01_cpp_lfsr_sequencer/
   ```
 
-> 💡 **全35シナリオの一覧・技術対応表**  
+> **全36シナリオの一覧・技術対応表**  
 > Aコア/Mコア AMP 協調動作、車載 SocketCAN、AXI CDMA 高速転送、HUB75 LED パネルなど、すべての検証シナリオの概要と対応表は、後述の **[提供されているテストシナリオ一覧](#提供されているテストシナリオ一覧)** を参照してください。各シナリオディレクトリ内には図解入りの詳細な `README.md` が用意されています。
 
 ### 3. 対話モードとダッシュボードの利用

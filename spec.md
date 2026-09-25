@@ -57,7 +57,7 @@ graph TD
 - **責務:** アプリケーションが発行するデバイスアクセス（`open`, `ioctl`, `mmap`）を [LD_PRELOAD](./docs/architecture/AddInfo_LD_PRELOAD.md) でインターセプトし、仮想デバイスへリダイレクトする。
 - **現状:** `/dev/fpga*`, `/dev/uio*`, `/dev/i2c-*`, `/dev/mem`, `/dev/ttyUL*`, `/dev/ttyPS*` をトラップ。
 - **/dev/mem 対応:** 全デバイス共通の統合物理アドレス空間を管理し、`mmap` 時に適切な共有メモリ上のオフセットへ自動でリダイレクトする。UIO等のデバイスファイル名（`label`）がDTSに明示的に定義されていないノードへの直接アクセスであっても、物理アドレスベースで透過的にルーティングを保証する。
-- **生成:** `tests/vfpga_config.dts` をソースとし、`scripts/gen_vfpga.py` により自動生成される。
+- **生成:** 各テストシナリオ配下の `config.dts` をソースとし、`scripts/gen_vfpga.py` により自動生成される。
 - **原則:** Device Tree Source (FPGAのレジスタアドレスや定義) を唯一の真実 (Source Truth) とし、Shim (Cコード) と RTL (Verilog) の一貫性を自動的に担保する。
 - **意義:** FWアプリケーションのソースコードを一切変更することなく作成したelfを実機(評価ボード)で実行できる。
 - **背景と歴史:** プラットフォームとしての設計原則やこれまでの意思決定履歴（ADR）については、[ドキュメント履歴](./docs/architecture/AddInfo_history.md) も参照してください。
@@ -133,10 +133,18 @@ graph TD
     - [x] **Register State Tracer**: レジスタ値の変化を検知し、最大500件のスナップショットを履歴保持。
     - [x] **波形可視化**: 正規化表示を用いた時系列グラフ表示機能（recharts）の導入。
     - [x] **IDE スタイル UI**: フレキシブルなペインリサイズ構造への刷新。
+- **Phase 9 (PPA: Plug-and-Play Architecture 5.1 & Zero Touch)** 完了:
+    - [x] **PPA ペリフェラルプラグイン**: `fbb-plugin.json` および UNIX ドメインソケットによる外部 C++ 仮想デバイス（AT24C02C, SSD1306, MCP3208, W25Q128, HT16K33 等）のゼロタッチ統合。
+- **Phase 10 (Reliability & Chaos Engineering)** 完了:
+    - [x] **決定論的カオス障害注入**: `xorshift128+` によるシード駆動型障害注入（I2C NACK, SPI ビット反転, CAN パケットドロップ, CDMA デコードエラー）。
+- **Phase 11 (Robotics & Production Flagship)** 完了:
+    - [x] **ros2_control ハードウェア境界 & AMR 差動二輪運動学**: 1kHz リアルタイム制御ループ、2D オドメトリ、ハードウェア E-STOP、および車載画像処理（i.MX HAL サラウンドビュー 4カメラ合成）。
+- **Phase 12 (DPPA: Dashboard Pane Plugin Architecture & Multi-Monitor)** 完了:
+    - [x] **DPPA 疎結合ペインレジストリ**: 宣言的ペイン登録、マルチモニタ Pop-out（React Portal）、およびネイティブ WebSocket による遅延ゼロ配信。
 
 ---
 
-## 8. 既知の未解決課題 (Known Open Issues)
-- **割り込み通知の遅延:** WSL2上のプロセス間通信による物理割り込みとの時間的乖離。
-- **マルチプロセス競合:** 同一レジスタ空間への複数アプリからのアクセス排他制御。
-- **I2C 詳細エミュレーション:** 現在のダミー応答から、RTL モデルや仮想デバイスへの実データ接続への拡張。
+## 8. 解決済みの主要課題と今後の展望 (Resolved Challenges & Future Scope)
+- **[解決済] I2C / SPI 詳細エミュレーション:** PPA 5.1 仕様および UNIX ドメインソケット通信により、仮想 EEPROM, OLED, ADC, Flash, 7セグ等の実データ完全送受信を達成。
+- **[解決済] UIO 非同期割り込み (IRQ):** eventfd 透過ブロッキングと RTL/C-Shim 連動により、実機標準の `read()` 待機シーケンスを完全透過で達成。
+- **今後の展望:** Ethernet (GEM) や USB 仮想スタックへの TAP/TUN ブリッジ等、さらなる高速ネットワーク系インターフェースの拡張。

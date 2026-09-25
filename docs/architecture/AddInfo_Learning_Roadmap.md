@@ -11,8 +11,9 @@ flowchart TD
     S3["Stage 3: 実践的なハードウェア制御\n(プロトコル検証・DMA・CAN)"]
     S4["Stage 4: ヘテロジニアスマルチコア (AMP)\n(Linux + RTOS / OpenAMP)"]
     S5["Stage 5: モダン組み込み (Rust / C++ / ロボティクス)\n(Embassy, RTIC, ros2_control)"]
+    S6["Stage 6: 実践フラッグシップ (製品レベル協調)\n(i.MX HAL, 自律移動ロボット AMR)"]
 
-    S1 --> S2 --> S3 --> S4 --> S5
+    S1 --> S2 --> S3 --> S4 --> S5 --> S6
 ```
 
 ---
@@ -76,6 +77,16 @@ flowchart TD
 | **5-3** | [18_amp_mcore_Rust_rtic](../../tests/scenarios/18_amp_mcore_Rust_rtic/README.md) | リアルタイムRustフレームワーク（RTIC） |
 | **5-4** | [S01_cpp_lfsr_sequencer](../../tests/scenarios/S01_cpp_lfsr_sequencer/README.md) | C++によるシミュレーション検証 |
 | **5-5** | [22_ros2_control_minimal](../../tests/scenarios/22_ros2_control_minimal/README.md) | ロボット制御（ros2_control）ハードウェア境界と 1kHz リアルタイム制御ループ |
+
+---
+
+## Stage 6: 実践フラッグシップ・プロジェクト（製品レベルの複合スタック体験）
+**目標**: 実製品相当のハードウェア・ソフトウェア複合スタックを統合し、実務で直面する高度な協調デバッグを体験する。
+
+| 順番 | シナリオ名 | 学ぶこと | なぜこの順番か |
+| :--- | :--- | :--- | :--- |
+| **6-1** | [P01_frdmIMX](../../tests/scenarios/P01_frdmIMX/README.md) | 車載画像処理 HAL & 4カメラ合成 | NXP i.MX95/8M Plus を想定したハードウェア抽象化層（HAL）、SoC自動判定、Mesa OpenGL ES によるサラウンドビュー4カメラ歪み補正合成を体験する。 |
+| **6-2** | [P02_robot_amr_ros2](../../tests/scenarios/P02_robot_amr_ros2/README.md) | 自律移動ロボット (AMR) × ROS 2 統合制御 | Zynq UIO を用いた双輪 PWM / QEI エンコーダ、`hardware_interface`、差動二輪運動学・2D オドメトリ、および Web コックピットを統合した F-BB の集大成プロジェクト。 |
 
 ---
 
