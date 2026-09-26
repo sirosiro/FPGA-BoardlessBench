@@ -219,11 +219,11 @@ export default function Ros2TeleopConsolePane() {
   };
 
   const missionPresets = manifest?.mission_presets || [
-    { id: 'fwd', name: '直進 1.0m (Forward)', cmd: { v: 0.20, w: 0.0 } },
-    { id: 'rev', name: '後退 1.0m (Reverse)', cmd: { v: -0.20, w: 0.0 } },
-    { id: 'pivot_left', name: '左旋回 (Pivot Left)', cmd: { v: 0.0, w: 0.50 } },
-    { id: 'spin_360', name: '360° 超信地旋回 (Spin 360°)', cmd: { v: 0.0, w: 1.00 } },
-    { id: 's_curve', name: 'S字スラローム (S-Curve)', cmd: { v: 0.20, w: 0.40 } }
+    { id: 'fwd', name: 'Forward 1.0m', cmd: { v: 0.20, w: 0.0 } },
+    { id: 'rev', name: 'Reverse 1.0m', cmd: { v: -0.20, w: 0.0 } },
+    { id: 'pivot_left', name: 'Pivot Left 90°', cmd: { v: 0.0, w: 0.50 } },
+    { id: 'spin_360', name: 'Spin 360°', cmd: { v: 0.0, w: 1.00 } },
+    { id: 's_curve', name: 'S-Curve', cmd: { v: 0.20, w: 0.40 } }
   ];
 
   return (
