@@ -7,8 +7,10 @@ function parseAnsi(text) {
   if (!text) return text;
 
   // Clean non-color terminal control sequences (e.g. clear line, cursor movements)
+  // eslint-disable-next-line no-control-regex
   const cleanedText = text.replace(/\u001b\[[0-9;]*[a-hK-Z]/g, '');
 
+  // eslint-disable-next-line no-control-regex
   const ansiRegex = /\u001b\[([0-9;]*)m/;
   const parts = [];
   let remaining = cleanedText;
@@ -76,7 +78,7 @@ function parseAnsi(text) {
   if (remaining.length > 0) {
     parts.push(
       <span
-        key={keyCounter++}
+        key={keyCounter}
         style={{
           color: currentStyle.color || undefined,
           fontWeight: currentStyle.fontWeight || undefined,

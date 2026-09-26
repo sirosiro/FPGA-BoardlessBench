@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import { useState } from 'react';
 import { useDashboard } from './DashboardContext';
 import { Tv, AlertCircle, ZoomIn, ZoomOut, RotateCcw } from 'lucide-react';
 

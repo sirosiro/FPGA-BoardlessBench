@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import { 
   Zap, Play, Square, RotateCcw, Copy, Check, Dices, 
-  Terminal, ShieldAlert, Cpu, AlertTriangle, RefreshCw, Trash2 
+  Terminal, Cpu, AlertTriangle, Trash2 
 } from 'lucide-react';
 import { useDashboard } from './DashboardContext';
 
@@ -15,7 +15,6 @@ const ChaosPanel = () => {
   const [selectedCores, setSelectedCores] = useState({ acore: true });
 
   // Chaos engine configuration
-  const [chaosEnabled, setChaosEnabled] = useState(false);
   const [chaosMode, setChaosMode] = useState('random'); // 'off', 'random', 'fixed'
   const [seed, setSeed] = useState('');
   const [rate, setRate] = useState(20); // 20%
@@ -56,7 +55,6 @@ const ChaosPanel = () => {
             setSelectedCores(sel);
           }
           if (data.chaos) {
-            setChaosEnabled(data.chaos.enabled);
             setChaosMode(data.chaos.mode || (data.chaos.enabled ? 'random' : 'off'));
             setSeed(data.chaos.seed || '');
             if (data.chaos.rate !== undefined) setRate(Math.round(data.chaos.rate * 100));
@@ -81,7 +79,6 @@ const ChaosPanel = () => {
         });
       }
       if (data.chaos) {
-        setChaosEnabled(data.chaos.enabled);
         setChaosMode(data.chaos.mode || (data.chaos.enabled ? 'random' : 'off'));
         if (data.chaos.seed) setSeed(data.chaos.seed);
       }

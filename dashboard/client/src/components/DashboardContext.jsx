@@ -128,7 +128,7 @@ export const DashboardProvider = ({ children }) => {
           ch.postMessage({ type: 'SYNC_HIDDEN_TRACE_KEYS', payload: updated });
           ch.close();
         }
-      } catch (e) {
+      } catch {
         // ignore
       }
       return updated;

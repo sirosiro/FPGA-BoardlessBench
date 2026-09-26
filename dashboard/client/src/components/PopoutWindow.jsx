@@ -7,13 +7,17 @@
  * dark theme styling, and provides an automatic re-docking handler when closed.
  */
 
-import React, { useEffect, useState, useRef } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { createPortal } from 'react-dom';
-import { ArrowDownLeft, ExternalLink } from 'lucide-react';
 
 export default function PopoutWindow({ title, onClose, win: winProp, children }) {
   const [container, setContainer] = useState(null);
   const winRef = useRef(null);
+  const onCloseRef = useRef(onClose);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
 
   useEffect(() => {
     // Use window opened synchronously in click handler (Safari compliant), or fallback to opening here
@@ -54,7 +58,7 @@ export default function PopoutWindow({ title, onClose, win: winProp, children })
           });
           win.document.head.appendChild(newStyle);
         }
-      } catch (e) {
+      } catch {
         // Cross-origin access restriction - safe to ignore
       }
     });
@@ -138,14 +142,16 @@ export default function PopoutWindow({ title, onClose, win: winProp, children })
     rootDiv.appendChild(topBar);
     rootDiv.appendChild(contentDiv);
 
-    setContainer(contentDiv);
+    queueMicrotask(() => {
+      setContainer(contentDiv);
+    });
 
     // Auto re-dock when child window is closed
     let isClosed = false;
     const handleClose = () => {
       if (isClosed) return;
       isClosed = true;
-      onClose();
+      onCloseRef.current?.();
     };
 
     win.addEventListener('beforeunload', handleClose);
@@ -167,7 +173,7 @@ export default function PopoutWindow({ title, onClose, win: winProp, children })
         win.close();
       }
     };
-  }, [winProp]);
+  }, [winProp, title, onClose]);
 
   if (!container) return null;
 

@@ -41,7 +41,7 @@ class Device:
             parts = base_reg.split()
             self.base_addr = int(parts[0], 0) if len(parts) >= 1 else 0
             self.size = int(parts[1], 0) if len(parts) >= 2 else 0
-        except:
+        except (ValueError, TypeError, IndexError, AttributeError):
             self.base_addr = 0
             self.size = 0
 

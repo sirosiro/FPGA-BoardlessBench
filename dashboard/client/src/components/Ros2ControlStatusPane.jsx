@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import { useState, useEffect } from 'react';
 import { useDashboard } from './DashboardContext';
 import { Gauge, CheckCircle2, AlertTriangle, ShieldCheck, Activity, Cpu } from 'lucide-react';
 

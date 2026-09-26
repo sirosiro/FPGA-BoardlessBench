@@ -75,7 +75,7 @@ function FramebufferCanvas({ ctrl, frameData, slaveData, fullHeight = false, fit
   const cols = parsedSlaveGrid ? parsedSlaveGrid[0] : (parsedCtrlGrid ? parsedCtrlGrid[0] : (ctrl?.width || (format === 'mono_page_8' ? 128 : 64)));
   const rows = parsedSlaveGrid ? parsedSlaveGrid[1] : (parsedCtrlGrid ? parsedCtrlGrid[1] : (ctrl?.height || (format === 'mono_page_8' ? 64 : 64)));
 
-  const palette = ctrl?.palette || { bg: '#040604', fg: '#00ff50' };
+  const palette = React.useMemo(() => ctrl?.palette || { bg: '#040604', fg: '#00ff50' }, [ctrl?.palette]);
 
   React.useEffect(() => {
     const canvas = canvasRef.current;
@@ -133,7 +133,9 @@ function FramebufferCanvas({ ctrl, frameData, slaveData, fullHeight = false, fit
               }
             }
           }
-        } catch (e) {}
+        } catch {
+          // ignore corrupt frame
+        }
       }
       ctx.putImageData(imgData, 0, 0);
     } else if (format === 'rgb24') {
@@ -176,7 +178,9 @@ function FramebufferCanvas({ ctrl, frameData, slaveData, fullHeight = false, fit
                 }
               }
             }
-          } catch (e) {}
+          } catch {
+            // ignore corrupt frame
+          }
         }
       } else {
         const imgData = ctx.createImageData(cols, rows);
@@ -196,7 +200,9 @@ function FramebufferCanvas({ ctrl, frameData, slaveData, fullHeight = false, fit
                 imgData.data[dstIdx + 3] = 255;
               }
             }
-          } catch (e) {}
+          } catch {
+            // ignore corrupt frame
+          }
         }
         ctx.putImageData(imgData, 0, 0);
       }
@@ -265,7 +271,7 @@ function FramebufferCanvas({ ctrl, frameData, slaveData, fullHeight = false, fit
 }
 
 // PPA 5.0 Backward Compatibility Control Normalizer
-function normalizeControlSpec(ctrl, slaveData) {
+function normalizeControlSpec(ctrl) {
   if (!ctrl) return null;
   let type = ctrl.type;
   if (type === 'canvas_stream' || type === 'oled') {
@@ -340,7 +346,7 @@ function GenericPeripheralPane(props) {
 
   const title = slaveData?.ui_widget?.title || slaveData?.name || pId || "Generic Peripheral";
   const rawControls = slaveData?.ui_widget?.controls || [];
-  const controls = rawControls.map(c => normalizeControlSpec(c, slaveData));
+  const controls = rawControls.map(c => normalizeControlSpec(c));
   const displayCtrls = controls.filter(c => c.type === 'framebuffer');
   const segmentCtrls = controls.filter(c => c.type === 'segment_array');
   const hasDisplayWidget = displayCtrls.length > 0 || segmentCtrls.length > 0;
@@ -559,7 +565,9 @@ function GenericPeripheralPane(props) {
                         seg7Bytes = [buffer[0], buffer[2], buffer[6], buffer[8]];
                         seg7Colon = (buffer[4] & 0x02) !== 0;
                       }
-                    } catch (e) {}
+                    } catch {
+                      // ignore corrupt frame
+                    }
                   }
 
                   return (

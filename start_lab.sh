@@ -11,6 +11,7 @@ if [ "$#" -ne 1 ]; then
     exit 1
 fi
 
+PROJECT_ROOT=$(cd "$(dirname "$0")" && pwd)
 SCENARIO_DIR=$1
 DTS_PATH="${SCENARIO_DIR}/config.dts"
 

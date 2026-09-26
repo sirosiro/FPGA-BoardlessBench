@@ -7,7 +7,6 @@
  * for multi-monitor viewing.
  */
 
-import React from 'react';
 import { ExternalLink } from 'lucide-react';
 
 export default function DockHeaderActions(props) {

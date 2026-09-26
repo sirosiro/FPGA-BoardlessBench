@@ -462,7 +462,7 @@ def remoteproc_monitor_thread(dts_path):
                         with open(pid_file, "r") as f:
                             try:
                                 existing_pid = int(f.read().strip())
-                            except:
+                            except (ValueError, OSError):
                                 pass
                     
                     process_running = False
@@ -548,7 +548,7 @@ def remoteproc_monitor_thread(dts_path):
                         with open(pid_file, "r") as f:
                             try:
                                 existing_pid = int(f.read().strip())
-                            except:
+                            except (ValueError, OSError):
                                 pass
                     
                     if existing_pid > 0:

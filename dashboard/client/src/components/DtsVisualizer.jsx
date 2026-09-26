@@ -18,7 +18,7 @@ function DtsVisualizer() {
   const [customErrorInput, setCustomErrorInput] = useState('');
   const [expandedDevices, setExpandedDevices] = useState({});
 
-  const fetchDtsData = async () => {
+  const handleRefresh = async () => {
     setLoading(true);
     try {
       const res = await fetch('/api/dts/tree');
@@ -34,7 +34,24 @@ function DtsVisualizer() {
   };
 
   useEffect(() => {
-    fetchDtsData();
+    let ignore = false;
+    fetch('/api/dts/tree')
+      .then(res => (res.ok ? res.json() : null))
+      .then(data => {
+        if (!ignore && data) {
+          setDtsData(data);
+          setLoading(false);
+        }
+      })
+      .catch(e => {
+        if (!ignore) {
+          console.error('Failed to fetch DTS tree data:', e);
+          setLoading(false);
+        }
+      });
+    return () => {
+      ignore = true;
+    };
   }, []);
 
   const toggleExpand = (deviceName) => {
@@ -183,7 +200,7 @@ function DtsVisualizer() {
           >
             <Sparkles size={13} style={{ color: '#e5c07b' }} /> AI Checker
           </button>
-          <button onClick={fetchDtsData} title="Refresh" style={{ background: '#333333', color: '#aaaaaa', border: 'none', padding: '4px 6px', borderRadius: '4px', cursor: 'pointer' }}>
+          <button onClick={handleRefresh} title="Refresh" style={{ background: '#333333', color: '#aaaaaa', border: 'none', padding: '4px 6px', borderRadius: '4px', cursor: 'pointer' }}>
             <RefreshCw size={13} />
           </button>
         </div>

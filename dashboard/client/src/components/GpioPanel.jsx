@@ -91,7 +91,7 @@ function GpioPanel() {
                 <div className="gpio-dev-label" style={{ fontWeight: 600, fontSize: '0.85rem', color: '#58a6ff', marginBottom: '0.5rem' }}>{labelName}</div>
                 <div className="gpio-grid">
                   {Array.from({ length: totalPins }).map((_, bitIndex) => {
-                    let isInput = false;
+                    let isInput;
                     if (dirReg) {
                       const isActiveLow = dirReg.direction_mode === 'active_low_input' || (dirReg.logical_name || '').toUpperCase().includes('INV');
                       isInput = isActiveLow ? (dirVal & (1 << bitIndex)) === 0 : (dirVal & (1 << bitIndex)) !== 0;

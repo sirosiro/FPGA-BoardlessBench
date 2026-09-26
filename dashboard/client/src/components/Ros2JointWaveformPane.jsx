@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useDashboard } from './DashboardContext';
 import {
   LineChart,
@@ -20,7 +20,10 @@ export default function Ros2JointWaveformPane() {
   const [isPaused, setIsPaused] = useState(false);
   const [selectedJoint, setSelectedJoint] = useState('all');
   const isPausedRef = useRef(false);
-  isPausedRef.current = isPaused;
+
+  useEffect(() => {
+    isPausedRef.current = isPaused;
+  }, [isPaused]);
 
   useEffect(() => {
     if (!socket) return;

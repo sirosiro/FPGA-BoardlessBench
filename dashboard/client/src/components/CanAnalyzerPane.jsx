@@ -1,6 +1,6 @@
-import React, { useState, useEffect, useRef } from 'react';
+import { useState, useEffect, useRef } from 'react';
 import { useDashboard } from './DashboardContext';
-import { Play, Pause, Trash2, Send, Filter, Radio, RefreshCw, Car } from 'lucide-react';
+import { Play, Pause, Trash2, Send, Filter, Radio, Car } from 'lucide-react';
 
 export default function CanAnalyzerPane() {
   const { socket } = useDashboard();
@@ -8,7 +8,7 @@ export default function CanAnalyzerPane() {
   const [filterId, setFilterId] = useState('');
   const [filterChannel, setFilterChannel] = useState('all');
   const [isPaused, setIsPaused] = useState(false);
-  const [autoScroll, setAutoScroll] = useState(true);
+  const [autoScroll] = useState(true);
 
   // Injection state
   const [txBus, setTxBus] = useState('0');

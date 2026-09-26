@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { useState, useEffect, useRef, useCallback } from 'react';
 import { useDashboard } from './DashboardContext';
 import { MapPin, RotateCcw, ZoomIn, ZoomOut, Crosshair, Trash2 } from 'lucide-react';
 
@@ -18,13 +18,22 @@ export default function Ros2PoseMap2DPane() {
   const [pan, setPan] = useState({ x: 0, y: 0 });
   const [isFollowing, setIsFollowing] = useState(true);
   const isFollowingRef = useRef(true);
-  isFollowingRef.current = isFollowing;
   const zoomRef = useRef(zoom);
-  zoomRef.current = zoom;
   const panRef = useRef(pan);
-  panRef.current = pan;
   const isPanningRef = useRef(false);
   const lastMouseRef = useRef({ x: 0, y: 0 });
+
+  useEffect(() => {
+    isFollowingRef.current = isFollowing;
+  }, [isFollowing]);
+
+  useEffect(() => {
+    zoomRef.current = zoom;
+  }, [zoom]);
+
+  useEffect(() => {
+    panRef.current = pan;
+  }, [pan]);
 
   // Fetch robot manifest for chassis dimensions
   useEffect(() => {
@@ -180,7 +189,7 @@ export default function Ros2PoseMap2DPane() {
     });
 
     // 1. Draw Adaptive Grid Lines
-    let gridStep = 0.5;
+    let gridStep;
     if (zoom < 15) gridStep = 10.0;
     else if (zoom < 35) gridStep = 5.0;
     else if (zoom < 75) gridStep = 2.0;

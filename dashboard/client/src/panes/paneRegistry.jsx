@@ -7,7 +7,6 @@
  * inspired by F-BB's Peripheral Plugin Architecture (PPA: ADR #005).
  */
 
-import React from 'react';
 import {
   Cpu,
   Activity,
@@ -31,7 +30,7 @@ import UartTerminal from '../components/UartTerminal';
 import RegisterTracer from '../components/RegisterTracer';
 import HdmiOutput from '../components/HdmiOutput';
 import SdCardPanel from '../components/SdCardPanel';
-import DtsVisualizer from '../components/DTSVisualizer';
+import DtsVisualizer from '../components/DtsVisualizer';
 import GenericPeripheralPane from '../components/GenericPeripheralPane';
 import TransactionLoggerPane from '../components/TransactionLoggerPane';
 import CanAnalyzerPane from '../components/CanAnalyzerPane';

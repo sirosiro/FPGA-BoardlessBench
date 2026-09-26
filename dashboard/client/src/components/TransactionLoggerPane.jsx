@@ -24,7 +24,7 @@ const parseLogEntry = (logStr, defaultTimestamp, index = 0) => {
   let cleanLog = logStr;
 
   // Extract C-Shim timestamp "[ts=1787405898492]" or "[13:35:11.822]" if present
-  const tsMatch = typeof logStr === 'string' ? logStr.match(/^\[(?:ts=)?(\d[\d:\.A-Za-z_-]*)\]\s*(.*)/) : null;
+  const tsMatch = typeof logStr === 'string' ? logStr.match(/^\[(?:ts=)?(\d[\d:.A-Za-z_-]*)\]\s*(.*)/) : null;
   if (tsMatch) {
     timestamp = tsMatch[1];
     cleanLog = tsMatch[2];
