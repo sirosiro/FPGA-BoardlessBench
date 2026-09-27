@@ -22,10 +22,50 @@ function DashboardInner() {
   const [components, setComponents] = useState(() => getDockviewComponentsMap());
   const dropdownRef = useRef(null);
 
+  // Helper to fetch and restore saved layout (fbb_layout.json)
+  const restoreSavedLayout = async (api) => {
+    if (!api) return false;
+    const layoutUrl = screenParam && screenParam !== 'main' && screenParam !== 'default'
+      ? `/api/layout?screen=${encodeURIComponent(screenParam)}`
+      : '/api/layout';
+
+    try {
+      const response = await fetch(layoutUrl);
+      if (response.ok) {
+        const layoutData = await response.json();
+        if (layoutData && Object.keys(layoutData).length > 0) {
+          // Remap stale UART device names in saved layout to actual manifest UARTs
+          const validUartNames = (manifest?.uarts || []).map(u => u.name);
+          if (layoutData.panels) {
+            Object.values(layoutData.panels).forEach(panel => {
+              if (panel.contentComponent === 'uartTerminal' && panel.params?.deviceName) {
+                if (validUartNames.length > 0 && !validUartNames.includes(panel.params.deviceName)) {
+                  panel.params.deviceName = validUartNames[0];
+                  panel.title = `UART: ${validUartNames[0]}`;
+                }
+              }
+              if (panel.contentComponent === 'oledDisplay' || panel.contentComponent === 'seg7Display') {
+                panel.contentComponent = 'genericPeripheralPane';
+              }
+            });
+          }
+          api.fromJSON(layoutData);
+          return true;
+        }
+      }
+    } catch (e) {
+      console.warn(`[Dashboard] Could not restore saved layout for screen '${screenParam}':`, e);
+    }
+    return false;
+  };
+
   // DPPA: Load zero-rebuild external ESM panes at startup or scenario change
   useEffect(() => {
-    loadExternalPanes(() => {
+    loadExternalPanes(async () => {
       setComponents(getDockviewComponentsMap());
+      if (apiRef.current) {
+        await restoreSavedLayout(apiRef.current);
+      }
     });
   }, [manifest?.scenario_dir]);
 
@@ -81,44 +121,24 @@ function DashboardInner() {
     }
   };
 
-  // @intent:rationale マウント時にバックエンドから保存済みのレイアウト（?screen=<id> 指定時は fbb_layout_${screen}.json、未指定時は fbb_layout.json）をフェッチし、存在する場合は Dockview API にロードして復元します。
+  // @intent:rationale マウント時に外部 DPPA ペインをロード完了させてから保存済みレイアウトを復元します。
   const onReady = async (event) => {
     const api = event.api;
     apiRef.current = api;
 
-    const layoutUrl = screenParam && screenParam !== 'main' && screenParam !== 'default'
-      ? `/api/layout?screen=${encodeURIComponent(screenParam)}`
-      : '/api/layout';
-
+    // 1. Ensure external DPPA plugin panes are loaded first
     try {
-      const response = await fetch(layoutUrl);
-      if (response.ok) {
-        const layoutData = await response.json();
-        if (layoutData && Object.keys(layoutData).length > 0) {
-          // Remap stale UART device names in saved layout to actual manifest UARTs
-          const validUartNames = (manifest?.uarts || []).map(u => u.name);
-          if (layoutData.panels) {
-            Object.values(layoutData.panels).forEach(panel => {
-              if (panel.contentComponent === 'uartTerminal' && panel.params?.deviceName) {
-                if (validUartNames.length > 0 && !validUartNames.includes(panel.params.deviceName)) {
-                  panel.params.deviceName = validUartNames[0];
-                  panel.title = `UART: ${validUartNames[0]}`;
-                }
-              }
-              if (panel.contentComponent === 'oledDisplay' || panel.contentComponent === 'seg7Display') {
-                panel.contentComponent = 'genericPeripheralPane';
-              }
-            });
-          }
-          api.fromJSON(layoutData);
-          return;
-        }
-      }
-    } catch (e) {
-      console.warn(`[Dashboard] No saved layout found for screen '${screenParam}', using default layout.`, e);
+      await loadExternalPanes();
+      setComponents(getDockviewComponentsMap());
+    } catch (err) {
+      console.warn('[DPPA] Pre-layout external pane loading warning:', err);
     }
 
-    initLayout(api);
+    // 2. Restore saved layout (or fallback to initLayout)
+    const restored = await restoreSavedLayout(api);
+    if (!restored) {
+      initLayout(api);
+    }
   };
 
   const initLayout = (api) => {
@@ -283,8 +303,10 @@ function DashboardInner() {
     }
   };
 
-  const handleResetLayout = () => {
-    if (apiRef.current) {
+  const handleResetLayout = async () => {
+    if (!apiRef.current) return;
+    const restored = await restoreSavedLayout(apiRef.current);
+    if (!restored) {
       initLayout(apiRef.current);
     }
   };

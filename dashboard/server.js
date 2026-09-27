@@ -1263,7 +1263,7 @@ app.get('/api/plugins/panes/:pluginId/:filename', (req, res) => {
         const filePath = path.join(matched.baseDir, filename);
         if (fs.existsSync(filePath)) {
             res.setHeader('Content-Type', 'application/javascript; charset=utf-8');
-            return res.sendFile(filePath);
+            return res.sendFile(filePath, { dotfiles: 'allow' });
         } else {
             return res.status(404).send('File missing');
         }
