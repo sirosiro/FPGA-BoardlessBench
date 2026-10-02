@@ -4,10 +4,10 @@ export LC_ALL=C
 export LANG=C
 
 # F-BB Integrated Launcher
-# Usage: ./start_lab.sh <scenario_dir>
+# Usage: ./start_lab.sh <scenario_dir> [scenario_args...]
 
-if [ "$#" -ne 1 ]; then
-    echo "Usage: $0 <scenario_dir>"
+if [ "$#" -lt 1 ]; then
+    echo "Usage: $0 <scenario_dir> [scenario_args...]"
     exit 1
 fi
 
@@ -183,7 +183,7 @@ fi
 
 export LD_BIND_NOW=1
 export FBB_ACTIVE=1
-"${SCENARIO_DIR}/run.sh" &
+"${SCENARIO_DIR}/run.sh" "${@:2}" &
 APP_PID=$!
 
 echo ""

@@ -1125,6 +1125,20 @@ app.get('/api/scenario/robot-manifest', (req, res) => {
         return res.status(500).json({ error: e.message });
     }
 });
+
+// GET /api/scenario/rct-program - Load active RCT program generated from HEX
+app.get('/api/scenario/rct-program', (req, res) => {
+    const tmpPath = '/tmp/rct_active_program.json';
+    try {
+        if (fs.existsSync(tmpPath)) {
+            res.setHeader('Content-Type', 'application/json; charset=utf-8');
+            return res.sendFile(tmpPath);
+        }
+        return res.status(404).json({ message: 'No rct_active_program.json found' });
+    } catch (e) {
+        return res.status(500).json({ error: e.message });
+    }
+});
 // =============================================================================
 // DPPA (Dashboard Pane Plugin Architecture) - Dynamic Pane Loader API
 // =============================================================================

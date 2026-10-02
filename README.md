@@ -311,6 +311,11 @@ fbb test
 ```bash
 # 特定のシナリオでラボを起動（例：S01_cpp_lfsr_sequencer）
 ./start_lab.sh tests/scenarios/S01_cpp_lfsr_sequencer/
+
+# シナリオ固有の追加引数・ファームウェアバイナリ等を指定して起動（パススルー対応）
+# （第2引数以降は対象シナリオの run.sh へそのまま透過伝達されます）
+# 例: RetroCoreTracer-FBB 等の外部プラグインシナリオで特定の .hex ファイルを指定する場合
+./start_lab.sh /workspaces/RetroCoreTracer-FBB/scenario/ examples/z80_loop_test.hex
 ```
 
 起動後、以下の方法でシミュレーション環境にアクセスできます：
