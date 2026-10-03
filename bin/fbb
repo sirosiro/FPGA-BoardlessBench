@@ -663,7 +663,7 @@ def command_debug(args):
 
     # 1. Build Phase
     if not getattr(args, "no_build", False):
-        print(f"🔨 [F-BB Debug] Building simulation engine & target for scenario: {scenario_name} (Debug mode)...")
+        print(f"[F-BB Debug] Building simulation engine & target for scenario: {scenario_name} (Debug mode)...")
         if getattr(args, "clean", False):
             clean_cmd = [os.path.join(PROJECT_ROOT, "tests/scenario_runner.sh"), s_dir, "--clean"]
             subprocess.run(clean_cmd, cwd=PROJECT_ROOT)
@@ -678,14 +678,14 @@ def command_debug(args):
         ]
         res = subprocess.run(cmake_cfg, cwd=PROJECT_ROOT)
         if res.returncode != 0:
-            print(f"❌ CMake configure failed for scenario: {scenario_name}")
+            print(f"[F-BB Debug ERROR] CMake configure failed for scenario: {scenario_name}")
             sys.exit(res.returncode)
 
         jobs = str(min(os.cpu_count() or 4, 8))
         cmake_bld = ["cmake", "--build", build_dir, "--parallel", jobs]
         res = subprocess.run(cmake_bld, cwd=PROJECT_ROOT)
         if res.returncode != 0:
-            print(f"❌ Build failed for scenario: {scenario_name}")
+            print(f"[F-BB Debug ERROR] Build failed for scenario: {scenario_name}")
             sys.exit(res.returncode)
 
         # Ensure generator_gdb runs to update fbb_gdb.py & .gdbinit
@@ -727,13 +727,21 @@ def command_debug(args):
         else:
             target_bin = os.path.join(s_dir, "test_bin")
 
+    # Ensure binary is also copied to scenario folder for VS Code ${fileDirname}/test_bin
+    s_dir_bin = os.path.join(s_dir, "test_bin")
+    if target_bin and os.path.exists(target_bin) and target_bin != s_dir_bin:
+        try:
+            shutil.copy2(target_bin, s_dir_bin)
+        except Exception:
+            pass
+
     # 3. Start Backend Simulation Engine
     controller_script = os.path.join(PROJECT_ROOT, "src/controller/vlogic_controller.py")
     simulator_bin = os.path.join(PROJECT_ROOT, "vfpga_sim")
     if not os.path.exists(simulator_bin):
         simulator_bin = os.path.join(PROJECT_ROOT, "build/vfpga_sim")
 
-    print(f"🚀 [F-BB Debug] Starting simulation backend (controller & vfpga_sim)...")
+    print(f"[F-BB Debug] Starting simulation backend (controller & vfpga_sim)...")
     ctrl_log = open(os.path.join(s_dir, "controller.log"), "w", encoding="utf-8")
     sim_log = open(os.path.join(s_dir, "simulator.log"), "w", encoding="utf-8")
 
@@ -756,13 +764,13 @@ def command_debug(args):
     time.sleep(1.5)
 
     if getattr(args, "server_only", False):
-        print(f"✅ [F-BB Debug] Debug server is READY for scenario: {scenario_name}")
+        print(f"[F-BB Debug] Debug server is READY for scenario: {scenario_name}")
         print(f"  Target Binary: {target_bin}")
         print(f"  PIDs: {pids}")
         return
 
     # 4. Interactive GDB Launch
-    print(f"🐞 [F-BB Debug] Starting GDB on target: {target_bin}")
+    print(f"[F-BB Debug] Starting GDB on target: {target_bin}")
     print("  (Type 'fbb-regs' to inspect virtual registers, 'c' to continue, 'q' to quit)")
 
     gdb_script = os.path.join(s_dir, "fbb_gdb.py")
@@ -782,9 +790,9 @@ def command_debug(args):
     try:
         subprocess.run(gdb_cmd, env=env, cwd=s_dir)
     finally:
-        print("\n🧹 [F-BB Debug] Cleaning up simulation server...")
+        print("\n[F-BB Debug] Cleaning up simulation server...")
         stop_debug_server(silent=True)
-        print("✨ [F-BB Debug] Session finished.")
+        print("[F-BB Debug] Session finished.")
 
 
 def command_plugin_list(args):
