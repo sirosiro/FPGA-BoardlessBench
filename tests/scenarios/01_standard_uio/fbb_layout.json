@@ -4,45 +4,95 @@
             "type": "branch",
             "data": [
                 {
-                    "type": "leaf",
-                    "data": {
-                        "views": [
-                            "registerMonitor"
-                        ],
-                        "activeView": "registerMonitor",
-                        "id": "2"
-                    },
-                    "size": 313
+                    "type": "branch",
+                    "data": [
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "registerMonitor"
+                                ],
+                                "activeView": "registerMonitor",
+                                "id": "1"
+                            },
+                            "size": 288
+                        },
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "dtsVisualizer"
+                                ],
+                                "activeView": "dtsVisualizer",
+                                "id": "3"
+                            },
+                            "size": 759
+                        }
+                    ],
+                    "size": 520.8409842522815
                 },
                 {
-                    "type": "leaf",
-                    "data": {
-                        "views": [
-                            "registerTracer"
-                        ],
-                        "activeView": "registerTracer",
-                        "id": "4"
-                    },
-                    "size": 972
+                    "type": "branch",
+                    "data": [
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "registerTracer"
+                                ],
+                                "activeView": "registerTracer",
+                                "id": "4"
+                            },
+                            "size": 544
+                        },
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "chaosEngine"
+                                ],
+                                "activeView": "chaosEngine",
+                                "id": "2"
+                            },
+                            "size": 503
+                        }
+                    ],
+                    "size": 1223.1590157477185
                 }
             ],
-            "size": 802
+            "size": 1047
         },
-        "width": 1285,
-        "height": 802,
+        "width": 1744,
+        "height": 1047,
         "orientation": "HORIZONTAL"
     },
     "panels": {
-        "registerMonitor": {
-            "id": "registerMonitor",
-            "contentComponent": "registerMonitor",
-            "title": "Registers"
+        "chaosEngine": {
+            "id": "chaosEngine",
+            "contentComponent": "chaosEngine",
+            "params": {
+                "_componentName": "chaosEngine"
+            },
+            "title": "Chaos & Fault Injection"
         },
         "registerTracer": {
             "id": "registerTracer",
             "contentComponent": "registerTracer",
             "title": "Tracer"
+        },
+        "registerMonitor": {
+            "id": "registerMonitor",
+            "contentComponent": "registerMonitor",
+            "title": "Registers"
+        },
+        "dtsVisualizer": {
+            "id": "dtsVisualizer",
+            "contentComponent": "dtsVisualizer",
+            "params": {
+                "_componentName": "dtsVisualizer"
+            },
+            "title": "DTS Visualizer & AI"
         }
     },
-    "activeGroup": "4"
+    "activeGroup": "2"
 }
