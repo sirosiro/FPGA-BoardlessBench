@@ -42,6 +42,7 @@ module vfpga_top (
         case (addr)
             32'h40000000: r_data = CTRL;
             32'h40000004: r_data = STATUS;
+            32'h40000008: r_data = 32'h0;
             32'h4000000C: r_data = CNT;
             default: r_data = 32'hdeadbeef;
         endcase
