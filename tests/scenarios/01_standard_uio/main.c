@@ -59,6 +59,7 @@ int main() {
 
     printf("[App] 0x10(RST) 経由でカウンターをリセットします...\n");
     regs[4] = 1; // 0x10 (16) / 4 = 4
+    sleep(1);
     regs[4] = 0;
 
     printf("[App] 0x14(EN) 経由でカウンターを有効化します...\n");
