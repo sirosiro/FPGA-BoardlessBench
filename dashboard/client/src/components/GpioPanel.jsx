@@ -37,90 +37,124 @@ function GpioPanel() {
           allGpioDevs.map((dev, i) => {
             const devRegs = registers.filter(r => r.deviceName === dev.name);
             const isHub75 = dev.compatible?.includes('hub75') || dev.name?.includes('matrix');
+            const totalPins = dev.pin_count || dev.pins || 16;
 
             // =========================================================================
-            // [CRITICAL SECTION] GPIO 方向・データレジスタ判定ロジック (Regression Guard)
+            // [CRITICAL SECTION] GPIO チャネル分離・方向・データレジスタ判定ロジック (Regression Guard)
             // =========================================================================
             // @intent:responsibility
-            //   DTS/マニフェストから取得したレジスタ定義に基づき、方向レジスタ(dirReg)、
-            //   出力レジスタ(dataOutReg)、入力レジスタ(dataInReg)をSoC非依存に正確に分離・特定する。
-            // @intent:historical-context (過去3回のエンバグの教訓)
+            //   DTS/マニフェストから取得したレジスタ定義に基づき、単一チャネル、入出力分離型、
+            //   およびデュアル/マルチチャネル構成（AXI GPIO等）をSoC非依存に正確に判別・グループ化する。
+            // @intent:historical-context (過去4回のエンバグの教訓)
             //   1. 最初期: NXPのレジスタ名 'PDIR'/'PDOR' をハードコードしていたため汎用性に欠けていた。
             //   2. 汎用化リファクタ時: r.name.includes('IN') に変更したが、'PDIR' には連続した 'IN' が
             //      含まれずマッチ失敗。dataInReg が常に dataOutReg(PDOR) にフォールバックする潜在バグが発生。
             //   3. 直前の修正: サーバー側の全SHM一括上書きバグをアトミックな4バイト局所書き込みへ改善した際、
             //      クライアントが誤って指定していた PDOR(出力) にのみ書き込まれ、FWがポーリングする PDIR(入力) に
             //      値が渡らない問題として顕在化した。
+            //   4. デュアルチャネル対応の復元: AXI GPIO (DATA/TRI, DATA2/TRI2) のように複数の独立した入出力チャネル
+            //      を持つ構成において、第2チャネルが単一チャネルのPDOR/PDIRペアと誤認されて消失していた問題を解消。
             // @intent:invariant
             //   - 単一レジスタ構成 (Zynq等): DATA @ 0x00 のみ存在。dataOutReg と dataInReg は同一レジスタを参照。
             //   - 分離レジスタ構成 (i.MX95, STM32等): 出力(PDOR/ODR/DOUT) と 入力(PDIR/IDR/DIN) が物理的に分離。
+            //   - デュアル/マルチチャネル構成 (AXI GPIO等): DATA/TRI (Ch1) と DATA2/TRI2 (Ch2) を独立チャネルとして展開。
             //   - Single Source of Truth: DTSの論理名 (DATA_IN / DATA_OUT / INV_TRI) を最優先とし、
             //     フォールバックとして業界標準の命名規則 (IDR/ODR, DIN/DOUT, *IN*/*OUT*) を評価すること。
             //   - 入力トグル操作時 (handleGpioToggle): 必ず dataInReg.name を引数として渡すこと。
             // =========================================================================
-            const dirReg = devRegs.find(r => 
-              Boolean(r.direction_mode) || 
-              (r.name || '').toUpperCase().includes('TRI') || 
-              (r.logical_name || '').toUpperCase().includes('TRI')
-            );
 
-            const dataRegs = devRegs.filter(r => (r.logical_name || r.name).toUpperCase().includes('DATA') || r.name.toUpperCase().includes('DR'));
-            let dataOutReg = dataRegs.find(r => 
-              (r.logical_name || '').toUpperCase().includes('OUT') || 
-              (r.name || '').toUpperCase().includes('OUT') || 
-              (r.name || '').toUpperCase().includes('ODR') ||
-              (r.name || '').toUpperCase().includes('DOUT')
-            ) || dataRegs[0] || devRegs[0];
+            // Group registers into channels based on channel identifiers (e.g. DATA vs DATA2, TRI vs TRI2)
+            const channelMap = new Map();
+            if (devRegs.length === 0) {
+              channelMap.set('1', []);
+            } else {
+              devRegs.forEach(reg => {
+                const rawName = reg.name || '';
+                const match = rawName.match(/(?:GPIO|CH|DATA|TRI|DR)(\d+)/i) || rawName.match(/(\d+)$/);
+                const chNum = match ? match[1] : '1';
+                if (!channelMap.has(chNum)) {
+                  channelMap.set(chNum, []);
+                }
+                channelMap.get(chNum).push(reg);
+              });
+            }
 
-            let dataInReg = dataRegs.find(r => 
-              (r.logical_name || '').toUpperCase().includes('IN') || 
-              (r.name || '').toUpperCase().includes('IN') || 
-              (r.name || '').toUpperCase().includes('IDR') || 
-              (r.name || '').toUpperCase().includes('DIN')
-            ) || dataOutReg;
+            const sortedChannelKeys = Array.from(channelMap.keys()).sort((a, b) => parseInt(a, 10) - parseInt(b, 10));
+            const totalChannels = sortedChannelKeys.length;
 
-            const dirVal = dirReg?.decimal || 0;
-            const dataOutVal = dataOutReg?.decimal || 0;
-            const dataInVal = dataInReg?.decimal || 0;
+            return sortedChannelKeys.map(chKey => {
+              const chRegs = channelMap.get(chKey);
 
-            const labelName = isHub75 ? `${dev.name} (HUB75E Pins)` : dev.name;
-            const totalPins = dev.pin_count || dev.pins || 16;
+              const dirReg = chRegs.find(r => 
+                Boolean(r.direction_mode) || 
+                (r.name || '').toUpperCase().includes('TRI') || 
+                (r.logical_name || '').toUpperCase().includes('TRI')
+              );
 
-            return (
-              <div key={`gpio-${i}`} className="gpio-dev-group" style={{ marginBottom: '1rem' }}>
-                <div className="gpio-dev-label" style={{ fontWeight: 600, fontSize: '0.85rem', color: '#58a6ff', marginBottom: '0.5rem' }}>{labelName}</div>
-                <div className="gpio-grid">
-                  {Array.from({ length: totalPins }).map((_, bitIndex) => {
-                    let isInput;
-                    if (dirReg) {
-                      const isActiveLow = dirReg.direction_mode === 'active_low_input' || (dirReg.logical_name || '').toUpperCase().includes('INV');
-                      isInput = isActiveLow ? (dirVal & (1 << bitIndex)) === 0 : (dirVal & (1 << bitIndex)) !== 0;
-                    } else {
-                      isInput = !isHub75;
-                    }
+              const dataRegs = chRegs.filter(r => 
+                (r.logical_name || r.name).toUpperCase().includes('DATA') || 
+                r.name.toUpperCase().includes('DR')
+              );
 
-                    const isOn = isInput 
-                      ? (dataInVal & (1 << bitIndex)) !== 0
-                      : (dataOutVal & (1 << bitIndex)) !== 0 || isHub75;
+              let dataOutReg = dataRegs.find(r => 
+                (r.logical_name || '').toUpperCase().includes('OUT') || 
+                (r.name || '').toUpperCase().includes('OUT') || 
+                (r.name || '').toUpperCase().includes('ODR') ||
+                (r.name || '').toUpperCase().includes('DOUT')
+              ) || dataRegs[0] || chRegs[0];
 
-                    const pinLabel = isHub75 ? (HUB75_PIN_LABELS[bitIndex] || `B${bitIndex}`) : `B${bitIndex}`;
+              let dataInReg = dataRegs.find(r => 
+                (r.logical_name || '').toUpperCase().includes('IN') || 
+                (r.name || '').toUpperCase().includes('IN') || 
+                (r.name || '').toUpperCase().includes('IDR') || 
+                (r.name || '').toUpperCase().includes('DIN')
+              ) || dataOutReg;
 
-                    return (
-                      <div 
-                        key={bitIndex} 
-                        className={`gpio-bit ${isInput ? 'input' : 'output'} ${isOn ? 'on' : 'off'}`}
-                        onClick={() => handleGpioToggle(dev.name, bitIndex, isOn, dataInReg?.name || 'PDIR')}
-                        style={{ cursor: 'pointer' }}
-                        title={`${labelName} ${pinLabel} (Bit ${bitIndex})`}
-                      >
-                        <div className="gpio-indicator" style={{ pointerEvents: 'none' }}></div>
-                        <span className="gpio-label" style={{ pointerEvents: 'none' }}>{pinLabel}</span>
-                      </div>
-                    );
-                  })}
+              const dirVal = dirReg?.decimal || 0;
+              const dataOutVal = dataOutReg?.decimal || 0;
+              const dataInVal = dataInReg?.decimal || 0;
+
+              const baseLabel = isHub75 ? `${dev.name} (HUB75E Pins)` : dev.name;
+              const labelName = totalChannels > 1
+                ? `${baseLabel} (Channel ${chKey}: ${dataOutReg?.name || `CH${chKey}`})`
+                : baseLabel;
+
+              return (
+                <div key={`gpio-${i}-ch-${chKey}`} className="gpio-dev-group" style={{ marginBottom: '1rem' }}>
+                  <div className="gpio-dev-label" style={{ fontWeight: 600, fontSize: '0.85rem', color: '#58a6ff', marginBottom: '0.5rem' }}>{labelName}</div>
+                  <div className="gpio-grid">
+                    {Array.from({ length: totalPins }).map((_, bitIndex) => {
+                      let isInput;
+                      if (dirReg) {
+                        const isActiveLow = dirReg.direction_mode === 'active_low_input' || (dirReg.logical_name || '').toUpperCase().includes('INV');
+                        isInput = isActiveLow ? (dirVal & (1 << bitIndex)) === 0 : (dirVal & (1 << bitIndex)) !== 0;
+                      } else {
+                        isInput = !isHub75;
+                      }
+
+                      const isOn = isInput 
+                        ? (dataInVal & (1 << bitIndex)) !== 0
+                        : (dataOutVal & (1 << bitIndex)) !== 0 || isHub75;
+
+                      const pinLabel = isHub75 ? (HUB75_PIN_LABELS[bitIndex] || `B${bitIndex}`) : `B${bitIndex}`;
+
+                      return (
+                        <div 
+                          key={bitIndex} 
+                          className={`gpio-bit ${isInput ? 'input' : 'output'} ${isOn ? 'on' : 'off'}`}
+                          onClick={() => isInput && handleGpioToggle(dev.name, bitIndex, isOn, dataInReg?.name || 'DATA')}
+                          style={{ cursor: isInput ? 'pointer' : 'default' }}
+                          title={`${labelName} ${pinLabel} (Bit ${bitIndex}) - ${isInput ? 'Input (Click to toggle)' : 'Output (LED)'}`}
+                        >
+                          <div className="gpio-indicator" style={{ pointerEvents: 'none' }}></div>
+                          <span className="gpio-label" style={{ pointerEvents: 'none' }}>{pinLabel}</span>
+                        </div>
+                      );
+                    })}
+                  </div>
                 </div>
-              </div>
-            );
+              );
+            });
           })
         )}
       </div>

@@ -41,7 +41,7 @@
     - **ハイブリッド・マルチスクリーン (Pop-out & Multi-Screen Cockpit)**: Dockview のタブ右上に「Pop out to separate window」アクションを統合。React 19 `createPortal` による子ウィンドウ化および `BroadcastChannel` による画面間ステート同期をサポート。また、URL クエリ `?screen=<id>` / `?pane=<id>` によるモニタ別レイアウト永続化・単体全画面表示に対応。
     - **Chaos & Multi-Core Lifecycle Panel (`ChaosPanel`)**: シナリオ内の各コア（Aコア `test_bin` / Mコア `remoteproc*`）の稼働状態表示と個別選択再起動、シード指定モード（Off / Random / Fixed）、シード再ロール（Reroll）、CLI 再現用コマンド（`fbb test --chaos --seed ...`）のワンクリックコピー、障害率スライダー（0〜100%）、およびペリフェラル別（I2C, SPI, UIO, CAN, CDMA）障害有効化チェックボックスを統合した高機能検証ペイン。
     - **Register Monitor**: デバイス（モジュール）ごとにアコーディオンパネルで展開・折りたたみ可能にグルーピング表示。各レジスタに「Trace」チェックボックスを備え、Tracerでの描画および凡例の動的フィルタリングを双方向同期。
-    - **GPIO / Pin Array**: 118 チャネルの GPIO をグリッド表示し、マニフェスト経由で配信される方向モード属性（`direction_mode`: `active_low_input` / `active_high_input`）に基づき LED（出力）とトグルスイッチ（入力）を完全なデータ駆動（SoC非依存）で動的に切り替えて描画。
+    - **GPIO / Pin Array**: GPIO をグリッド表示し、マニフェスト経由で配信される方向モード属性（`direction_mode`: `active_low_input` / `active_high_input`）や複数チャネル構成（DATA/TRI, DATA2/TRI2 等）に基づき LED（出力）とトグルスイッチ（入力）を完全なデータ駆動（SoC非依存）で動的に切り替えて描画。
     - **DTS Visualizer & AI Diagnostics**: 32-bit物理アドレス空間全体を一括俯瞰する「一体型メモリマップダイアグラム」を表示。マップ上の各デバイスブロックをクリックで直下にインライン展開し、アラインメント・レジスタ・プロパティを詳細確認可能。デバイス間の未割り当て空間（Unmapped Space Gap）をシックなグレーのパターン領域として可視化し、新規IP用空き容量バッファを提示。さらに Ollama LLM / CIP プロンプトと連動した「AI Smart DTS Check」により、コンパイルエラーの自然言語解説と推奨Fix Diffを提示。
     - **Register State Tracer**: レジスタの変化履歴を正規化表示し、微小な変化も可視化。凡例クリックまたは Register Monitor のチェックボックスと連動した、表示・非表示および凡例の動的な削除・追加に対応。
     - **IDE-style Docking Layout (Dockview)**: VS Code互換のドッキングレイアウトを採用。パネルのドラッグ＆ドロップによる分割・結合・タブ化・フローティング化をネイティブサポートし、UI全体の配置リセット機能（Reset Layout）も完備。レガシーな手動リサイズコードを撤去し、高精度なリサイズ体験を提供。
