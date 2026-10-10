@@ -1126,19 +1126,28 @@ app.get('/api/scenario/robot-manifest', (req, res) => {
     }
 });
 
-// GET /api/scenario/rct-program - Load active RCT program generated from HEX
-app.get('/api/scenario/rct-program', (req, res) => {
-    const tmpPath = '/tmp/rct_active_program.json';
+
+// GET /api/file - Serve temporary telemetry / artifact files (e.g. /tmp/space_guidance_telemetry.json)
+app.get('/api/file', (req, res) => {
+    const filePath = req.query.path;
+    if (!filePath) {
+        return res.status(400).json({ error: 'Missing path query parameter' });
+    }
+    const normalized = path.normalize(filePath);
+    if (!normalized.startsWith('/tmp/') && !normalized.startsWith('/dev/shm/')) {
+        return res.status(403).json({ error: 'Access forbidden: outside /tmp or /dev/shm' });
+    }
     try {
-        if (fs.existsSync(tmpPath)) {
+        if (fs.existsSync(normalized)) {
             res.setHeader('Content-Type', 'application/json; charset=utf-8');
-            return res.sendFile(tmpPath);
+            return res.sendFile(normalized);
         }
-        return res.status(404).json({ message: 'No rct_active_program.json found' });
+        return res.status(404).json({ message: 'File not found' });
     } catch (e) {
         return res.status(500).json({ error: e.message });
     }
 });
+
 // =============================================================================
 // DPPA (Dashboard Pane Plugin Architecture) - Dynamic Pane Loader API
 // =============================================================================
