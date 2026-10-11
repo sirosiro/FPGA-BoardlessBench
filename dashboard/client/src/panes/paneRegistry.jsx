@@ -211,8 +211,8 @@ export async function loadExternalPanes(onLoaded) {
 
     for (const p of plugins) {
       try {
-        // Native ESM dynamic import bypassing Vite bundling
-        const module = await import(/* @vite-ignore */ p.scriptUrl);
+        // Native ESM dynamic import bypassing Vite bundling (with cache-buster to avoid stale module cache)
+        const module = await import(/* @vite-ignore */ `${p.scriptUrl}?t=${Date.now()}`);
         const Component = module.default || module.component;
         if (!Component) {
           console.warn(`[DPPA] External pane ${p.id} does not export a default component.`);
@@ -316,7 +316,31 @@ export function getDockviewComponentsMap() {
   map.seg7Display = (props) => <GenericPeripheralPane {...props} />;
   map.spiAdcPanel = (props) => <GenericPeripheralPane {...props} />;
 
-  return map;
+  return new Proxy(map, {
+    get(target, prop, receiver) {
+      if (typeof prop !== 'string' || prop === 'then' || prop === '$$typeof' || prop === 'constructor' || prop === 'prototype') {
+        return Reflect.get(target, prop, receiver);
+      }
+      if (prop in target) {
+        return target[prop];
+      }
+      return (props) => (
+        <div style={{
+          padding: '16px',
+          color: '#8b949e',
+          background: '#0d1117',
+          height: '100%',
+          display: 'flex',
+          alignItems: 'center',
+          justifyContent: 'center',
+          fontFamily: 'monospace',
+          fontSize: '12px'
+        }}>
+          Loading {props?.api?.title || prop}...
+        </div>
+      );
+    }
+  });
 }
 
 /**

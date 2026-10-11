@@ -1,4 +1,4 @@
-import { useRef, useState, useEffect } from 'react';
+import React, { Component, useRef, useState, useEffect } from 'react';
 import { Box, Plus, ChevronDown } from 'lucide-react';
 import { DockviewReact } from 'dockview-react';
 import { DashboardProvider, useDashboard } from './components/DashboardContext';
@@ -573,11 +573,120 @@ function DashboardInner() {
   );
 }
 
+class DashboardErrorBoundary extends Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+
+  static getDerivedStateFromError(error) {
+    return { hasError: true, error };
+  }
+
+  componentDidCatch(error, errorInfo) {
+    console.error('[Dashboard Error Boundary]', error, errorInfo);
+  }
+
+  handleReset = () => {
+    fetch('/api/layout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({})
+    }).finally(() => {
+      window.location.reload();
+    });
+  };
+
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{
+          minHeight: '100vh',
+          backgroundColor: '#05070a',
+          color: '#f0f4f8',
+          display: 'flex',
+          flexDirection: 'column',
+          alignItems: 'center',
+          justifyContent: 'center',
+          padding: '2rem',
+          fontFamily: "'Outfit', 'Inter', -apple-system, sans-serif"
+        }}>
+          <div style={{
+            maxWidth: '600px',
+            width: '100%',
+            backgroundColor: '#0d1117',
+            border: '1px solid #30363d',
+            borderRadius: '12px',
+            padding: '2rem',
+            boxShadow: '0 8px 32px rgba(0,0,0,0.8)'
+          }}>
+            <div style={{ color: '#f85149', fontSize: '1.25rem', fontWeight: 700, marginBottom: '1rem', display: 'flex', alignItems: 'center', gap: '8px' }}>
+              Dashboard Render Exception
+            </div>
+            <p style={{ color: '#8b949e', fontSize: '0.9rem', marginBottom: '1.5rem', lineHeight: 1.5 }}>
+              An unexpected error occurred while rendering the dashboard UI. You can reload the page or reset the layout to factory defaults.
+            </p>
+            <div style={{
+              backgroundColor: '#161b22',
+              border: '1px solid #21262d',
+              borderRadius: '6px',
+              padding: '1rem',
+              color: '#ff7b72',
+              fontFamily: 'monospace',
+              fontSize: '0.8rem',
+              overflowX: 'auto',
+              marginBottom: '1.5rem',
+              whiteSpace: 'pre-wrap'
+            }}>
+              {this.state.error?.message || String(this.state.error)}
+            </div>
+            <div style={{ display: 'flex', gap: '12px' }}>
+              <button
+                onClick={() => window.location.reload()}
+                style={{
+                  backgroundColor: '#1f6feb',
+                  color: '#ffffff',
+                  border: '1px solid #388bfd',
+                  borderRadius: '6px',
+                  padding: '8px 16px',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                Reload Page
+              </button>
+              <button
+                onClick={this.handleReset}
+                style={{
+                  backgroundColor: '#21262d',
+                  color: '#c9d1d9',
+                  border: '1px solid #30363d',
+                  borderRadius: '6px',
+                  padding: '8px 16px',
+                  fontSize: '0.85rem',
+                  fontWeight: 600,
+                  cursor: 'pointer'
+                }}
+              >
+                Reset Saved Layout
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
+
 function App() {
   return (
-    <DashboardProvider>
-      <DashboardInner />
-    </DashboardProvider>
+    <DashboardErrorBoundary>
+      <DashboardProvider>
+        <DashboardInner />
+      </DashboardProvider>
+    </DashboardErrorBoundary>
   );
 }
 
