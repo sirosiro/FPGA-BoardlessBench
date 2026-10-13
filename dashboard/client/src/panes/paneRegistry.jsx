@@ -181,6 +181,11 @@ export const BUILTIN_PANES = {
 const customPanes = new Map();
 
 /**
+ * Storage for failed dynamic panes (id -> error message) for Fail-Fast UI Error Boundary
+ */
+const failedPanes = new Map();
+
+/**
  * Register a custom pane extension
  * @param {Object} descriptor - Pane definition
  */
@@ -189,6 +194,7 @@ export function registerCustomPane(descriptor) {
     console.error('[DPPA] Invalid pane descriptor:', descriptor);
     return;
   }
+  failedPanes.delete(descriptor.id);
   customPanes.set(descriptor.id, {
     category: PANE_CATEGORIES.EXTENSIONS,
     icon: Monitor,
@@ -215,7 +221,9 @@ export async function loadExternalPanes(onLoaded) {
         const module = await import(/* @vite-ignore */ `${p.scriptUrl}?t=${Date.now()}`);
         const Component = module.default || module.component;
         if (!Component) {
-          console.warn(`[DPPA] External pane ${p.id} does not export a default component.`);
+          const errMsg = `External pane '${p.id}' does not export a default component.`;
+          console.warn(`[DPPA] ${errMsg}`);
+          failedPanes.set(p.id, errMsg);
           continue;
         }
 
@@ -223,9 +231,9 @@ export async function loadExternalPanes(onLoaded) {
         const requiredApiVersion = module.minApiVersion || module.apiVersion || 1;
         const currentApiVersion = window.FBB?.apiVersion || 1;
         if (requiredApiVersion > currentApiVersion) {
-          console.error(
-            `[DPPA] ❌ Incompatible pane '${p.id}'. Required API v${requiredApiVersion} > current FBB API v${currentApiVersion}. Skipping registration.`
-          );
+          const errMsg = `Incompatible pane '${p.id}'. Required API v${requiredApiVersion} > current FBB API v${currentApiVersion}.`;
+          console.error(`[DPPA] ❌ ${errMsg}`);
+          failedPanes.set(p.id, errMsg);
           continue;
         }
 
@@ -243,10 +251,11 @@ export async function loadExternalPanes(onLoaded) {
         console.log(`[DPPA] Successfully loaded external runtime pane: ${p.id} (${p.title})`);
       } catch (importErr) {
         console.error(`[DPPA] Failed to dynamically import pane ${p.id} from ${p.scriptUrl}:`, importErr);
+        failedPanes.set(p.id, importErr?.message || String(importErr));
       }
     }
 
-    if (loadedCount > 0 && typeof onLoaded === 'function') {
+    if ((loadedCount > 0 || failedPanes.size > 0) && typeof onLoaded === 'function') {
       onLoaded();
     }
   } catch (err) {
@@ -323,6 +332,40 @@ export function getDockviewComponentsMap() {
       }
       if (prop in target) {
         return target[prop];
+      }
+      if (failedPanes.has(prop)) {
+        const errorDetail = failedPanes.get(prop);
+        return (props) => (
+          <div style={{
+            padding: '16px',
+            color: '#f85149',
+            background: '#160b0c',
+            border: '1px solid #da3633',
+            borderRadius: '6px',
+            margin: '12px',
+            fontFamily: 'monospace',
+            fontSize: '12px',
+            lineHeight: '1.6'
+          }}>
+            <div style={{ fontWeight: 'bold', fontSize: '13px', marginBottom: '8px', color: '#ff7b72' }}>
+              [DPPA Plugin Error] Failed to Load Pane: {props?.api?.title || prop}
+            </div>
+            <div style={{
+              color: '#c9d1d9',
+              background: '#0d1117',
+              padding: '10px',
+              borderRadius: '4px',
+              border: '1px solid #30363d',
+              whiteSpace: 'pre-wrap',
+              wordBreak: 'break-all'
+            }}>
+              {errorDetail}
+            </div>
+            <div style={{ color: '#8b949e', marginTop: '10px', fontSize: '11px' }}>
+              Verify syntax with: <code>node --input-type=module --check &lt; file.js</code>
+            </div>
+          </div>
+        );
       }
       return (props) => (
         <div style={{

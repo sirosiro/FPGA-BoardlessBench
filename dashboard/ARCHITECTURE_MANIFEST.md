@@ -175,9 +175,28 @@ GPIO の方向判定およびデータレジスタ特定ロジック（`GpioPane
 3. **コア探索 (`execSync`) の非同期キャッシュ化**:
    - `getDiscoveredCores()` 内で同期的に `pgrep` を実行していた処理を、500ms 周期の非同期ポーリング（`exec`）＋インメモリキャッシュへと移行し、Node.js イベントループの健全性と低ジッター性を保証。
 
+## 3.8 DPPA 動的外部ペインの検証プロトコルと Fail-Fast UI 防護規約 (DPPA Plugin Invariants & Fail-Fast Protocols)
+
+DPPA（Dashboard Pane Plugin Architecture）における動的外部 ESM ペイン（`<scenario>/panes/` や `~/.fbb/panes/`）は、Vite バンドルをバイパスしてブラウザの動的 `import()` で実行時ロードされる「Zero-Rebuild」特性を持つ。この特性ゆえに、ビルド時検証の死角が生じやすいため、以下の不変条件（Invariants）と防護プロトコルを厳格に順守すること。
+
+### 過去のエンバグの教訓 (Historical Context: 2026-10-13)
+1. **ビルド検証のすり抜け**: Python 側の `py_compile` や本体の `npm run build` は正常終了していたが、外部 ESM ペインは Vite のバンドル対象外（`/* @vite-ignore */`）であるため、JavaScript 構文エラー（SyntaxError）が CI・ビルドを完全に素通りして出荷された。
+2. **文字列パッチによる構文破壊**: スクリプトによる自動置換時、テンプレートリテラル内の角括弧（`[`）に誤マッチし、文字列の内部に React 要素コードが混入して SyntaxError を引き起こした。
+3. **無言の破綻（Silent Failure）の隠蔽**: `paneRegistry.jsx` の Proxy フォールバックが、動的インポート失敗時にも単に `Loading {title}...` を表示し続けたため、エラーが「読み込み中」として隠蔽され、障害原因の早期特定が阻害された。
+
+### アーキテクチャ不変条件 (Invariants & Protocols)
+- **1. 動的外部ペインの独立静的検証義務 (Validation Invariant)**:
+  - 外部ペインコード（`panes/*/index.js`）を新規作成・修正・マイグレーションする際は、コミットおよびスクリプト適用前に、必ず Node.js の構文チェッカー（`node --input-type=module --check < file.js`）等による静的検証をパスすることを必須とする。未検証コードの配置は厳禁とする。
+- **2. Fail-Fast UI エラーバウンダリ契約 (Error Boundary Contract)**:
+  - プラグインの動的ロード失敗時（SyntaxError, ネットワークエラー, APIバージョン不整合等）、`paneRegistry.jsx` は決して `Loading...` を返し続けてはならない。
+  - 必ず失敗状態（`failedPanes`）を保持し、UI 上に即座に `[DPPA Plugin Error]` とエラー詳細メッセージ、および修正ヒントを赤字で明示すること（原則5: フェイルファースト、マニフェスト 8.3: 無言の破綻の完全排除）。
+- **3. 構造的安全規約 (No Unchecked String Patching)**:
+  - UI コンポーネントをスクリプトから自動更新する際、AST（構文木）を介さない粗暴な正規表現や文字列 `find`/`replace` によるパッチ適用を禁止する。修正時はコンポーネント全体の再生成、または構文検証パイプラインとの結合を義務付ける。
+
 ## 4. 既知の未解決課題 (Known Open Issues)
 - **多重接続時の競合**: 同一の UART に対して複数のブラウザタブから入力を試みた際の排他制御。
 - **波形エクスポート**: トレーサーで記録したデータの CSV/JSON 形式でのダウンロード機能。
 - **シナリオ別UIレイアウトの保存と復元（マルチスクリーン対応）**: 各シナリオフォルダ内の `fbb_layout.json` / `fbb_layout_${screen}.json` を通じたペインレイアウトの永続化。[NEW - マルチスクリーン対応完了]
+
 
 
