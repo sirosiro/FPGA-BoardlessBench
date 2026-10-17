@@ -226,6 +226,26 @@ DPPA（Dashboard Pane Plugin Architecture）における動的外部 ESM ペイ�
 - `RegisterTracer.jsx` などの時系列グラフ描画コンポーネントでは、WebSocket から受信したレジスタ値に `NaN`、`undefined`、または非数値が含まれる場合を考慮し、必ず `Number.isFinite()` による除外およびデフォルト値（0）への正規化を行うこと。
 - データ点が 1 件のみ（初期状態など）の場合、Recharts の `<Line>` は線（ストローク）を描画できずグラフが不可視となる。そのため、`dot={historyData.length <= 1 ? { r: 3 } : false}` のように単一データ点でも確実に点が描画されるフォールバックを維持すること。
 
+## 3.11 DPPA 3D レンダリング・Three.js ランタイムブリッジ仕様 (DPPA 3D WebGL Bridge & Zero-Host Protocol)
+
+### 1. 背景と設計意図 (Why)
+- **CPU 2D Canvas によるレンダリング限界の克服**:
+  - `SpaceGuidance` 等の 3D 軌道ビューアにおいて、Canvas 2D API（`project3D` による手動座標変換、ループ毎の線分描画、および `ctx.shadowBlur` による発光表現）は CPU 描画負荷が高く、120 FPS / 高解像度ディスプレイ環境においてフレームドロップ（ジッター）の原因となっていた。
+  - GPU ネイティブな WebGL（Three.js）エンジンへ移行することで、120 FPS 以上の安定したハードウェア描画と、`THREE.AdditiveBlending` による超低負荷なエンジン噴煙・爆発パーティクル発光を実現する。
+- **Zero-Host 依存規約とオフライン性の死守 (Zero-Host Dependency & Offline Invariant)**:
+  - 外部プラグインペイン（`SpaceGuidance-FBB/panes/sg-orbit-viewer` 等）が個別に npm パッケージを持ったり、外部 CDN（unpkg/cdnjs 等）から Three.js をロードすることは、完全なオフライン閉域環境（Zero-Host 依存）での動作を破綻させる。
+  - そこで、ホストダッシュボード本体（`dashboard/client`）が `three` を内包・バンドルし、グローバルランタイムブリッジ（`window.FBB.THREE` および `window.THREE`）として外部ペインへ透過的に提供するアーキテクチャを採用する。
+
+### 2. アーキテクチャ決定事項 (Decisions)
+1. **ホスト側のグローバルランタイム公開 (`main.jsx`)**:
+   - `dashboard/client/src/main.jsx` において、バンドルされた Three.js を `window.THREE = THREE;` および `window.FBB.THREE = THREE;` として公開。
+   - 外部 ESM ペインは `const THREE = window.THREE || window.FBB?.THREE;` の 1 行で、一切のビルド・ネットワーク依存なしに GPU 3D レンダラーを利用可能とする。
+2. **2層ハイブリッドレンダリング（Layered WebGL + HUD Canvas）**:
+   - レイヤー 1（背面）: `THREE.WebGLRenderer` による 120 FPS 3D シーン、メッシュ、パーティクル、アディティブ噴煙描画。
+   - レイヤー 2（前面）: ポインタ透過（`pointer-events: none`）の 2D オーバーレイ Canvas。Three.js の `vector.project(camera)` で 3D 空間位置を 2D 投影し、ターゲットレティクルやゲート名称等のテキスト HUD を鮮明に描画。
+3. **推測航法（Dead-Reckoning）と 120 FPS 自律補間の融合**:
+   - 受信した物理速度ベクトル（`vel_x, vel_y, vel_z`）および角速度（`omega_x, wy, wz`）による慣性順伝播と、受信パケット位置へのスプリング収束ブレンドを実装し、WebSocket テレメトリの到着ジッターに依存しない滑らかな 120 FPS 描画を保証。
+
 ## 4. 既知の未解決課題 (Known Open Issues)
 - **多重接続時の競合**: 同一の UART に対して複数のブラウザタブから入力を試みた際の排他制御。
 - **波形エクスポート**: トレーサーで記録したデータの CSV/JSON 形式でのダウンロード機能。
