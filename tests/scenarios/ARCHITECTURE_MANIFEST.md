@@ -212,8 +212,43 @@ F-BB のテストシナリオは、将来の拡張性と責務分離（SoC/ベ�
 - **2026-09-20: ADR #013 自律移動ロボット (AMR) 向け `ros2_control` 実践シナリオ (`P02_robot_amr_ros2`) と 2-Tier DPPA/PPA コックピットの導入**
   - **Decision**: `22_ros2_control_minimal` の基盤技術を受け継ぎ、実製品相当の差動2輪 AMR スタックを統合した `P02_robot_amr_ros2` を導入した。また Web ダッシュボードには、単一巨大ペインへの押し込みを排除し、DPPA（Dashboard Pane Plugin Architecture）のマルチモニター Pop-out（`createPortal`）および Dockview グリッド機能を最大限に活かせる「4つの特化型ペイン構成」を採用した。さらに汎用性とロボット特化 UX を両立するため、Tier 1（汎用コア: Lifecycle, Multi-joint Waveform, Teleop/E-STOP）と Tier 2（PPA データ駆動アドオン: `amr_manifest.json` に基づく 2D Pose & Map）の 2-Tier アーキテクチャを確立した。
   - **Rationale**: 巨大な ROS 2 インストールを要求せず、純粋な C++20 / Verilog / Linux UIO のみで数秒でビルド・実行可能な「ゼロヘビーインストール」を貫徹しつつ、実機 ROS 2 エコシステム（`DiffDriveController`, `/cmd_vel`, `/odom`）と 100% 透過的に相互運用可能とし、かつダッシュボード側の拡張性と可搬性を担保するため。
+- **2026-10-17: ADR #014 シナリオ別 UI レイアウト契約 (`fbb_layout.json`) と DTS 整合性の標準化**
+  - **Decision**: 各テストシナリオに配置される `fbb_layout.json`（およびマルチスクリーン用 `fbb_layout_${screen}.json`）について、DTS ノード名との完全一致（SSoT 拘束）、必須メタデータ `params._componentName` の付与、およびダッシュボード本体側での対症療法的名前リマップの禁止を定めた。
+  - **Rationale**: `S01_cpp_lfsr_sequencer` 等でレガシーな `vfpga_uart_1` 命名や `_componentName` 欠落が残り、ダッシュボード側のリファクタリング時に Dockview の `Loading ...` ハングや波形描画消失を引き起こした。シナリオごとに異なる非標準実装が放置される構造的要因を断ち、DTS と UI レイアウトの厳格な結合契約を明文化するため。
 
-### 5. AIとの協調に関する指針 (AI Collaboration Policy)
+### 5. シナリオ別 UI レイアウト規約 (fbb_layout.json Specification & Invariants)
+
+各テストシナリオ配下に配置される `fbb_layout.json`（および `fbb_layout_${screen}.json`）は、そのシナリオのハードウェア構成や検証目的に最適化された Web ダッシュボードのペイン配置を決定論的に復元するための設定ファイルである。シナリオ毎の実装のバラつきを防ぐため、以下の不変条件（Invariants）を厳格に順守すること。
+
+#### 5.1 DTS を唯一の真実とするペリフェラル紐付け (DTS SSoT Binding)
+- **ノード名の完全一致**:
+  - `fbb_layout.json` 内でペリフェラルペイン（UART, GPIO, I2C, SPI 等）を指定する際、`id` および `params.id` / `params.name` に指定するデバイス名は、シナリオの `config.dts` に定義されたノード名（`vfpga_uart`, `vfpga_gpio` 等）と一字一句違わず完全に一致しなければならない。
+  - 根拠のない連番サフィックス（例: `vfpga_uart_1`）やハードコードされた別名の使用は厳禁とする。
+- **複数同一ペリフェラルが存在する場合の規則**:
+  - `config.dts` 側で `vfpga_uart0`, `vfpga_uart1` のように正式なノード名として命名されている場合のみ、その名称をそのまま使用する。
+
+#### 5.2 ペイン定義とパラメータの必須規約 (Mandatory `_componentName` & ID Invariants)
+- **`params._componentName` の必須付与**:
+  - Dockview のシリアライズデータ内の全パネルにおいて、`params` オブジェクトには必ず対応するペイン識別子 `_componentName`（例: `"tracerPanel"`, `"registerMonitor"`, `"dtsPanel"`, `"uartPanel"`, `"chaosPanel"` 等）を含めなければならない。
+  - これは、Dockview の別ウィンドウ切り離し（`PopoutWindow.jsx`）、タブヘッダーアクション（`DockHeaderActions.jsx`）、および動的レイアウト復元時において、コンポーネントの実体を一意に特定・解決するために必須の契約である。
+- **標準ペイン ID 規則**:
+  - コアペイン: `registerMonitor`, `tracerPanel` (エイリアス: `tracer`), `dtsPanel`, `gpioPanel`, `chaosPanel`
+  - UART ペイン: `uart_<dts_node_name>` (例: `uart_vfpga_uart`)
+  - アドオン/外部ペイン: `plugin_<id>` または `panes/` で登録された正式な識別子
+
+#### 5.3 標準マルチペイン構成の推奨構成 (Standard Layout Configuration)
+組み込み検証シナリオにおける標準レイアウトは、以下の 4 分割構成を基本とする：
+1. **左ペイン (Left)**: `registerMonitor`（レジスタ R/W および Trace チェックボックス操作）
+2. **中央上ペイン (Center Top)**: `tracerPanel`（レジスタ値の時系列波形グラフ、微小変化トラッキング）
+3. **中央下ペイン (Center Bottom)**: `dtsPanel`（32-bit メモリマップ俯瞰ダイアグラム & AI Smart DTS Check）
+4. **右ペイン (Right)**: `uart_<node_name>`（シリアル対話コンソール）
+※ シナリオの特性に応じて `chaosPanel`、`canPanel`、または DPPA アドオンペインを適宜追加・配置する。
+
+#### 5.4 対症療法的マッピングの禁止とフェイルファースト (Strict Ban on Ad-Hoc Mapping)
+- ダッシュボード本体（`App.jsx` や `server.js`）に、特定シナリオのレイアウトのズレを吸収するための局所的な名前変換（例: `dev === 'vfpga_uart_1' ? 'vfpga_uart' : dev` 等）を書き込んではならない。
+- 不整合が存在する場合は、必ずシナリオ側の `fbb_layout.json` を修正し、常に DTS を「唯一の正解」として整合させること。
+
+### 6. AIとの協調に関する指針 (AI Collaboration Policy)
 - **マニフェスト優先の維持**: テストシナリオの構成を変更するようなタスクがある場合、必ずこのマニフェストの更新が人間に承認される前にコード修正に着手してはならない。
 - **インテント・コメントの付与**: テストコード（`main.c`等）に機能追加する際は、ポインタの所有権や前提条件、意図を記述した `@intent` コメントを必ず付与する。
 - **テスト自動検証の義務**: シナリオの変更時、AIは自律的に `scenario_runner.sh` または `run_tests.sh` に加え、必要に応じて全体デグレーション確認のために `tests/regression_test.py` を実行し、変更後の動作確認と、他のシナリオへの影響がないことを自己検証しなければならない。

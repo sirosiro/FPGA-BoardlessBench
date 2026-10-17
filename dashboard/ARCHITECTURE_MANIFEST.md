@@ -212,6 +212,20 @@ DPPA（Dashboard Pane Plugin Architecture）における動的外部 ESM ペイ�
 3. **最新テレメトリのインメモリ即時エコーバック**:
    - `server.js` は最新の `scenario:telemetry` ペイロードをメモリキャッシュし、新規クライアント接続時（`io.on('connection')`）や画面リロード時に即座にエコーバック配信する。
 
+## 3.10 ペインレジストリ・エイリアス対称性と対症療法禁止規約 (Pane Registry Alias Symmetry & Anti-Patch Protocol)
+
+### 1. エイリアス対称性の不変条件 (Alias Symmetry Invariant)
+- `dashboard/client/src/panes/paneRegistry.jsx` において、`getPaneDefinition(id)` で認識されるペイン識別子・エイリアス（例: `tracer` $\leftrightarrow$ `tracerPanel`, `chaos` $\leftrightarrow$ `chaosPanel`, `can` $\leftrightarrow$ `canPanel`, `dts` $\leftrightarrow$ `dtsPanel`）は、**必ず `getDockviewComponentsMap()` においても同一のコンポーネント実体へマッピングされなければならない**。
+- 一方のみでエイリアスを解決し、他方で解決しない場合、Dockview がシリアライズされたレイアウト（`fbb_layout.json`）を復元する際にコンポーネント未登録と判定され、「`Loading {title}...`」のまま無言でハングする（無言の破綻）。これを構造的に防ぐため、エイリアスの定義は常に両メソッド間で対称（Symmetric）でなければならない。
+
+### 2. 対症療法的名前リマップの絶対禁止 (Strict Ban on Ad-Hoc Name-Remapping)
+- `App.jsx` や `server.js` 内において、特定のシナリオ（例: S01 等）で発生した古い命名やタイポ（例: `vfpga_uart_1`）を救済するための `if` 文や置換コード（`remapping`）を記述してはならない。
+- システムの Single Source of Truth（SSoT）は `config.dts` およびシナリオの `fbb_layout.json` であり、不整合は必ずシナリオ側の設定ファイルを修正して解決すること。ダッシュボード本体側に救済コードを入れることは、技術的負債を隠蔽し将来の静かな退行（Silent Regression）を招くため禁止とする。
+
+### 3. Recharts 時系列グラフ描画防護規約 (Recharts Data Sanitization & Dot Rendering Contract)
+- `RegisterTracer.jsx` などの時系列グラフ描画コンポーネントでは、WebSocket から受信したレジスタ値に `NaN`、`undefined`、または非数値が含まれる場合を考慮し、必ず `Number.isFinite()` による除外およびデフォルト値（0）への正規化を行うこと。
+- データ点が 1 件のみ（初期状態など）の場合、Recharts の `<Line>` は線（ストローク）を描画できずグラフが不可視となる。そのため、`dot={historyData.length <= 1 ? { r: 3 } : false}` のように単一データ点でも確実に点が描画されるフォールバックを維持すること。
+
 ## 4. 既知の未解決課題 (Known Open Issues)
 - **多重接続時の競合**: 同一の UART に対して複数のブラウザタブから入力を試みた際の排他制御。
 - **波形エクスポート**: トレーサーで記録したデータの CSV/JSON 形式でのダウンロード機能。
