@@ -26,9 +26,11 @@ const RegisterTracer = () => {
     
     const stats = {};
     registerKeys.forEach(key => {
-      const values = historyData.map(d => d[key]);
-      const min = Math.min(...values);
-      const max = Math.max(...values);
+      const values = historyData
+        .map(d => (typeof d[key] === 'number' ? d[key] : (d[key] != null ? Number(d[key]) : NaN)))
+        .filter(v => !isNaN(v));
+      const min = values.length > 0 ? Math.min(...values) : 0;
+      const max = values.length > 0 ? Math.max(...values) : 0;
       stats[key] = { min, max, range: max - min };
     });
 
@@ -36,7 +38,9 @@ const RegisterTracer = () => {
       const normalizedEntry = { ...d };
       registerKeys.forEach(key => {
         const { min, range } = stats[key];
-        normalizedEntry[`${key}_norm`] = range === 0 ? 50 : ((d[key] - min) / range) * 100;
+        const rawVal = d[key] != null ? Number(d[key]) : min;
+        const val = isNaN(rawVal) ? min : rawVal;
+        normalizedEntry[`${key}_norm`] = range === 0 ? 50 : ((val - min) / range) * 100;
       });
       return normalizedEntry;
     });
@@ -144,7 +148,7 @@ const RegisterTracer = () => {
                     type="stepAfter"
                     dataKey={`${key}_norm`}
                     stroke={getColor(originalIndex)}
-                    dot={false}
+                    dot={historyData.length <= 1 ? { r: 3 } : false}
                     activeDot={{ r: 3 }}
                     name={key.replace(/_/g, ': ')}
                     strokeWidth={1.5}

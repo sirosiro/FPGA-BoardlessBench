@@ -324,6 +324,11 @@ export function getDockviewComponentsMap() {
   map.oledDisplay = (props) => <GenericPeripheralPane {...props} />;
   map.seg7Display = (props) => <GenericPeripheralPane {...props} />;
   map.spiAdcPanel = (props) => <GenericPeripheralPane {...props} />;
+  map.tracer = map.registerTracer;
+  map.tracerPanel = map.registerTracer;
+  map.chaosPanel = map.chaosEngine;
+  map.canPanel = map.canAnalyzer;
+  map.dtsPanel = map.dtsVisualizer;
 
   return new Proxy(map, {
     get(target, prop, receiver) {

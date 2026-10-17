@@ -715,6 +715,17 @@ function connectToUart(name, port) {
     });
 }
 
+// Unified Scenario Telemetry State
+let lastTelemetryMtime = {
+    amr: 0,
+    space_guidance: 0
+};
+let lastTelemetryData = {
+    amr: null,
+    space_guidance: null
+};
+let lastAmrTelemetry = null;
+
 // Socket.io
 io.on('connection', (socket) => {
     socket.emit('uart-init', uartLogs);
@@ -754,19 +765,30 @@ io.on('connection', (socket) => {
         }
     });
 
-    // Send initial AMR telemetry if exists
-    if (lastAmrTelemetry) {
-        socket.emit('amr:telemetry', lastAmrTelemetry);
-    } else {
-        const telemetryPath = '/tmp/fbb_amr_telemetry.json';
-        if (fs.existsSync(telemetryPath)) {
-            try {
-                const raw = fs.readFileSync(telemetryPath, 'utf8');
-                const telemetry = JSON.parse(raw);
-                lastAmrTelemetry = telemetry;
-                socket.emit('amr:telemetry', telemetry);
-            } catch (e) {}
-        }
+    // Send initial scenario telemetry if exists (SpaceGuidance / AMR)
+    const sgPath = '/tmp/space_guidance_telemetry.json';
+    if (lastTelemetryData.space_guidance) {
+        socket.emit('scenario:telemetry', { type: 'space_guidance', ...lastTelemetryData.space_guidance });
+    } else if (fs.existsSync(sgPath)) {
+        try {
+            const raw = fs.readFileSync(sgPath, 'utf8');
+            lastTelemetryData.space_guidance = JSON.parse(raw);
+            socket.emit('scenario:telemetry', { type: 'space_guidance', ...lastTelemetryData.space_guidance });
+        } catch (e) {}
+    }
+
+    const amrPath = '/tmp/fbb_amr_telemetry.json';
+    if (lastTelemetryData.amr) {
+        socket.emit('scenario:telemetry', { type: 'amr', ...lastTelemetryData.amr });
+        socket.emit('amr:telemetry', lastTelemetryData.amr);
+    } else if (fs.existsSync(amrPath)) {
+        try {
+            const raw = fs.readFileSync(amrPath, 'utf8');
+            lastTelemetryData.amr = JSON.parse(raw);
+            lastAmrTelemetry = lastTelemetryData.amr;
+            socket.emit('scenario:telemetry', { type: 'amr', ...lastTelemetryData.amr });
+            socket.emit('amr:telemetry', lastTelemetryData.amr);
+        } catch (e) {}
     }
 
     socket.on('trace-history-clear', () => {
@@ -1087,27 +1109,44 @@ setInterval(() => {
     syncUartConnections();
 }, 200);
 
-let lastAmrTelemetryMtime = 0;
-let lastAmrTelemetry = null;
-function updateAmrTelemetry() {
-    const telemetryPath = '/tmp/fbb_amr_telemetry.json';
-    if (!fs.existsSync(telemetryPath)) return;
-    try {
-        const stats = fs.statSync(telemetryPath);
-        if (stats.mtimeMs > lastAmrTelemetryMtime) {
-            lastAmrTelemetryMtime = stats.mtimeMs;
-            const raw = fs.readFileSync(telemetryPath, 'utf8');
-            const telemetry = JSON.parse(raw);
-            lastAmrTelemetry = telemetry;
-            io.emit('amr:telemetry', telemetry);
-        }
-    } catch (e) {}
+function updateScenarioTelemetry() {
+    // 1. Check SpaceGuidance Telemetry
+    const sgPath = '/tmp/space_guidance_telemetry.json';
+    if (fs.existsSync(sgPath)) {
+        try {
+            const stats = fs.statSync(sgPath);
+            if (stats.mtimeMs !== lastTelemetryMtime.space_guidance) {
+                lastTelemetryMtime.space_guidance = stats.mtimeMs;
+                const raw = fs.readFileSync(sgPath, 'utf8');
+                const telemetry = JSON.parse(raw);
+                lastTelemetryData.space_guidance = telemetry;
+                io.emit('scenario:telemetry', { type: 'space_guidance', ...telemetry });
+            }
+        } catch (e) {}
+    }
+
+    // 2. Check AMR Telemetry
+    const amrPath = '/tmp/fbb_amr_telemetry.json';
+    if (fs.existsSync(amrPath)) {
+        try {
+            const stats = fs.statSync(amrPath);
+            if (stats.mtimeMs !== lastTelemetryMtime.amr) {
+                lastTelemetryMtime.amr = stats.mtimeMs;
+                const raw = fs.readFileSync(amrPath, 'utf8');
+                const telemetry = JSON.parse(raw);
+                lastTelemetryData.amr = telemetry;
+                lastAmrTelemetry = telemetry;
+                io.emit('scenario:telemetry', { type: 'amr', ...telemetry });
+                io.emit('amr:telemetry', telemetry);
+            }
+        } catch (e) {}
+    }
 }
 
 setInterval(() => {
     updatePeripheralShm();
     updateCanRingBuffers();
-    updateAmrTelemetry();
+    updateScenarioTelemetry();
 }, 33); // ~30 FPS
 
 // GET /api/scenario/robot-manifest - Load amr_manifest.json from active scenario folder (PPA Data-Driven)

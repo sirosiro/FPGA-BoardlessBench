@@ -41,9 +41,9 @@
                                     "type": "leaf",
                                     "data": {
                                         "views": [
-                                            "uartTerminal_vfpga_uart_1"
+                                            "uartTerminal_vfpga_uart"
                                         ],
-                                        "activeView": "uartTerminal_vfpga_uart_1",
+                                        "activeView": "uartTerminal_vfpga_uart",
                                         "id": "1"
                                     },
                                     "size": 524
@@ -84,32 +84,45 @@
         "orientation": "VERTICAL"
     },
     "panels": {
-        "uartTerminal_vfpga_uart_1": {
-            "id": "uartTerminal_vfpga_uart_1",
+        "uartTerminal_vfpga_uart": {
+            "id": "uartTerminal_vfpga_uart",
             "contentComponent": "uartTerminal",
             "params": {
-                "deviceName": "vfpga_uart_1"
+                "deviceName": "vfpga_uart",
+                "_componentName": "uartTerminal"
             },
-            "title": "UART: vfpga_uart_1"
+            "title": "UART: vfpga_uart"
         },
         "gpioPanel": {
             "id": "gpioPanel",
             "contentComponent": "gpioPanel",
+            "params": {
+                "_componentName": "gpioPanel"
+            },
             "title": "GPIO / Pin Array"
         },
         "dtsVisualizer": {
             "id": "dtsVisualizer",
             "contentComponent": "dtsVisualizer",
+            "params": {
+                "_componentName": "dtsVisualizer"
+            },
             "title": "DTS Visualizer & AI"
         },
         "registerTracer": {
             "id": "registerTracer",
             "contentComponent": "registerTracer",
+            "params": {
+                "_componentName": "registerTracer"
+            },
             "title": "Tracer"
         },
         "registerMonitor": {
             "id": "registerMonitor",
             "contentComponent": "registerMonitor",
+            "params": {
+                "_componentName": "registerMonitor"
+            },
             "title": "Registers"
         }
     },

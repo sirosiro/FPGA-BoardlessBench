@@ -4,7 +4,7 @@ import { io } from 'socket.io-client';
 
 const DashboardContext = createContext(null);
 
-const socket = io('http://' + window.location.hostname + ':8080', {
+export const socket = io('http://' + window.location.hostname + ':8080', {
   transports: ['websocket']
 });
 
@@ -12,6 +12,7 @@ export const DashboardProvider = ({ children }) => {
   const [registers, setRegisters] = useState([]);
   const [connected, setConnected] = useState(false);
   const [manifest, setManifest] = useState(null);
+  const [scenarioTelemetry, setScenarioTelemetry] = useState(null);
   const [uartLogs, setUartLogs] = useState({});
   const [uartSettings, setUartSettings] = useState({});
   const [traceHistory, setTraceHistory] = useState([]);
@@ -26,6 +27,7 @@ export const DashboardProvider = ({ children }) => {
   useEffect(() => {
     socket.on('connect', () => setConnected(true));
     socket.on('disconnect', () => setConnected(false));
+    socket.on('scenario:telemetry', (data) => setScenarioTelemetry(data));
     socket.on('registers', (data) => {
       setRegisters(data);
     });
@@ -59,6 +61,7 @@ export const DashboardProvider = ({ children }) => {
     return () => {
       socket.off('connect');
       socket.off('disconnect');
+      socket.off('scenario:telemetry');
       socket.off('registers');
       socket.off('uart-data');
       socket.off('uart-init');
@@ -163,6 +166,7 @@ export const DashboardProvider = ({ children }) => {
         registers,
         connected,
         manifest,
+        scenarioTelemetry,
         uartLogs,
         uartSettings,
         traceHistory,
@@ -193,4 +197,9 @@ export const useDashboard = () => {
     throw new Error('useDashboard must be used within a DashboardProvider');
   }
   return context;
+};
+
+export const useScenarioTelemetry = () => {
+  const { scenarioTelemetry } = useDashboard();
+  return scenarioTelemetry;
 };

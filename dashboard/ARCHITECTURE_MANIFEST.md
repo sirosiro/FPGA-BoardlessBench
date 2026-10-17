@@ -193,6 +193,25 @@ DPPA（Dashboard Pane Plugin Architecture）における動的外部 ESM ペイ�
 - **3. 構造的安全規約 (No Unchecked String Patching)**:
   - UI コンポーネントをスクリプトから自動更新する際、AST（構文木）を介さない粗暴な正規表現や文字列 `find`/`replace` によるパッチ適用を禁止する。修正時はコンポーネント全体の再生成、または構文検証パイプラインとの結合を義務付ける。
 
+## 3.9 統合シナリオ・テレメトリバス（Unified Scenario Telemetry Bus Protocol）
+
+### 1. 背景と課題 (Why)
+- **多重 HTTP ポーリングによる通信詰まりとジッター**:
+  - `SpaceGuidance` を含む各ペイン（Orbit Viewer, Chaos FDIR, Telemetry Gauge）が、独立して毎秒 50〜60 回の頻度で HTTP GET（`/api/file?path=/tmp/*.json`）を連打していた。
+  - 外部 PC（MacBook M4 等）からポートフォワーディングや Wi-Fi 経由で接続した場合、ブラウザの同一ドメイン同時接続上限（最大 6 本）を圧迫し、パケット到着のバースト化（無音 $\to$ 一括到着）によるマイクロスタッター（表示の停止・カクつき）を構造的に引き起こしていた。
+- **シナリオ間でのテレメトリ伝送方式の分断**:
+  - ロボットシナリオ（AMR）では `server.js` に `amr:telemetry` がハードコードされていた一方、SpaceGuidance は一時ファイルへの個別 HTTP ポーリングに頼っており、統一されたテレメトリ配信機構が存在しなかった。
+
+### 2. 決定事項 (Decisions)
+1. **統合 WebSocket イベント (`scenario:telemetry`) の標準化**:
+   - `dashboard/server.js` は、実行中シナリオのテレメトリソース（`/tmp/space_guidance_telemetry.json`, `/tmp/fbb_amr_telemetry.json`, または共有メモリ）を統括監視し、単一の WebSocket イベント `scenario:telemetry` としてプッシュ配信する（30Hz〜50Hz）。
+   - シナリオ個別の旧イベント名（`amr:telemetry` 等）は後方互換性を保ちつつ `scenario:telemetry` にエイリアス統合する。
+2. **フロントエンド中央ストア（`DashboardContext`）による単一受信と分配**:
+   - フロントエンド側では、`DashboardContext.jsx` が `scenario:telemetry` を 1 回だけ受信・キャッシュし、カスタムフック `useScenarioTelemetry()` を通じて全ペインへ伝播する。
+   - 各ペインが個別に `fetch('/api/file')` を呼ぶ HTTP ポーリングを完全に禁止・撤廃する。
+3. **最新テレメトリのインメモリ即時エコーバック**:
+   - `server.js` は最新の `scenario:telemetry` ペイロードをメモリキャッシュし、新規クライアント接続時（`io.on('connection')`）や画面リロード時に即座にエコーバック配信する。
+
 ## 4. 既知の未解決課題 (Known Open Issues)
 - **多重接続時の競合**: 同一の UART に対して複数のブラウザタブから入力を試みた際の排他制御。
 - **波形エクスポート**: トレーサーで記録したデータの CSV/JSON 形式でのダウンロード機能。
