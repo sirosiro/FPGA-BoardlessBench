@@ -766,6 +766,27 @@ io.on('connection', (socket) => {
     });
 
     // Send initial scenario telemetry if exists (SpaceGuidance / AMR)
+    if (!lastTelemetryData.space_guidance) {
+        readSpaceGuidanceShmTelemetry(true);
+    }
+    if (!lastTelemetryData.space_guidance) {
+        const scnDir = getActiveScenarioDir();
+        if (scnDir && scnDir.toLowerCase().includes('spaceguidance')) {
+            const stage = getStageIdFromScenarioDir(scnDir);
+            lastTelemetryData.space_guidance = {
+                type: 'space_guidance',
+                stage_id: stage,
+                pos_x: 0, pos_y: 0, pos_z: 0,
+                vel_x: 0, vel_y: 0, vel_z: 0,
+                roll: 0, pitch: 0, yaw: 0, angle: 0, omega: 0,
+                fuel: 100, wheel_rpm: 0, score: 0,
+                total_checkpoints: stage === 5 ? 0 : 9,
+                passed_checkpoints: 0,
+                official_grade: 'IN_FLIGHT',
+                mission_status: 'ACTIVE'
+            };
+        }
+    }
     const sgPath = '/tmp/space_guidance_telemetry.json';
     if (lastTelemetryData.space_guidance) {
         socket.emit('scenario:telemetry', { type: 'space_guidance', ...lastTelemetryData.space_guidance });
@@ -1109,20 +1130,134 @@ setInterval(() => {
     syncUartConnections();
 }, 200);
 
-function updateScenarioTelemetry() {
-    // 1. Check SpaceGuidance Telemetry
-    const sgPath = '/tmp/space_guidance_telemetry.json';
-    if (fs.existsSync(sgPath)) {
+const sgShmBuffer = Buffer.alloc(496);
+let lastSgSeq = null;
+
+function getStageIdFromScenarioDir(scnDir) {
+    if (!scnDir) return 1;
+    const s = scnDir.toLowerCase();
+    if (s.includes('05_panic') || s.includes('panic_control')) return 5;
+    if (s.includes('02_tether') || s.includes('tether_climber')) return 2;
+    if (s.includes('03_iss') || s.includes('iss_truss')) return 3;
+    if (s.includes('04_laser') || s.includes('laser_docking')) return 4;
+    return 1;
+}
+
+function readSpaceGuidanceShmTelemetry(force = false) {
+    const candidatePaths = ['/dev/shm/fbb_space_guidance_shm', '/tmp/fbb_space_guidance_shm', '/tmp/vfpga_reg'];
+    for (const shmPath of candidatePaths) {
         try {
-            const stats = fs.statSync(sgPath);
-            if (stats.mtimeMs !== lastTelemetryMtime.space_guidance) {
-                lastTelemetryMtime.space_guidance = stats.mtimeMs;
-                const raw = fs.readFileSync(sgPath, 'utf8');
-                const telemetry = JSON.parse(raw);
-                lastTelemetryData.space_guidance = telemetry;
-                io.emit('scenario:telemetry', { type: 'space_guidance', ...telemetry });
+            if (fs.existsSync(shmPath)) {
+                const fd = fs.openSync(shmPath, 'r');
+                const bytesRead = fs.readSync(fd, sgShmBuffer, 0, 496, 0);
+                fs.closeSync(fd);
+                if (bytesRead >= 496) {
+                    const magic = sgShmBuffer.readUInt32LE(0xA8);
+                    if (magic === 0x53504731) { // 'SPG1'
+                        const seq = sgShmBuffer.readUInt32LE(0xAC);
+                        // If writing in progress (odd seq), skip this frame to prevent torn read
+                        if (seq & 1) return true;
+                        if (force || seq !== lastSgSeq) {
+                            lastSgSeq = seq;
+                            const stageId = sgShmBuffer.readUInt32LE(0x7C);
+                            const statusCode = sgShmBuffer.readUInt32LE(0x18C);
+                            const missionStatus = statusCode === 2 ? 'FAILED' : (statusCode === 1 ? 'COMPLETE' : 'ACTIVE');
+
+                            const telemetry = {
+                                type: 'space_guidance',
+                                stage_id: stageId,
+                                pos_x: sgShmBuffer.readDoubleLE(0x30),
+                                pos_y: sgShmBuffer.readDoubleLE(0x38),
+                                vel_x: sgShmBuffer.readDoubleLE(0x40),
+                                vel_y: sgShmBuffer.readDoubleLE(0x48),
+                                angle: sgShmBuffer.readDoubleLE(0x50),
+                                omega: sgShmBuffer.readDoubleLE(0x58),
+                                fuel: sgShmBuffer.readDoubleLE(0x60),
+                                cross_track_err: sgShmBuffer.readDoubleLE(0x68),
+                                wheel_rpm: sgShmBuffer.readDoubleLE(0x70),
+                                fdir_mode: sgShmBuffer.readUInt32LE(0x78),
+                                score: sgShmBuffer.readInt32LE(0x80),
+                                passed_checkpoints: sgShmBuffer.readUInt32LE(0x84),
+                                total_checkpoints: sgShmBuffer.readUInt32LE(0x8C),
+                                mission_status: missionStatus,
+                                sensor_raw: sgShmBuffer.readUInt32LE(0x08),
+                                sensor_edge: sgShmBuffer.readUInt32LE(0x0C),
+                                thrust_x: sgShmBuffer.readInt32LE(0x10) / 65536.0,
+                                thrust_y: sgShmBuffer.readInt32LE(0x14) / 65536.0,
+                                thrust_z: sgShmBuffer.readUInt32LE(0x18),
+                                torque: sgShmBuffer.readInt32LE(0x1C) / 65536.0,
+                                wheel_torque: sgShmBuffer.readInt32LE(0x2C) / 65536.0,
+
+                                // 3D Kinematics
+                                pos_z: sgShmBuffer.readDoubleLE(0xB0),
+                                vel_z: sgShmBuffer.readDoubleLE(0xB8),
+                                roll: sgShmBuffer.readDoubleLE(0xC0),
+                                pitch: sgShmBuffer.readDoubleLE(0xC8),
+                                yaw: sgShmBuffer.readDoubleLE(0xD0),
+                                omega_x: sgShmBuffer.readDoubleLE(0xD8),
+                                omega_y: sgShmBuffer.readDoubleLE(0xE0),
+                                omega_z: sgShmBuffer.readDoubleLE(0xE8),
+                                wheel_rpm_x: sgShmBuffer.readDoubleLE(0xF0),
+                                wheel_rpm_y: sgShmBuffer.readDoubleLE(0xF8),
+                                wheel_rpm_z: sgShmBuffer.readDoubleLE(0x100),
+                                cable_tension: sgShmBuffer.readDoubleLE(0x108),
+                                cable_vibration: sgShmBuffer.readDoubleLE(0x110),
+                                detumble_time: sgShmBuffer.readDoubleLE(0x118),
+                                elapsed_time: sgShmBuffer.readDoubleLE(0x120),
+
+                                // Debris Geometry
+                                debris_azimuth: sgShmBuffer.readDoubleLE(0x128),
+                                debris_elevation: sgShmBuffer.readDoubleLE(0x130),
+                                debris_spawn_x: sgShmBuffer.readDoubleLE(0x138),
+                                debris_spawn_y: sgShmBuffer.readDoubleLE(0x140),
+                                debris_spawn_z: sgShmBuffer.readDoubleLE(0x148),
+                                debris_impact_x: sgShmBuffer.readDoubleLE(0x150),
+                                debris_impact_y: sgShmBuffer.readDoubleLE(0x158),
+                                debris_impact_z: sgShmBuffer.readDoubleLE(0x160),
+
+                                // Scores & Status
+                                checkpoint_score: sgShmBuffer.readInt32LE(0x168),
+                                bonus_score: sgShmBuffer.readInt32LE(0x16C),
+                                cable_snapped: sgShmBuffer.readUInt32LE(0x170),
+                                thruster_health: sgShmBuffer.readUInt32LE(0x174),
+                                is_detumbled: sgShmBuffer.readUInt32LE(0x178),
+                                debris_hits: sgShmBuffer.readUInt32LE(0x17C),
+                                chaos_seed: sgShmBuffer.readUInt32LE(0x180),
+                                damaged_thruster_1: sgShmBuffer.readUInt32LE(0x184),
+                                damaged_thruster_2: sgShmBuffer.readUInt32LE(0x188),
+
+                                official_grade: sgShmBuffer.toString('utf8', 0x190, 0x1B0).replace(/\0.*$/, ''),
+                                last_event: sgShmBuffer.toString('utf8', 0x1B0, 0x1F0).replace(/\0.*$/, '')
+                            };
+                            lastTelemetryData.space_guidance = telemetry;
+                            io.emit('scenario:telemetry', telemetry);
+                        }
+                        return true;
+                    }
+                }
             }
         } catch (e) {}
+    }
+    return false;
+}
+
+function updateScenarioTelemetry() {
+    // 1. Check SpaceGuidance Telemetry via SHM (Zero Disk I/O)
+    const sgLoaded = readSpaceGuidanceShmTelemetry();
+    if (!sgLoaded) {
+        const sgPath = '/tmp/space_guidance_telemetry.json';
+        if (fs.existsSync(sgPath)) {
+            try {
+                const stats = fs.statSync(sgPath);
+                if (stats.mtimeMs !== lastTelemetryMtime.space_guidance) {
+                    lastTelemetryMtime.space_guidance = stats.mtimeMs;
+                    const raw = fs.readFileSync(sgPath, 'utf8');
+                    const telemetry = JSON.parse(raw);
+                    lastTelemetryData.space_guidance = telemetry;
+                    io.emit('scenario:telemetry', { type: 'space_guidance', ...telemetry });
+                }
+            } catch (e) {}
+        }
     }
 
     // 2. Check AMR Telemetry
