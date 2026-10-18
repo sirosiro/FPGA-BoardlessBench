@@ -19,6 +19,13 @@ export default function PopoutWindow({ title, onClose, win: winProp, children })
     onCloseRef.current = onClose;
   }, [onClose]);
 
+  // Synchronize window title dynamically without re-opening/re-docking window
+  useEffect(() => {
+    if (winRef.current && !winRef.current.closed) {
+      winRef.current.document.title = `${title} - F-BB Multi-Screen Cockpit`;
+    }
+  }, [title]);
+
   useEffect(() => {
     // Use window opened synchronously in click handler (Safari compliant), or fallback to opening here
     let win = winProp;
@@ -32,7 +39,7 @@ export default function PopoutWindow({ title, onClose, win: winProp, children })
 
     if (!win) {
       alert('Pop-up window was blocked by the browser. Please check Safari "Pop-up Windows" permissions for http://localhost:8080.');
-      onClose();
+      onCloseRef.current?.();
       return;
     }
 
@@ -146,16 +153,21 @@ export default function PopoutWindow({ title, onClose, win: winProp, children })
       setContainer(contentDiv);
     });
 
+    // Guard against premature unload events during initial document setup in about:blank
+    let isReady = false;
+    const readyTimer = setTimeout(() => {
+      isReady = true;
+    }, 400);
+
     // Auto re-dock when child window is closed
     let isClosed = false;
     const handleClose = () => {
-      if (isClosed) return;
+      if (!isReady || isClosed) return;
       isClosed = true;
       onCloseRef.current?.();
     };
 
     win.addEventListener('beforeunload', handleClose);
-    win.addEventListener('pagehide', handleClose);
 
     // Heartbeat check for window close (detects Safari traffic light or Cmd+W reliably)
     const checkClosedInterval = setInterval(() => {
@@ -166,14 +178,16 @@ export default function PopoutWindow({ title, onClose, win: winProp, children })
     }, 500);
 
     return () => {
+      clearTimeout(readyTimer);
       clearInterval(checkClosedInterval);
       win.removeEventListener('beforeunload', handleClose);
-      win.removeEventListener('pagehide', handleClose);
       if (!win.closed) {
         win.close();
       }
     };
-  }, [winProp, title, onClose]);
+    // Window lifecycle effect must only mount once per PopoutWindow instance
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   if (!container) return null;
 

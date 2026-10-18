@@ -1,4 +1,4 @@
-import React, { Component, useRef, useState, useEffect } from 'react';
+import React, { Component, useRef, useState, useEffect, useCallback } from 'react';
 import { Box, Plus, ChevronDown } from 'lucide-react';
 import { DockviewReact } from 'dockview-react';
 import { DashboardProvider, useDashboard } from './components/DashboardContext';
@@ -106,7 +106,7 @@ function DashboardInner() {
   }, []);
 
   // Handler to re-dock a popped-out panel back into main Dockview
-  const handleReDock = (panelInfo) => {
+  const handleReDock = useCallback((panelInfo) => {
     setPoppedOutPanels(prev => prev.filter(p => p.id !== panelInfo.id));
     if (apiRef.current) {
       const existing = apiRef.current.getPanel(panelInfo.id);
@@ -119,7 +119,7 @@ function DashboardInner() {
         });
       }
     }
-  };
+  }, []);
 
   // @intent:rationale マウント時に外部 DPPA ペインをロード完了させてから保存済みレイアウトを復元します。
   const onReady = async (event) => {
