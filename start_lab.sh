@@ -35,9 +35,22 @@ cleanup() {
     [ -n "$CONTROLLER_PID" ] && kill $CONTROLLER_PID 2>/dev/null
     [ -n "$SIM_PID" ] && kill $SIM_PID 2>/dev/null
     [ -n "$DASHBOARD_PID" ] && kill $DASHBOARD_PID 2>/dev/null
+    if [ -n "$APP_PID" ]; then
+        kill -TERM -- -"$APP_PID" 2>/dev/null || kill -TERM "$APP_PID" 2>/dev/null || true
+        sleep 0.1
+        kill -9 -- -"$APP_PID" 2>/dev/null || kill -9 "$APP_PID" 2>/dev/null || true
+    fi
+    if [ -f /tmp/fbb_app.pid ]; then
+        SAVED_APP_PID=$(cat /tmp/fbb_app.pid 2>/dev/null | tr -d '[:space:]')
+        if [ -n "$SAVED_APP_PID" ]; then
+            kill -TERM -- -"$SAVED_APP_PID" 2>/dev/null || kill -TERM "$SAVED_APP_PID" 2>/dev/null || true
+            kill -9 -- -"$SAVED_APP_PID" 2>/dev/null || kill -9 "$SAVED_APP_PID" 2>/dev/null || true
+        fi
+        rm -f /tmp/fbb_app.pid 2>/dev/null
+    fi
     pkill -f "node dashboard/server.js" 2>/dev/null
     pkill -f "vlogic_controller.py" 2>/dev/null
-    pkill test_bin 2>/dev/null
+    pkill -x test_bin 2>/dev/null
     
     # remoteproc M-core processes cleanup
     for pid_file in /tmp/fbb/sys/class/remoteproc/*/pid; do
@@ -183,8 +196,9 @@ fi
 
 export LD_BIND_NOW=1
 export FBB_ACTIVE=1
-"${SCENARIO_DIR}/run.sh" "${@:2}" &
+setsid "${SCENARIO_DIR}/run.sh" "${@:2}" &
 APP_PID=$!
+echo "$APP_PID" > /tmp/fbb_app.pid
 
 echo ""
 echo "===================================================="

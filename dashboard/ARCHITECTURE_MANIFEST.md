@@ -197,14 +197,14 @@ DPPA（Dashboard Pane Plugin Architecture）における動的外部 ESM ペイ�
 
 ### 1. 背景と課題 (Why)
 - **多重 HTTP ポーリングによる通信詰まりとジッター**:
-  - `SpaceGuidance` を含む各ペイン（Orbit Viewer, Chaos FDIR, Telemetry Gauge）が、独立して毎秒 50〜60 回の頻度で HTTP GET（`/api/file?path=/tmp/*.json`）を連打していた。
+  - 外部プラグインや自律走行シナリオを含む各ペインが、独立して毎秒 50〜60 回の頻度で HTTP GET（`/api/file?path=/tmp/*.json`）を連打していた。
   - 外部 PC（MacBook M4 等）からポートフォワーディングや Wi-Fi 経由で接続した場合、ブラウザの同一ドメイン同時接続上限（最大 6 本）を圧迫し、パケット到着のバースト化（無音 $\to$ 一括到着）によるマイクロスタッター（表示の停止・カクつき）を構造的に引き起こしていた。
 - **シナリオ間でのテレメトリ伝送方式の分断**:
-  - ロボットシナリオ（AMR）では `server.js` に `amr:telemetry` がハードコードされていた一方、SpaceGuidance は一時ファイルへの個別 HTTP ポーリングに頼っており、統一されたテレメトリ配信機構が存在しなかった。
+  - 各シナリオや外部プラグインごとに独自の通信方式や個別 HTTP ポーリングに頼っており、統一されたテレメトリ配信機構が存在しなかった。
 
 ### 2. 決定事項 (Decisions)
 1. **統合 WebSocket イベント (`scenario:telemetry`) の標準化**:
-   - `dashboard/server.js` は、実行中シナリオのテレメトリソース（`/tmp/space_guidance_telemetry.json`, `/tmp/fbb_amr_telemetry.json`, または共有メモリ）を統括監視し、単一の WebSocket イベント `scenario:telemetry` としてプッシュ配信する（30Hz〜50Hz）。
+   - `dashboard/server.js` は、実行中シナリオの標準テレメトリソース（`/tmp/fbb_scenario_telemetry.json` や `/tmp/fbb_amr_telemetry.json` 等の標準契約）を統括監視し、単一の WebSocket イベント `scenario:telemetry` としてプッシュ配信する（30Hz〜50Hz）。
    - シナリオ個別の旧イベント名（`amr:telemetry` 等）は後方互換性を保ちつつ `scenario:telemetry` にエイリアス統合する。
 2. **フロントエンド中央ストア（`DashboardContext`）による単一受信と分配**:
    - フロントエンド側では、`DashboardContext.jsx` が `scenario:telemetry` を 1 回だけ受信・キャッシュし、カスタムフック `useScenarioTelemetry()` を通じて全ペインへ伝播する。
@@ -245,6 +245,22 @@ DPPA（Dashboard Pane Plugin Architecture）における動的外部 ESM ペイ�
    - レイヤー 2（前面）: ポインタ透過（`pointer-events: none`）の 2D オーバーレイ Canvas。Three.js の `vector.project(camera)` で 3D 空間位置を 2D 投影し、ターゲットレティクルやゲート名称等のテキスト HUD を鮮明に描画。
 3. **推測航法（Dead-Reckoning）と 120 FPS 自律補間の融合**:
    - 受信した物理速度ベクトル（`vel_x, vel_y, vel_z`）および角速度（`omega_x, wy, wz`）による慣性順伝播と、受信パケット位置へのスプリング収束ブレンドを実装し、WebSocket テレメトリの到着ジッターに依存しない滑らかな 120 FPS 描画を保証。
+
+## 3.12 プラグイン完全隔離・具象名漏洩絶対禁止規約 (Plugin Isolation & Zero-Leaked-Identity Protocol)
+
+### 1. 背景と規約の意義 (Why)
+F-BB は、世界中のサードパーティ製ハードウェア・ゲーム・制御シミュレーションが自律的に参入可能な「ボードレス FPGA プラットフォーム」を目指すオープンアーキテクチャである。
+ホストコード（`dashboard/server.js`、`start_lab.sh`、`vlogic_controller.py` 等）の内部に、特定のサードパーティ・プラグインや外部シナリオの具象名（プロセス名、バイナリ名、ファイルパス、固有共有メモリ構造体のオフセット等）を直接ハードコードすることは、**F-BB を特定プラグイン専用の私物化システムに堕落させ、他のすべてのプラグインに対するポータビリティを永久に損なう重大なアーキテクチャ破壊行為**である。
+
+### 2. 厳格な不変条件 (Invariants)
+1. **F-BB コアにおける特定プラグイン具象名の完全禁止 (Strict Ban on Concrete Plugin Identifiers)**:
+   - `server.js` や `start_lab.sh` 等のホスト側スクリプトにおいて、特定プラグインのプロセス名（例: `space_guidance_daemon`、`pilot.py`、`rct_z80_daemon` 等）を `pgrep` や `pkill` の引数に記述することを例外なく禁止する。
+   - プロセス管理は、`start_lab.sh` およびダッシュボードが生成するプロセスグループ（`/tmp/fbb_app.pid` による PGID 追跡）と、POSIX 標準のシグナル送信（`kill -- -PGID` / `process.kill(-pid, 'SIGKILL')`）のみによって抽象的に実行しなければならない。
+2. **シナリオ・テレメトリの完全抽象契約 (Generic Telemetry Contract)**:
+   - ホスト側の `server.js` は、いかなる外部プラグイン固有のバイナリ構造体（例: `fbb_space_guidance_shm` のオフセット定義等）も直読・デコードしてはならない。
+   - プラグインやシナリオがダッシュボードへテレメトリを提供する場合、標準規格ファイル `/tmp/fbb_scenario_telemetry.json`（または公式シナリオの `/tmp/fbb_amr_telemetry.json`）を介して JSON 形式で出力し、`server.js` はそのファイルを中立なトランスポートとして単に `scenario:telemetry` へブロードキャストする責務に限定される。
+3. **プラグイン固有 SHM の自己責任カプセル化 (Self-Contained Plugin SHM Protocol)**:
+   - プラグインが独自に高速な POSIX 共有メモリを使用する場合、その定義と解釈はプラグイン自身（C++ デーモンおよびプラグイン側 ESM ペイン `panes/*/index.js`）の内部に 100% カプセル化されなければならない。ホストダッシュボード本体にプラグイン専用の SHM パーサーを混入させてはならない。
 
 ## 4. 既知の未解決課題 (Known Open Issues)
 - **多重接続時の競合**: 同一の UART に対して複数のブラウザタブから入力を試みた際の排他制御。
