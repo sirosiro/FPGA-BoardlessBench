@@ -143,9 +143,9 @@ start_environment() {
     # 1. Generate code from DTS
     python3 scripts/gen_vfpga.py ${dts}
     
+    # 2. Build full simulation environment (engine, peripherals, and application)
     cmake -B ${BUILD_DIR} -DSCENARIO_DIR="${scenario_dir}" || exit 1
-    cmake --build ${BUILD_DIR} --target fpgashim || exit 1
-    cmake --build ${BUILD_DIR} --target vfpga_sim || exit 1
+    cmake --build ${BUILD_DIR} || exit 1
     
     # 3. Start Controller
     python3 -u ${CONTROLLER} ${dts} > "${scenario_dir}/controller.log" 2>&1 &
@@ -168,10 +168,6 @@ for scenario in $(ls -d ${SCENARIOS_DIR}/[0-9]* | sort -V); do
     fi
     
     start_environment "${scenario}"
-    
-    # Build the scenario via CMake
-    echo "[Runner] Building ${scenario} via CMake..."
-    cmake --build ${BUILD_DIR} || exit 1
     
     # Run the test
     echo "[Runner] Running test..."

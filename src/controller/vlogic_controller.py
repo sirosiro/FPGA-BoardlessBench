@@ -672,8 +672,13 @@ def main():
                 if os.path.exists(bin_subpath):
                     bin_path = bin_subpath
                 else:
-                    # Fallback check in build/bin
-                    bin_path = os.path.join(PROJECT_ROOT, f"build/bin/{os.path.basename(bin_rel)}")
+                    # Fallback check in build/bin or /tmp/fbb_build/bin
+                    cand_build = os.path.join(PROJECT_ROOT, f"build/bin/{os.path.basename(bin_rel)}")
+                    cand_tmp = f"/tmp/fbb_build/bin/{os.path.basename(bin_rel)}"
+                    if os.path.exists(cand_build):
+                        bin_path = cand_build
+                    elif os.path.exists(cand_tmp):
+                        bin_path = cand_tmp
             
             # Format default arguments with DTS parameters
             args_template = plugin_info.get('default_args', [])
