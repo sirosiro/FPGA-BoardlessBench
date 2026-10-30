@@ -13,6 +13,45 @@
 - **ハイブリッド・マルチスクリーン & ペイン切り離し (Pop-out)**: 各ペインのタブから別ウィンドウへのワンクリック切り離し（Pop-out）、およびサブモニタ用のスクリーン別レイアウト管理（`?screen=monitor2`）に対応。
 - **DPPA (Dashboard Pane Plugin Architecture)**: 宣言的ペインレジストリ（`paneRegistry.jsx`）により、ペインの実装・定義とウィンドウマネージャーを完全疎結合化。
 
+## デフォルトペイン一覧＆操作リファレンス (Built-in Panes Reference)
+
+F-BB が標準で提供する 15 種類のペイン（`paneRegistry.jsx`）の役割と操作方法の一覧です。ヘッダーの **`+ Add Pane`** メニューから任意のペインを個別追加・復元できます。
+
+### 1. 観測・制御系 (Observability & Control)
+
+| ペイン名 / 表示名 (ID) | 主な役割と可視化内容 | 主な操作方法・ショートカット |
+| :--- | :--- | :--- |
+| **Registers**<br>(`registerMonitor`) | 仮想 FPGA レジスタ（UIO/GPIO等）のアドレス・現在値（Hex/Dec）をデバイス毎にツリー表示。 | ・**Trace チェックボックス**: Tracer への表示/非表示を動的切替。<br>・**TIME-TRAVEL 中**: 過去値をシアン色で表示。実機破壊を防ぐため自動で読み取り専用（`Read-Only`）ロック。 |
+| **GPIO / Pin Array**<br>(`gpioPanel`) | SoC の GPIO ポート（LED・スイッチ・HUB75等）をグリッド表示。Active-Low / High を自動認識。 | ・**入力ピンをクリック**: High / Low をトグル注入。<br>・**TIME-TRAVEL 中**: 過去の点灯状態を復元。入力操作は自動ロック。 |
+| **Tracer**<br>(`registerTracer`) | レジスタ値の変化履歴（最大500件）を追跡する正規化波形アナライザ。 | ・**波形クリック / なぞりドラッグ**: 該当スナップショットへ時間跳躍（Time-Travel）。全計器・3D画面が過去へ同期。<br>・**`SPAN` ボタン**: `50pt` / `100pt` / `250pt` / `All` でカーソル中心にオシロスコープ拡大。<br>・**モード切替**: `Zero-Center`（中央50%基準）/ `Signed`（符号付き自動レンジ）/ `Unsigned`。<br>・**`◄` / `►` キー**: 1フレーム単位で過去/未来へコマ送り・コマ戻し（`Shift` 同時押しで 10フレームジャンプ）。<br>・**`Esc` キー / `LIVEへ復帰` ボタン**: リアルタイム最新波形へ一発復帰。 |
+| **CAN Bus Analyzer**<br>(`canAnalyzer`) | 仮想 SocketCAN（CANopen / J1939等）の全パケット送受信ログをリアルタイム表示。 | ・**送信フォーム**: ID・DLC・Data を入力して `Send` で CAN フレームを即時インジェクション。<br>・**フィルタ**: ID による特定メッセージの絞り込み。 |
+| **Transaction Logger**<br>(`transactionLogger`) | C-Shim アクセストラッカーによるミリ秒単位のアクセス履歴およびプロトコル違反を監視。 | ・**自動検知**: Read-Only レジスタへの不正書き込み（`[PROTOCOL_VIOLATION]`）時に赤色アラートを表示。<br>・**Clear ボタン**: ログバッファをクリア。 |
+| **Chaos & Fault Injection**<br>(`chaosEngine`) | 決定論的カオス障害（I2C/SPI通信化け、DMAタイムアウト等）の注入とマルチコア管理。 | ・**マルチコア制御**: Aコア / Mコアの稼働ステータス確認および個別再起動。<br>・**Seed 指定**: `Off` / `Random` / `Fixed`（シード値入力）による障害発生の 100% 再現。<br>・**スライダー**: 障害発生率（0〜100%）およびペリフェラル別有効化。 |
+| **DTS Visualizer & AI**<br>(`dtsVisualizer`) | 32-bit物理アドレス空間全体を一括俯瞰する一体型メモリマップ。DTS 構文エラーの AI 診断。 | ・**ブロッククリック**: デバイスのアラインメント、レジスタ構成、未割り当て空き空間（Unmapped Gap）を直下展開。<br>・**AI Smart DTS Check**: Ollama LLM と連動し、DTS コンパイルエラーの自然言語解説と Fix Diff を提示。 |
+
+### 2. シリアル端末系 (Serial Terminals)
+
+| ペイン名 / 表示名 (ID) | 主な役割と可視化内容 | 主な操作方法・ショートカット |
+| :--- | :--- | :--- |
+| **UART Console**<br>(`uartTerminal`) | シミュレーション内の UART ポート（TCP 2000〜）と接続する Web ターミナル。 | ・**キー入力**: ファームウェアの対話シェルを直接操作。<br>・**マクロ機能**: `login:` 等の文字列に対する自動応答設定。<br>・**外部接続**: ホスト PC の Tera Term 等（ポート 3000〜）から接続した場合も内容をリアルタイム相互同期。 |
+
+### 3. ペリフェラル・入出力系 (Peripherals & I/O)
+
+| ペイン名 / 表示名 (ID) | 主な役割と可視化内容 | 主な操作方法・ショートカット |
+| :--- | :--- | :--- |
+| **Virtual Peripheral View**<br>(`genericPeripheralPane`) | PPA 2.0 に基づく汎用ペリフェラル基板ビュー。ベクターグラフィック（`board.svg`）を高品質レンダリング。 | ・**マウス操作**: 50%〜400% ズーム、クリック＆ドラッグによる自由な視点移動（パンニング）。<br>・**制御スライダー**: 接続中のセンサー（ADC等）の入力電圧・物理値をリアルタイム操作。<br>・**スタンバイ画面**: プラグイン非接続時はシックなスタンバイ画面を表示。 |
+| **Virtual SD Card**<br>(`sdCard`) | 仮想 SD カードイメージのマウント状態とファイルシステム監視。 | ・**ファイル一覧**: SD カード内の保存ファイル一覧をツリー表示。<br>・**ファイルダンプ**: イメージ内のファイルをホスト PC へ直接ダウンロード。 |
+| **HDMI Output Preview**<br>(`hdmiOutput`) | 仮想 FPGA のフレームバッファから出力される映像信号（HDMI）のプレビュー。 | ・シミュレータが描画した画面フレームをリアルタイム表示。 |
+
+### 4. 拡張・ロボティクス系 (Add-ons & Robotics)
+
+| ペイン名 / 表示名 (ID) | 主な役割と可視化内容 | 主な操作方法・ショートカット |
+| :--- | :--- | :--- |
+| **ros2_control Status & Jitter**<br>(`ros2ControlStatus`) | 1kHz 決定論的リアルタイム制御ループのジッター計測。 | ・リアルタイムループの平均ジッター（Avg Jitter）および最大ジッター（Max Jitter）を $\mu$s 単位で監視。 |
+| **ROS 2 Joint Tracking Waveform**<br>(`ros2JointWaveform`) | 左右車輪モーターの目標角速度（Cmd）と実測エンコーダ値（Actual）の追従性波形。 | ・左右ホイールの追従誤差（Velocity Error）や PID 応答波形をリアルタイム解析。 |
+| **ROS 2 Teleop & E-STOP Console**<br>(`ros2TeleopConsole`) | 自律走行ロボット（AMR）の手動操縦およびハードウェア非常停止制御。 | ・**操縦操作**: 画面上の仮想ジョイスティック、またはキーボードの `W`/`A`/`S`/`D` キーによる直感走行操縦。<br>・**Space キー / STOP**: 即座に速度ゼロ停止。<br>・**E-STOP ボタン**: ハードウェア非常停止回路のトリガー＆障害復旧（Recovery）。 |
+| **AMR 2D Pose & Map**<br>(`ros2PoseMap2D`) | 左右車輪オドメトリから積算された 2D 自己位置（X, Y, $\theta$）と走行軌跡の描画。 | ・ロボットの走行ルート、旋回挙動（ピボットターン）、および現在位置ベクトルを平面マップ上にプロット。 |
+
 ## アーキテクチャ図
 
 ```mermaid

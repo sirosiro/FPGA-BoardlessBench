@@ -40,10 +40,10 @@
     - **DPPA (Dashboard Pane Plugin Architecture)**: `paneRegistry.jsx` を介した宣言的ペイン管理機構。ペインの実装・定義と Dockview ウィンドウマネージャー（`App.jsx`）を完全疎結合化。
     - **ハイブリッド・マルチスクリーン (Pop-out & Multi-Screen Cockpit)**: Dockview のタブ右上に「Pop out to separate window」アクションを統合。React 19 `createPortal` による子ウィンドウ化および `BroadcastChannel` による画面間ステート同期をサポート。また、URL クエリ `?screen=<id>` / `?pane=<id>` によるモニタ別レイアウト永続化・単体全画面表示に対応。
     - **Chaos & Multi-Core Lifecycle Panel (`ChaosPanel`)**: シナリオ内の各コア（Aコア `test_bin` / Mコア `remoteproc*`）の稼働状態表示と個別選択再起動、シード指定モード（Off / Random / Fixed）、シード再ロール（Reroll）、CLI 再現用コマンド（`fbb test --chaos --seed ...`）のワンクリックコピー、障害率スライダー（0〜100%）、およびペリフェラル別（I2C, SPI, UIO, CAN, CDMA）障害有効化チェックボックスを統合した高機能検証ペイン。
-    - **Register Monitor**: デバイス（モジュール）ごとにアコーディオンパネルで展開・折りたたみ可能にグルーピング表示。各レジスタに「Trace」チェックボックスを備え、Tracerでの描画および凡例の動的フィルタリングを双方向同期。
-    - **GPIO / Pin Array**: GPIO をグリッド表示し、マニフェスト経由で配信される方向モード属性（`direction_mode`: `active_low_input` / `active_high_input`）や複数チャネル構成（DATA/TRI, DATA2/TRI2 等）に基づき LED（出力）とトグルスイッチ（入力）を完全なデータ駆動（SoC非依存）で動的に切り替えて描画。
+    - **Register Monitor**: デバイス（モジュール）ごとにアコーディオンパネルで展開・折りたたみ可能にグルーピング表示。各レジスタに「Trace」チェックボックスを備え、Tracerでの描画および凡例の動的フィルタリングを双方向同期。タイムトラベル中は過去スナップショットの値をシアン色で強調表示し、実機への誤操作を防ぐ安全インターロック（Read-Only ロック）を適用。
+    - **GPIO / Pin Array**: GPIO をグリッド表示し、マニフェスト経由で配信される方向モード属性（`direction_mode`: `active_low_input` / `active_high_input`）や複数チャネル構成（DATA/TRI, DATA2/TRI2 等）に基づき LED（出力）とトグルスイッチ（入力）を完全なデータ駆動（SoC非依存）で動的に切り替えて描画。タイムトラベル中は過去のピン点灯状態を復元し、入力トグルを自動無効化。
     - **DTS Visualizer & AI Diagnostics**: 32-bit物理アドレス空間全体を一括俯瞰する「一体型メモリマップダイアグラム」を表示。マップ上の各デバイスブロックをクリックで直下にインライン展開し、アラインメント・レジスタ・プロパティを詳細確認可能。デバイス間の未割り当て空間（Unmapped Space Gap）をシックなグレーのパターン領域として可視化し、新規IP用空き容量バッファを提示。さらに Ollama LLM / CIP プロンプトと連動した「AI Smart DTS Check」により、コンパイルエラーの自然言語解説と推奨Fix Diffを提示。
-    - **Register State Tracer**: レジスタの変化履歴を正規化表示し、微小な変化も可視化。凡例クリックまたは Register Monitor のチェックボックスと連動した、表示・非表示および凡例の動的な削除・追加に対応。
+    - **Register State Tracer**: レジスタの変化履歴を正規化表示し、微小な変化も可視化。Zero-Center（ゼロ中央50%基準）、Signed（2の補数符号付き自動レンジ）、Unsigned（絶対値0〜4.29G）のモード切替をサポート。波形上のクリック／なぞりドラッグによるタイムトラベル静止シーク、オシロスコープ式時間軸スパン切替（50pt / 100pt / 250pt / All）、キーボード左右キー（◄/►）コマ送り/コマ戻し、および別ウィンドウを含む 3D Orbit Viewer / 全計器との連動に対応。
     - **IDE-style Docking Layout (Dockview)**: VS Code互換のドッキングレイアウトを採用。パネルのドラッグ＆ドロップによる分割・結合・タブ化・フローティング化をネイティブサポートし、UI全体の配置リセット機能（Reset Layout）も完備。レガシーな手動リサイズコードを撤去し、高精度なリサイズ体験を提供。
     - **Generic Peripheral View (PPA 2.0 Equalization)**: 公式・サードパーティを問わず全ペリフェラルプラグインを 100% 均一に扱う汎用ビューペイン。`fbb-plugin.json` 内で指定されたベクターグラフィック `board.svg` を解像度低下ゼロ（500%+ 拡大耐性）でレンダリングし、その上にリアルタイムフレームバッファ（Canvas Stream）やセンサー制御スライダー等を自動オーバーレイ描画。ペリフェラル非接続時は特定機器に偏らないスタイリッシュな **`NO ACTIVE PERIPHERAL CONNECTED` (スタンバイ画面)** を表示。
     - **レイアウト状態の保存・復元と個別ペイン追加機能**: 起動時に自動でサーバーからシナリオ別レイアウトを読み込み復元し、ヘッダーの「Save Layout」ボタンから現在の配置状態を保存可能。さらに **`+ Add Pane`** ドロップダウンメニューから、閉じた任意のペイン（または動的発見された複数ペリフェラルペイン）を選択して単体動的復元・フォーカス移動が可能。
@@ -261,6 +261,37 @@ F-BB は、世界中のサードパーティ製ハードウェア・ゲーム・
    - プラグインやシナリオがダッシュボードへテレメトリを提供する場合、標準規格ファイル `/tmp/fbb_scenario_telemetry.json`（または公式シナリオの `/tmp/fbb_amr_telemetry.json`）を介して JSON 形式で出力し、`server.js` はそのファイルを中立なトランスポートとして単に `scenario:telemetry` へブロードキャストする責務に限定される。
 3. **プラグイン固有 SHM の自己責任カプセル化 (Self-Contained Plugin SHM Protocol)**:
    - プラグインが独自に高速な POSIX 共有メモリを使用する場合、その定義と解釈はプラグイン自身（C++ デーモンおよびプラグイン側 ESM ペイン `panes/*/index.js`）の内部に 100% カプセル化されなければならない。ホストダッシュボード本体にプラグイン専用の SHM パーサーを混入させてはならない。
+
+## 3.13 時間跳躍型可逆デバッグ・オシロスコープ波形シークアーキテクチャ規約 (Time-Travel Scrubbing & Oscilloscope Waveform Architecture Protocol)
+
+### 1. 背景と設計意図 (Why)
+- **非侵襲的な時間跳躍型デバッグ体験の実現**:
+  物理オシロスコープや実機ハードウェアでは、異常スパイクが発生した瞬間に時間を巻き戻して内部レジスタやロボット/宇宙船の姿勢・GPIOをじっくり観察することは不可能である。F-BB は仮想化された共有メモリと時系列スナップショット配列（`traceHistory`）を活用し、シミュレーション実行中に過去の任意ポイントへ UI 全体をタイムスリップさせる「時間跳躍型デバッグ（Time-Travel Debugging）」を提供する。
+- **軽量・低負荷なオシロスコープ操作系の確立**:
+  アニメーションループや SVG 矩形選択ドラッグに伴う過大な再描画負荷（60FPS再描画による CPU スパイクやブラウザハング）を完全に排除し、実機オシロスコープの `TIME/DIV` と同一の「時間軸スパン切替（Timebase Span）」、直感的なクリック/なぞりシーク、およびキーボード左右キー（◄/►）によるコマ送り/コマ戻し操作を採用することで、ノート PC 環境でも極小負荷・ゼロ遅延で軽快に動作する波形解析 UX を実現する。
+
+### 2. 厳格な不変条件とアーキテクチャ契約 (Invariants & Protocols)
+1. **抽象テレメトリの履歴自動カプセル化 (Generic Telemetry in Trace Snapshot)**:
+   - `server.js` はレジスタ変化検知時に生成するスナップショットへ、その時点の `cachedScenarioTelemetry` を複製した `telemetry` フィールドを付加して `traceHistory`（最大 500 件）に蓄積する。
+   - F-BB コアは特定プラグインの構造体やプロパティ名に一切依存せず、完全な抽象 JSON オブジェクトとして透過的に搬送する（プラグイン完全隔離原則の遵守）。
+2. **中央ストア（`DashboardContext`）による実効ステート合成 (`effectiveRegisters`, `effectiveTelemetry`)**:
+   - `DashboardContext.jsx` は `timeTravelState = { isLive, selectedIndex, snapshot }` を一元管理する。
+   - 通常時（`isLive === true`）: `registers` および `scenarioTelemetry` をそのままストリーミング伝播する。
+   - タイムトラベル時（`isLive === false`）: 選択されたスナップショットから `effectiveRegisters` を動的合成し、`isHistorical: true` 属性を付与する。同時に `effectiveTelemetry` を合成し、カスタムイベント `fbb:telemetry:effective` をディスパッチして 3D Orbit Viewer 等の外部 ESM ペインへ過去姿勢・座標を即時反映する。
+3. **安全インターロック規約（Read-Only Protection Invariant）**:
+   - タイムトラベル中、`RegisterMonitor` および `GpioPanel` は上部に `🔒 TIME-TRAVEL (READ-ONLY)` バッジを明示し、**ビット書き込みおよび入力 GPIO ピンのトグル操作を強制的に無効化（インターロック）**しなければならない。
+   - 「画面には過去が表示されているのに、背後のリアルタイム実機/Verilatorハードウェアへ書き込み命令が送信されてしまう」という致命的なシミュレーション状態破壊を構造的に防止する。
+4. **オシロスコープ・タイムベース制御（Zero-Overhead Timebase Span Control）**:
+   - `RegisterTracer.jsx` は、表示スパン切り替えプリセット `[ SPAN: 50pt / 100pt / 250pt / All ]` を提供する。
+   - ズーム処理は単なる配列の切り出し（`historyData.slice(center - half, center + half)`）のみで行い、Recharts の SVG 再描画コストを最小限に抑制する。タイムトラベル中はシーク針（カーソル）を中心に、LIVE 時は最新点を右端に固定したまま自動スクロール追従（Roll 表示）を両立する。
+5. **フレーム単位コマ送り・コマ戻し操作体系 (Frame-by-Frame Scrubbing)**:
+   - `◄`（左キー）: 1フレーム過去へコマ戻し（`index - 1`）。LIVE 状態から押下した場合も即座に直前フレームのタイムトラベルへ移行する。
+   - `►`（右キー）: 1フレーム未来へコマ送り（`index + 1`）。最右端（最新点）に到達した場合は自動的に `● LIVE` 状態へ復帰する。
+   - `Shift` ＋ `◄`/`►`: 10フレーム高速ジャンプ。
+   - `Esc`: 即座に `● LIVE` 復帰。
+   - ターミナルや入力フォーム（`input`, `textarea`, `isContentEditable`）へのフォーカス時はキーイベントを透過させ、通常入力を阻害しない。
+6. **マルチウィンドウ・別画面同期 (BroadcastChannel Time-Travel Sync)**:
+   - ポップアウトされた子ウィンドウ（マルチモニタ環境の 3D ビューアや Register Monitor）に対しても、`BroadcastChannel('fbb_dashboard_sync')` を介して `SYNC_TIME_TRAVEL` メッセージをブロードキャストし、全画面間で完全ゼロ遅延のシーク連動を維持する。
 
 ## 4. 既知の未解決課題 (Known Open Issues)
 - **多重接続時の競合**: 同一の UART に対して複数のブラウザタブから入力を試みた際の排他制御。

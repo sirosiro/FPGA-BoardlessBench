@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useMemo, useState, useEffect } from 'react';
 import {
   LineChart,
   Line,
@@ -21,39 +21,135 @@ const toInt32 = (val) => {
 };
 
 const RegisterTracer = () => {
-  const { traceHistory: historyData, handleClearTrace: onClear, hiddenTraceKeys: hiddenKeys, toggleTraceKey } = useDashboard();
+  const { 
+    traceHistory: historyData, 
+    handleClearTrace: onClear, 
+    hiddenTraceKeys: hiddenKeys, 
+    toggleTraceKey,
+    timeTravelState,
+    isTimeTravelActive,
+    scrubTo,
+    returnToLive
+  } = useDashboard();
   
   // 表示モード: 'zero_center' (ゼロ中央固定) | 'signed' (符号付き自動レンジ) | 'unsigned' (従来の非負)
   const [mode, setMode] = useState('zero_center');
 
-  // 履歴データからレジスタ名のリストを抽出
+  // オシロスコープ時間軸スパン: 50 | 100 | 250 | 'all'
+  const [timebaseSpan, setTimebaseSpan] = useState('all');
+
+  // ドラッグ操作判定
+  const [isMouseDown, setIsMouseDown] = useState(false);
+
+  // ESCキーでLIVEへ復帰 & 左右矢印キー(◄/►)でコマ送り/コマ戻し (Shift同時押しで10フレームジャンプ)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      // 入力フォームやターミナル等にフォーカスがある時はスキップ
+      const tag = e.target?.tagName?.toLowerCase();
+      if (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable) {
+        return;
+      }
+
+      if (e.key === 'Escape') {
+        returnToLive();
+        return;
+      }
+
+      if (!historyData || historyData.length === 0) return;
+
+      const step = e.shiftKey ? 10 : 1;
+
+      if (e.key === 'ArrowLeft') {
+        e.preventDefault();
+        let currIdx = -1;
+        if (timeTravelState?.snapshot) {
+          currIdx = historyData.findIndex(d => d.index === timeTravelState.snapshot.index);
+        }
+        if (currIdx === -1) {
+          // LIVE状態から左キーを押した場合は最新から1つ前へ
+          currIdx = historyData.length - 1;
+        }
+        const targetIdx = Math.max(0, currIdx - step);
+        if (historyData[targetIdx]) {
+          scrubTo(historyData[targetIdx]);
+        }
+      } else if (e.key === 'ArrowRight') {
+        if (!timeTravelState?.snapshot) {
+          return; // すでにLIVE中なら右へは進めない
+        }
+        e.preventDefault();
+        const currIdx = historyData.findIndex(d => d.index === timeTravelState.snapshot.index);
+        if (currIdx !== -1) {
+          if (currIdx >= historyData.length - 1) {
+            // 右端（最新）に到達したらLIVEへ復帰
+            returnToLive();
+          } else {
+            const targetIdx = Math.min(historyData.length - 1, currIdx + step);
+            if (historyData[targetIdx]) {
+              scrubTo(historyData[targetIdx]);
+            }
+          }
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [historyData, timeTravelState, scrubTo, returnToLive]);
+
+  // 履歴データからレジスタ名のリストを抽出（全体から抽出して欠損防止）
   const registerKeys = useMemo(() => {
     if (!historyData || historyData.length === 0) return [];
-    return Object.keys(historyData[0]).filter(key => key !== 'index' && key !== 'time');
+    return Object.keys(historyData[0]).filter(key => key !== 'index' && key !== 'time' && key !== 'telemetry');
   }, [historyData]);
+
+  // オシロスコープ・スパンによるデータ切り出し (選択カーソルまたは最新を中心)
+  const slicedHistoryData = useMemo(() => {
+    if (!historyData || historyData.length === 0) return [];
+    if (timebaseSpan === 'all' || historyData.length <= timebaseSpan) return historyData;
+    
+    let centerIdx = -1;
+    if (timeTravelState?.snapshot) {
+      centerIdx = historyData.findIndex(d => d.index === timeTravelState.snapshot.index);
+    }
+    if (centerIdx === -1) {
+      centerIdx = historyData.length - 1; // LIVE時は最新点
+    }
+    
+    const half = Math.floor(timebaseSpan / 2);
+    let start = centerIdx - half;
+    let end = start + timebaseSpan;
+    if (start < 0) {
+      start = 0;
+      end = Math.min(historyData.length, timebaseSpan);
+    } else if (end > historyData.length) {
+      end = historyData.length;
+      start = Math.max(0, end - timebaseSpan);
+    }
+    return historyData.slice(start, end);
+  }, [historyData, timebaseSpan, timeTravelState?.snapshot]);
 
   // モードに応じたデータの正規化 (0-100%に変換)
   const normalizedData = useMemo(() => {
-    if (!historyData || historyData.length === 0) return [];
+    if (!slicedHistoryData || slicedHistoryData.length === 0) return [];
     
     const stats = {};
     registerKeys.forEach(key => {
       if (mode === 'unsigned') {
-        const values = historyData
+        const values = slicedHistoryData
           .map(d => (typeof d[key] === 'number' ? d[key] : (d[key] != null ? Number(d[key]) : NaN)))
           .filter(v => !isNaN(v));
         const min = values.length > 0 ? Math.min(...values) : 0;
         const max = values.length > 0 ? Math.max(...values) : 0;
         stats[key] = { min, max, range: max - min };
       } else if (mode === 'signed') {
-        const values = historyData
+        const values = slicedHistoryData
           .map(d => (d[key] != null ? toInt32(d[key]) : NaN))
           .filter(v => !isNaN(v));
         const min = values.length > 0 ? Math.min(...values) : 0;
         const max = values.length > 0 ? Math.max(...values) : 0;
         stats[key] = { min, max, range: max - min };
       } else { // zero_center
-        const values = historyData
+        const values = slicedHistoryData
           .map(d => (d[key] != null ? toInt32(d[key]) : NaN))
           .filter(v => !isNaN(v));
         const absMax = values.length > 0 ? Math.max(...values.map(Math.abs)) : 0;
@@ -61,7 +157,7 @@ const RegisterTracer = () => {
       }
     });
 
-    return historyData.map(d => {
+    return slicedHistoryData.map(d => {
       const normalizedEntry = { ...d };
       registerKeys.forEach(key => {
         if (mode === 'unsigned') {
@@ -81,7 +177,7 @@ const RegisterTracer = () => {
       });
       return normalizedEntry;
     });
-  }, [historyData, registerKeys, mode]);
+  }, [slicedHistoryData, registerKeys, mode]);
 
   const getColor = (index) => {
     const colors = [
@@ -96,6 +192,26 @@ const RegisterTracer = () => {
     const { dataKey } = e;
     const key = dataKey.replace('_norm', '');
     toggleTraceKey(key);
+  };
+
+  // チャートクリックまたはなぞりドラッグによるシーク
+  const handleChartInteraction = (e) => {
+    if (!e) return;
+    let targetIndex = null;
+    if (e.activePayload && e.activePayload.length > 0 && e.activePayload[0].payload) {
+      targetIndex = e.activePayload[0].payload.index;
+    } else if (e.activeLabel != null) {
+      targetIndex = Number(e.activeLabel);
+    } else if (e.activeTooltipIndex != null && slicedHistoryData[e.activeTooltipIndex]) {
+      targetIndex = slicedHistoryData[e.activeTooltipIndex].index;
+    }
+
+    if (targetIndex != null) {
+      const snap = historyData.find(d => d.index === targetIndex || d.index === Number(targetIndex));
+      if (snap) {
+        scrubTo(snap);
+      }
+    }
   };
 
   return (
@@ -119,8 +235,94 @@ const RegisterTracer = () => {
           }}>
             {historyData?.length || 0} snapshots
           </span>
+
+          {/* Time-Travel Status Badge & Return Button */}
+          {isTimeTravelActive ? (
+            <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+              <span style={{
+                fontSize: '0.7rem',
+                backgroundColor: 'rgba(0, 242, 254, 0.12)',
+                border: '1px solid #00f2fe',
+                color: '#00f2fe',
+                padding: '2px 8px',
+                borderRadius: '10px',
+                fontWeight: 'bold',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px'
+              }}>
+                ⏪ TIME-TRAVEL: #{timeTravelState.snapshot.index} ({timeTravelState.snapshot.time})
+              </span>
+              <button
+                onClick={returnToLive}
+                style={{
+                  backgroundColor: '#238636',
+                  color: '#ffffff',
+                  border: 'none',
+                  padding: '3px 8px',
+                  fontSize: '0.7rem',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: '600',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  boxShadow: '0 0 6px rgba(35, 134, 54, 0.4)'
+                }}
+                title="Return to LIVE real-time telemetry (Shortcut: ESC)"
+              >
+                ● LIVEへ復帰 (ESC)
+              </button>
+            </div>
+          ) : (
+            <span style={{
+              fontSize: '0.7rem',
+              backgroundColor: 'rgba(35, 134, 54, 0.15)',
+              border: '1px solid #238636',
+              color: '#3fb950',
+              padding: '2px 8px',
+              borderRadius: '10px',
+              fontWeight: '600'
+            }}>
+              ● LIVE
+            </span>
+          )}
         </div>
+
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
+          {/* Oscilloscope Timebase Span Selector */}
+          <div style={{
+            display: 'flex',
+            alignItems: 'center',
+            backgroundColor: '#161b22',
+            padding: '2px',
+            borderRadius: '6px',
+            border: '1px solid #30363d',
+            gap: '2px'
+          }}>
+            <span style={{ fontSize: '0.65rem', color: '#8b949e', padding: '0 4px', fontWeight: 600 }}>SPAN:</span>
+            {[50, 100, 250, 'all'].map(s => (
+              <button
+                key={s}
+                onClick={() => setTimebaseSpan(s)}
+                style={{
+                  backgroundColor: timebaseSpan === s ? '#388bfd' : 'transparent',
+                  color: timebaseSpan === s ? '#ffffff' : '#8b949e',
+                  border: 'none',
+                  padding: '2px 6px',
+                  fontSize: '0.65rem',
+                  borderRadius: '4px',
+                  cursor: 'pointer',
+                  fontWeight: timebaseSpan === s ? '600' : '400',
+                  transition: 'all 0.15s ease'
+                }}
+                title={s === 'all' ? 'Show all snapshots (max 500)' : `Zoom to ${s} snapshots centered on cursor`}
+              >
+                {s === 'all' ? 'All' : `${s}pt`}
+              </button>
+            ))}
+          </div>
+
           {/* Segmented Mode Selector */}
           <div style={{
             display: 'flex',
@@ -200,10 +402,26 @@ const RegisterTracer = () => {
         </div>
       </div>
 
-      <div style={{ flex: 1, minHeight: '300px', position: 'relative' }}>
-        {historyData && historyData.length > 0 ? (
+      <div 
+        onMouseDown={() => setIsMouseDown(true)}
+        onMouseUp={() => setIsMouseDown(false)}
+        onMouseLeave={() => setIsMouseDown(false)}
+        style={{ 
+          flex: 1, 
+          minHeight: '300px', 
+          position: 'relative',
+          cursor: isMouseDown ? 'col-resize' : 'crosshair'
+        }}
+      >
+        {slicedHistoryData && slicedHistoryData.length > 0 ? (
           <ResponsiveContainer width="100%" height="100%">
-            <LineChart data={normalizedData} margin={{ top: 5, right: 5, left: -20, bottom: 0 }}>
+            <LineChart 
+              data={normalizedData} 
+              margin={{ top: 5, right: 5, left: -20, bottom: 0 }}
+              onClick={handleChartInteraction}
+              onMouseDown={handleChartInteraction}
+              onMouseMove={(e) => { if (isMouseDown) handleChartInteraction(e); }}
+            >
               <CartesianGrid strokeDasharray="3 3" stroke="#21262d" vertical={false} />
               {mode === 'zero_center' && (
                 <ReferenceLine 
@@ -214,11 +432,27 @@ const RegisterTracer = () => {
                   label={{ value: '0 / 0xFFFF (Zero)', position: 'insideTopLeft', fill: '#8b949e', fontSize: 9 }}
                 />
               )}
+              {/* Scrubber Needle Line in Time-Travel Mode */}
+              {timeTravelState?.snapshot && (
+                <ReferenceLine 
+                  x={timeTravelState.snapshot.index} 
+                  stroke="#00f2fe" 
+                  strokeWidth={2}
+                  strokeDasharray="3 3"
+                  label={{ 
+                    value: `⏪ #${timeTravelState.snapshot.index}`, 
+                    position: 'insideTopRight', 
+                    fill: '#00f2fe', 
+                    fontSize: 10,
+                    fontWeight: 'bold'
+                  }} 
+                />
+              )}
               <XAxis 
                 dataKey="index" 
                 stroke="#484f58" 
                 tick={{ fontSize: 9 }}
-                hide={historyData.length < 2}
+                hide={slicedHistoryData.length < 2}
               />
               <YAxis 
                 domain={[0, 100]} 
@@ -265,7 +499,7 @@ const RegisterTracer = () => {
                     type="stepAfter"
                     dataKey={`${key}_norm`}
                     stroke={getColor(originalIndex)}
-                    dot={historyData.length <= 1 ? { r: 3 } : false}
+                    dot={slicedHistoryData.length <= 1 ? { r: 3 } : false}
                     activeDot={{ r: 3 }}
                     name={key.replace(/_/g, ': ')}
                     strokeWidth={1.5}
@@ -293,7 +527,7 @@ const RegisterTracer = () => {
         )}
       </div>
       <div style={{ fontSize: '0.65rem', color: '#8b949e', marginTop: '8px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px' }}>
-        <span>* Click legend to toggle visibility.</span>
+        <span>* Click/drag or use ◄/► arrow keys (Shift+◄/►: x10) to scrub frame-by-frame. Press ESC to return to LIVE. Click legend to toggle lines.</span>
         <span>
           Current Mode: <strong style={{ color: mode === 'zero_center' ? '#3fb950' : mode === 'signed' ? '#58a6ff' : '#d29922' }}>
             {mode === 'zero_center' ? 'Zero-Center (0/0xFFFF at 50% baseline)' : mode === 'signed' ? 'Signed 32-bit (Auto Min/Max)' : 'Unsigned 32-bit (0-100%)'}

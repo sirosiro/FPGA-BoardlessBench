@@ -1,5 +1,4 @@
-/* eslint-disable react-refresh/only-export-components */
-import { createContext, useContext, useState, useEffect } from 'react';
+import { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { io } from 'socket.io-client';
 
 const DashboardContext = createContext(null);
@@ -22,6 +21,11 @@ export const DashboardProvider = ({ children }) => {
   const [peripheralFrames, setPeripheralFrames] = useState({});
   const [hiddenTraceKeys, setHiddenTraceKeys] = useState({});
   const [memoryError, setMemoryError] = useState(null);
+  const [timeTravelState, setTimeTravelState] = useState({
+    isLive: true,
+    selectedIndex: null,
+    snapshot: null
+  });
 
 
   useEffect(() => {
@@ -98,6 +102,8 @@ export const DashboardProvider = ({ children }) => {
           const { type, payload } = event.data || {};
           if (type === 'SYNC_HIDDEN_TRACE_KEYS' && payload) {
             setHiddenTraceKeys(payload);
+          } else if (type === 'SYNC_TIME_TRAVEL' && payload) {
+            setTimeTravelState(payload);
           }
         };
       }
@@ -110,6 +116,73 @@ export const DashboardProvider = ({ children }) => {
       }
     };
   }, []);
+
+  const scrubTo = (snapshot) => {
+    if (!snapshot) return;
+    const newState = {
+      isLive: false,
+      selectedIndex: snapshot.index,
+      snapshot: snapshot
+    };
+    setTimeTravelState(newState);
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        const ch = new BroadcastChannel('fbb_dashboard_sync');
+        ch.postMessage({ type: 'SYNC_TIME_TRAVEL', payload: newState });
+        ch.close();
+      }
+    } catch {}
+  };
+
+  const returnToLive = () => {
+    const newState = {
+      isLive: true,
+      selectedIndex: null,
+      snapshot: null
+    };
+    setTimeTravelState(newState);
+    try {
+      if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+        const ch = new BroadcastChannel('fbb_dashboard_sync');
+        ch.postMessage({ type: 'SYNC_TIME_TRAVEL', payload: newState });
+        ch.close();
+      }
+    } catch {}
+  };
+
+  const isTimeTravelActive = !timeTravelState.isLive && !!timeTravelState.snapshot;
+
+  const effectiveRegisters = useMemo(() => {
+    if (!isTimeTravelActive) return registers;
+    const snap = timeTravelState.snapshot;
+    return registers.map(reg => {
+      const regKey = `${reg.deviceName}_${reg.name}`;
+      if (snap[regKey] !== undefined) {
+        const val = snap[regKey];
+        return {
+          ...reg,
+          decimal: val,
+          value: `0x${(Number(val) >>> 0).toString(16).padStart(8, '0')}`,
+          isHistorical: true
+        };
+      }
+      return { ...reg, isHistorical: true };
+    });
+  }, [registers, isTimeTravelActive, timeTravelState.snapshot]);
+
+  const effectiveTelemetry = useMemo(() => {
+    if (isTimeTravelActive && timeTravelState.snapshot?.telemetry) {
+      return timeTravelState.snapshot.telemetry;
+    }
+    return scenarioTelemetry;
+  }, [isTimeTravelActive, timeTravelState.snapshot, scenarioTelemetry]);
+
+  // Dispatch custom event for external panes (e.g., 3D Orbit Viewer)
+  useEffect(() => {
+    if (typeof window !== 'undefined' && effectiveTelemetry) {
+      window.dispatchEvent(new CustomEvent('fbb:telemetry:effective', { detail: effectiveTelemetry }));
+    }
+  }, [effectiveTelemetry]);
 
   const handleSpiAdcInject = (channel, value) => {
     socket.emit('spi-adc-inject', { channel, value });
@@ -164,12 +237,18 @@ export const DashboardProvider = ({ children }) => {
       value={{
         socket,
         registers,
+        effectiveRegisters,
         connected,
         manifest,
         scenarioTelemetry,
+        effectiveTelemetry,
         uartLogs,
         uartSettings,
         traceHistory,
+        timeTravelState,
+        isTimeTravelActive,
+        scrubTo,
+        returnToLive,
         gpioDevices,
         sendUart,
         handleGpioToggle,
@@ -200,6 +279,6 @@ export const useDashboard = () => {
 };
 
 export const useScenarioTelemetry = () => {
-  const { scenarioTelemetry } = useDashboard();
-  return scenarioTelemetry;
+  const { effectiveTelemetry } = useDashboard();
+  return effectiveTelemetry;
 };

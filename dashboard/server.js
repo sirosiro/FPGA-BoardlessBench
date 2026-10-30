@@ -64,6 +64,8 @@ let traceHistory = [];
 let lastRegState = null;
 let traceIndex = 0;
 const MAX_TRACE_HISTORY = 500;
+let cachedScenarioTelemetry = null;
+let lastAmrTelemetry = null;
 
 // Protocol Violation Logger Watcher
 let lastViolationSize = 0;
@@ -564,7 +566,8 @@ function broadcastRegisters(force = false) {
         const snapshot = {
             index: traceIndex++,
             time: new Date().toLocaleTimeString('ja-JP', { hour12: false }) + '.' + String(new Date().getMilliseconds()).padStart(3, '0'),
-            ...currentState
+            ...currentState,
+            telemetry: cachedScenarioTelemetry ? { ...cachedScenarioTelemetry } : null
         };
         traceHistory.push(snapshot);
         if (traceHistory.length > MAX_TRACE_HISTORY) {
@@ -747,8 +750,6 @@ function connectToUart(name, port) {
 
 // Unified Scenario Telemetry State
 const lastTelemetryMtime = {};
-let cachedScenarioTelemetry = null;
-let lastAmrTelemetry = null;
 
 // Socket.io
 io.on('connection', (socket) => {

@@ -2,7 +2,7 @@ import { ToggleRight } from 'lucide-react';
 import { useDashboard } from './DashboardContext';
 
 function GpioPanel() {
-  const { gpioDevices, registers, manifest, handleGpioToggle } = useDashboard();
+  const { gpioDevices, effectiveRegisters: registers, manifest, handleGpioToggle, isTimeTravelActive } = useDashboard();
   const isGpioDev = (d) => {
     if (!d) return false;
     if (d.type === 'gpio') return true;
@@ -29,7 +29,24 @@ function GpioPanel() {
 
   return (
     <div className="gpio-pane" style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <div className="panel-header"><ToggleRight size={16} /> GPIO / Pin Array</div>
+      <div className="panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <ToggleRight size={16} /> GPIO / Pin Array
+        </div>
+        {isTimeTravelActive && (
+          <span style={{
+            fontSize: '0.65rem',
+            backgroundColor: 'rgba(0, 242, 254, 0.15)',
+            border: '1px solid #00f2fe',
+            color: '#00f2fe',
+            padding: '1px 6px',
+            borderRadius: '10px',
+            fontWeight: 'bold'
+          }}>
+            🔒 TIME-TRAVEL (READ-ONLY)
+          </span>
+        )}
+      </div>
       <div className="gpio-viewport" style={{ flex: 1, overflowY: 'auto', padding: '1rem' }}>
         {allGpioDevs.length === 0 ? (
           <div style={{ padding: '1rem', color: '#8b949e', fontSize: '0.85rem' }}>No GPIO / Pin Array devices configured.</div>
@@ -142,9 +159,12 @@ function GpioPanel() {
                         <div 
                           key={bitIndex} 
                           className={`gpio-bit ${isInput ? 'input' : 'output'} ${isOn ? 'on' : 'off'}`}
-                          onClick={() => isInput && handleGpioToggle(dev.name, bitIndex, isOn, dataInReg?.name || 'DATA')}
-                          style={{ cursor: isInput ? 'pointer' : 'default' }}
-                          title={`${labelName} ${pinLabel} (Bit ${bitIndex}) - ${isInput ? 'Input (Click to toggle)' : 'Output (LED)'}`}
+                          onClick={() => isInput && !isTimeTravelActive && handleGpioToggle(dev.name, bitIndex, isOn, dataInReg?.name || 'DATA')}
+                          style={{ 
+                            cursor: isInput && !isTimeTravelActive ? 'pointer' : 'default',
+                            opacity: isTimeTravelActive && isInput ? 0.7 : 1
+                          }}
+                          title={`${labelName} ${pinLabel} (Bit ${bitIndex}) - ${isInput ? (isTimeTravelActive ? 'Input (Locked in Time-Travel)' : 'Input (Click to toggle)') : 'Output (LED)'}`}
                         >
                           <div className="gpio-indicator" style={{ pointerEvents: 'none' }}></div>
                           <span className="gpio-label" style={{ pointerEvents: 'none' }}>{pinLabel}</span>

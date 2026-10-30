@@ -3,7 +3,7 @@ import { Cpu, ChevronDown, ChevronRight } from 'lucide-react';
 import { useDashboard } from './DashboardContext';
 
 function RegisterMonitor() {
-  const { registers, hiddenTraceKeys, toggleTraceKey } = useDashboard();
+  const { effectiveRegisters: registers, hiddenTraceKeys, toggleTraceKey, isTimeTravelActive, timeTravelState } = useDashboard();
   const [expandedDevices, setExpandedDevices] = useState({});
 
   // Group by deviceName
@@ -29,7 +29,27 @@ function RegisterMonitor() {
 
   return (
     <div className="register-pane" style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
-      <div className="panel-header"><Cpu size={16} /> Register Monitor</div>
+      <div className="panel-header" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+        <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+          <Cpu size={16} /> Register Monitor
+        </div>
+        {isTimeTravelActive && (
+          <span style={{
+            fontSize: '0.65rem',
+            backgroundColor: 'rgba(0, 242, 254, 0.15)',
+            border: '1px solid #00f2fe',
+            color: '#00f2fe',
+            padding: '1px 6px',
+            borderRadius: '10px',
+            fontWeight: 'bold',
+            display: 'flex',
+            alignItems: 'center',
+            gap: '4px'
+          }}>
+            🔒 TIME-TRAVEL #{timeTravelState?.snapshot?.index} (READ-ONLY)
+          </span>
+        )}
+      </div>
       <div className="register-viewport" style={{ flex: 1, overflowY: 'auto', padding: '0.5rem' }}>
         {deviceNames.length === 0 ? (
           <div style={{ padding: '1rem', color: '#8b949e', fontSize: '0.75rem', textAlign: 'center' }}>
@@ -111,7 +131,13 @@ function RegisterMonitor() {
                                 {reg.name}
                               </td>
                               <td className="reg-offset" style={{ padding: '6px' }}>{reg.offset}</td>
-                              <td className="reg-val" style={{ padding: '6px' }}>{reg.value}</td>
+                              <td className="reg-val" style={{ 
+                                padding: '6px',
+                                color: reg.isHistorical ? '#00f2fe' : undefined,
+                                fontWeight: reg.isHistorical ? 600 : 'normal'
+                              }}>
+                                {reg.value}
+                              </td>
                             </tr>
                           );
                         })}
