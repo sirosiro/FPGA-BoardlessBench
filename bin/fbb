@@ -1334,11 +1334,19 @@ def command_plugin_man(args):
     bar_double = "═" * box_w
     bar_single = "─" * box_w
 
+    is_linked = False
+    if matched.get("plugin_dir") and os.path.islink(matched["plugin_dir"]):
+        is_linked = True
+    elif matched.get("plugin_dir") and matched.get("real_path") and os.path.realpath(matched["plugin_dir"]) != matched["plugin_dir"]:
+        is_linked = True
+
+    loc_str = f"{real_p} (linked via 'fbb plugin link')" if is_linked else real_p
+
     print(bar_double)
     print(f"📖 Plugin Quick Manual: {title} ({version})")
     print(f"   Name    : {p_name}")
     print(f"   Type    : {plugin_type} (Bus: {bus})")
-    print(f"   Location: {real_p}")
+    print(f"   Location: {loc_str}")
     print(bar_double)
 
     if desc:
@@ -1365,6 +1373,74 @@ def command_plugin_man(args):
             print(f"  • Peripheral Bin : {bin_name}")
         print("\n  Refer to full documentation for device tree and registers:")
         print(f"  $ fbb plugin man {target_query} --all")
+
+    # Discover Light User script candidates generically
+    light_script = None
+    candidate_dirs = []
+
+    for c in commands:
+        cmd_str = c.get("cmd", "")
+        for part in cmd_str.split():
+            if "scenario" in part and os.path.exists(part):
+                if os.path.isdir(part):
+                    candidate_dirs.append(part)
+                elif os.path.isfile(part):
+                    candidate_dirs.append(os.path.dirname(part))
+
+    for scn_dir_name in ["scenario", "scenarios"]:
+        p_scn = os.path.join(real_p, scn_dir_name)
+        if os.path.isdir(p_scn) and p_scn not in candidate_dirs:
+            candidate_dirs.append(p_scn)
+
+    for c_dir in candidate_dirs:
+        py_files = []
+        c_files = []
+        for root, dirs, files in os.walk(c_dir):
+            dirs.sort()
+            files.sort()
+            for f in files:
+                if f.endswith(".py") and f != "fbb_gdb.py" and not f.startswith("test_"):
+                    py_files.append(os.path.join(root, f))
+                elif f in ("main.c", "app.c", "main.cpp", "app.cpp"):
+                    c_files.append(os.path.join(root, f))
+            if py_files:
+                break
+        if py_files:
+            light_script = py_files[0]
+            break
+        elif c_files and not light_script:
+            light_script = c_files[0]
+
+    has_light = False
+    print("\n🛠️ How to Edit & Customize:")
+    if light_script:
+        has_light = True
+        print("  • Light User (Scenario & Script Tuning):")
+        print("    # Open and edit scenario code directly in VS Code:")
+        print(f"    $ code {light_script}")
+    else:
+        scn_fallback = os.path.join(real_p, "scenario")
+        if os.path.isdir(scn_fallback):
+            has_light = True
+            print("  • Light User (Scenario & Script Tuning):")
+            print("    # Open scenario directory in VS Code:")
+            print(f"    $ code {scn_fallback}")
+
+    if has_light:
+        print()
+    print("  • Heavy User (Full-Stack RTL / DTS / C++ Firmware):")
+    if is_linked:
+        print(f"    # Open full project workspace in VS Code:")
+        print(f"    $ code {real_p}")
+        print(f"    # Link local repository into F-BB (with auto-build):")
+        print(f"    $ fbb plugin link {real_p}")
+        print(f"    # Safely unlink (preserves original source files):")
+        print(f"    $ fbb plugin remove {p_name}")
+    else:
+        print(f"    # Open plugin workspace in VS Code:")
+        print(f"    $ code {real_p}")
+        print(f"    # Link your local Git clone into F-BB (with auto-build):")
+        print(f"    $ fbb plugin link /path/to/your/clone")
 
     print("\n" + bar_single)
     if doc_file:
@@ -1679,15 +1755,93 @@ def command_plugin_install(args):
         print(f"✅ Plugin '{plugin_name}' successfully installed and ready at {dest_dir}!")
 
 
+def command_plugin_link(args):
+    """
+    @intent:responsibility
+      ローカルのプラグイン作業ディレクトリ（例: /workspaces/MyPlugin）を
+      ~/.fbb/plugins/ 配下へシンボリックリンク登録し、自動ビルド（PPA Auto-Builder）を実行する。
+    @intent:rationale
+      ヘビーユーザーが自身の作業ディレクトリで Git バージョン管理を行いながら、
+      RTL (.v) や DTS、C++ を安全に魔改造・開発できる開発者向けワークフローを提供する。
+      npm link や cargo path 依存と同様の利便性を実現する。
+    """
+    target_path = os.path.abspath(args.path)
+    if not os.path.exists(target_path):
+        print(f"❌ Error: Path does not exist: {target_path}")
+        sys.exit(1)
+    if not os.path.isdir(target_path):
+        print(f"❌ Error: Path is not a directory: {target_path}")
+        sys.exit(1)
+
+    manifest_file = os.path.join(target_path, "fbb-plugin.json")
+    plugin_name = os.path.basename(target_path)
+    if os.path.exists(manifest_file):
+        try:
+            with open(manifest_file, "r", encoding="utf-8") as f:
+                data = json.load(f)
+            plugin_name = data.get("name", plugin_name)
+        except Exception:
+            pass
+
+    dest_base = os.path.join(os.path.expanduser("~"), ".fbb/plugins")
+    os.makedirs(dest_base, exist_ok=True)
+    dest_link = os.path.join(dest_base, plugin_name)
+
+    if os.path.islink(dest_link):
+        curr_target = os.path.realpath(dest_link)
+        if curr_target == os.path.realpath(target_path):
+            print(f"ℹ️ Plugin '{plugin_name}' is already linked to: {target_path}")
+        else:
+            os.unlink(dest_link)
+            os.symlink(target_path, dest_link)
+            print(f"🔗 Updated link for plugin '{plugin_name}': {dest_link} -> {target_path}")
+    elif os.path.exists(dest_link):
+        print(f"⚠️ Warning: A non-symlink directory already exists at {dest_link}.")
+        print("Please remove it first with 'fbb plugin remove' before linking.")
+        sys.exit(1)
+    else:
+        os.symlink(target_path, dest_link)
+        print(f"🔗 Linked plugin '{plugin_name}': {dest_link} -> {target_path}")
+
+    build_ok = auto_build_plugin(target_path)
+    if not build_ok:
+        print("⚠️ Warning: Plugin linked, but auto-compilation encountered issues.")
+    else:
+        print(f"✅ Plugin '{plugin_name}' successfully linked and ready!")
+    print(f"💡 Run 'fbb plugin man {plugin_name}' to view manual and runnable commands.")
+
+
 def command_plugin_remove(args):
     """
     @intent:responsibility
-      インストール済みの PPA プラグインディレクトリを安全に削除する。
+      インストール済みまたはリンク済みの PPA プラグインを安全に解除・削除する。
+      シンボリックリンク（fbb plugin link）の場合はリンクのみを解除し、元の作業ファイルを保護する。
     """
     plugin_name = args.name
-    dest_dir = os.path.join(os.path.expanduser("~"), ".fbb/plugins", plugin_name)
+    plugins_dir = os.path.join(os.path.expanduser("~"), ".fbb/plugins")
+    dest_dir = os.path.join(plugins_dir, plugin_name)
 
-    if os.path.exists(dest_dir):
+    if not (os.path.islink(dest_dir) or os.path.exists(dest_dir)) and os.path.isdir(plugins_dir):
+        q = plugin_name.lower().strip()
+        candidates = [e for e in os.listdir(plugins_dir) if q == e.lower()]
+        if not candidates:
+            candidates = [e for e in os.listdir(plugins_dir) if q in e.lower()]
+        if len(candidates) == 1:
+            plugin_name = candidates[0]
+            dest_dir = os.path.join(plugins_dir, plugin_name)
+        elif len(candidates) > 1:
+            print(f"⚠️ Ambiguous plugin name '{plugin_name}'. Matching installed plugins:")
+            for c in candidates:
+                print(f"  • {c}")
+            print(f"Please specify the exact name, e.g.: fbb plugin remove {candidates[0]}")
+            sys.exit(1)
+
+    if os.path.islink(dest_dir):
+        real_target = os.path.realpath(dest_dir)
+        os.unlink(dest_dir)
+        print(f"🔗 Successfully unlinked plugin '{plugin_name}' from {dest_dir}")
+        print(f"ℹ️ Original project directory is safely preserved at: {real_target}")
+    elif os.path.exists(dest_dir):
         shutil.rmtree(dest_dir)
         print(f"🗑️ Successfully uninstalled plugin '{plugin_name}' from {dest_dir}")
     else:
@@ -1819,8 +1973,9 @@ def main():
     plugin_epilog = """Examples:
   fbb plugin list
   fbb plugin list -v
-  fbb plugin man space
-  fbb plugin man rct --all
+  fbb plugin man st7789
+  fbb plugin man ssd1306 --all
+  fbb plugin link /workspaces/my-custom-plugin
   fbb plugin validate src/peripherals/official_plugins/solomon_ssd1306
   fbb plugin install https://github.com/vendor/fbb-plugin-st7789
   fbb plugin remove fbb-plugin-st7789
@@ -1852,9 +2007,9 @@ def main():
 
     # plugin man / manual
     man_epilog = """Examples:
-  fbb plugin man space                      Show quick execution card with runnable commands
-  fbb plugin man rct                        Show ready-to-run commands for RetroCoreTracer
-  fbb plugin man space --all                View full architectural README in pager (less)
+  fbb plugin man ssd1306                    Show quick execution card with runnable commands
+  fbb plugin man ht16k33                    Show ready-to-run commands for peripheral plugin
+  fbb plugin man ssd1306 --all              View full architectural README in pager (glow/less)
   fbb plugin manual /path/to/plugin         Show manual for a specific local directory
 """
     parser_p_man = plugin_subparsers.add_parser(
@@ -1874,6 +2029,18 @@ def main():
     # plugin install
     parser_p_install = plugin_subparsers.add_parser("install", help="Install a PPA plugin from Git URL or local directory")
     parser_p_install.add_argument("source", help="Git repository URL or local directory path")
+
+    # plugin link
+    parser_p_link = plugin_subparsers.add_parser(
+        "link",
+        help="Link a local plugin development directory into ~/.fbb/plugins/ for active development",
+        epilog="""Examples:
+  fbb plugin link /workspaces/my-custom-plugin
+  fbb plugin link ../my-custom-peripheral
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser_p_link.add_argument("path", help="Local directory path containing fbb-plugin.json")
 
     # plugin remove
     parser_p_remove = plugin_subparsers.add_parser("remove", help="Remove an installed PPA plugin")
@@ -1924,6 +2091,8 @@ def main():
             command_plugin_validate(args)
         elif args.plugin_command == "install":
             command_plugin_install(args)
+        elif args.plugin_command == "link":
+            command_plugin_link(args)
         elif args.plugin_command == "remove":
             command_plugin_remove(args)
         else:

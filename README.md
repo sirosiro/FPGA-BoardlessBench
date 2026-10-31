@@ -265,7 +265,11 @@ fbb plugin validate src/peripherals/official_plugins/solomon_ssd1306
 # 11. サードパーティ製 PPA プラグインのワンコマンドインストール
 fbb plugin install https://github.com/vendor/fbb-plugin-st7789
 
-# 12. 対話型 GDB デバッグ起動 (DTS駆動 GDB 拡張 fbb_gdb.py 自動ロード)
+# 12. 独自開発・Git管理下のプラグインをローカルリンク（npm link ライクな開発者モード）
+fbb plugin link /workspaces/my-custom-plugin    # ~/.fbb/plugins にシンボリックリンク登録＆自動ビルド
+fbb plugin remove my-custom-plugin              # リンクのみ安全に解除（元作業ディレクトリは保護）
+
+# 13. 対話型 GDB デバッグ起動 (DTS駆動 GDB 拡張 fbb_gdb.py 自動ロード)
 fbb debug 01_standard_uio               # Debugビルド＆シミュレータ＆対話型GDB起動
 fbb debug 01b --server-only             # IDEデバッグ用シミュレーションサーバーのみ起動
 fbb debug --stop-server                 # バックグラウンドデバッグサーバーの停止
@@ -691,6 +695,18 @@ fbb plugin man <プラグイン名> --all
   "peripherals": [ ... ]
 }
 ```
+
+##### 4. 開発者・学習者向けの死角なきサポート（Light User vs Heavy User）
+
+プラグインの利用形態は、「スクリプトを微調整してアルゴリズム学習や制御を楽しみたいライトユーザー（学習者）」から、「Verilog RTL や Device Tree、C++ デーモンをゴリゴリ魔改造したいヘビーユーザー（組み込み・FPGAエンジニア）」まで多岐にわたります。F-BB ではどちらのユーザー層に対しても死角のない開発体験（DX）を提供します：
+
+* **ライトユーザー（学習者）向け体験**:
+  - `fbb plugin install` で導入したプラグインであっても、`fbb plugin man <名前>` を実行すれば、シナリオ内の制御スクリプト（Python や C 言語）を自動検出し、`$ code <スクリプトの絶対パス>` の形式で直接案内します。
+  - VS Code のターミナルからワンクリック（またはコピペ）するだけで即座にスクリプトがエディタで開き、隠しディレクトリ（`~/.fbb`）を探し回る摩擦が完全にゼロになります。
+* **ヘビーユーザー（RTL / C++ 開発者）向け体験**:
+  - 自身のリポジトリ作業ディレクトリ（例: `/workspaces/my-custom-plugin`）で Git バージョン管理を行いながら開発できるよう、`fbb plugin link <パス>` を提供します（`npm link` ライクなシンボリックリンク登録機構）。
+  - リンク時に自動ビルド（PPA Auto-Builder）が走り、すぐに F-BB のエコシステムに組み込まれます。
+  - 開発終了時やリンク解除時の `fbb plugin remove <名前>` は、シンボリックリンクのみを安全に解除し、作成したオリジナルのソースコードや Git 履歴を 100% 確実に保護します。
 
 ---
 

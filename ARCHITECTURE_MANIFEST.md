@@ -115,9 +115,12 @@
 * **背景と課題**:
   サードパーティペリフェラルや自作アドオンの導入・流通において手動クローン・パス移動の摩擦が存在したこと、および新規シナリオ雛形構築・DTS アドレスマップ確認の手順が個別スクリプトに分散していました。
 * **決定事項**:
-  1. **統一 CLI `fbb-cli` (`bin/fbb` / `./fbb`) の創設**: スタンドアロン Python3 実行形式による単一エントリポイントを構築。
-  2. **スカフォールディング・ランナー・インスペクターの統合**: `fbb new` (雛形作成), `fbb test` (ビルド・検証), `fbb inspect` (DTS 32-bit MMIOマップ一覧), `fbb plugin list/man/validate/install/remove` (アドオンパッケージ管理および実行マニュアル表示) をサポート。
-  3. **PPA 5.1 仕様拡張**: `fbb-plugin.json` マニフェストに `bus_type: "raw_pins"` を追加定義。
+  1. **統一 CLI `fbb-cli` (`bin/fbb` / `./fbb`) の創設**: スタンドアロン Python3 実行形式による単一エントリポイントを構築。Windows/Docker 間の引数欠落を防止するシェルラッパーを配置。
+  2. **スカフォールディング・ランナー・インスペクター・プラグイン管理の統合**: `fbb new` (雛形作成), `fbb test` (ビルド・検証), `fbb inspect` (DTS 32-bit MMIOマップ一覧), `fbb plugin list/man/validate/install/link/remove` (アドオンパッケージ管理および実行マニュアル表示) をサポート。
+  3. **PPA 5.1 仕様拡張と二刀流開発支援（Light User vs Heavy User）**:
+     - `fbb plugin man`: 1画面 Quick-Run Card 内で、ライトユーザー向け（シナリオ内 Python/C スクリプトへの VS Code ダイレクト起動案内）およびヘビーユーザー向け（ワークスペース全体の直接編集案内）の二刀流ガイダンスを自動探索・提示。
+     - `fbb plugin link / remove`: 開発者自身の作業リポジトリ（`/workspaces`）で Git バージョン管理を行いながら即座にリンク・検証できる `npm link` スタイルの開発者モードを導入。`remove` 時はシンボリックリンクのみを安全に解除し、作成した RTL や C++ ソースコードを 100% 保護。
+     - マニフェストに `bus_type: "raw_pins"` を追加定義。
 * **設計根拠**:
   サードパーティ・アドオンメーカーの参入障壁を撤廃し、研修生・開発者のオンボーディングコストを極小化するため。
 
