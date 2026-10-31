@@ -58,6 +58,9 @@ compile_commands.json
 # Scratch/Temporary scripts
 scratch/
 
+# Third-party plugins workspace link
+plugins
+
 # Antigravity Local Configuration
 .antigravity/mcp_config.json
 *~

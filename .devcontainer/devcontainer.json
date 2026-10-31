@@ -25,6 +25,6 @@
         "seccomp=unconfined",
         "--shm-size=512m"
     ],
-    "postCreateCommand": "[ -x /usr/local/bin/fbb ] || ln -sf \"${containerWorkspaceFolder}/bin/fbb\" /usr/local/bin/fbb; [ -f /etc/bash_completion.d/fbb ] || cp \"${containerWorkspaceFolder}/scripts/fbb_completion.bash\" /etc/bash_completion.d/fbb; (npm --prefix dashboard install && npm --prefix dashboard/client install && npm --prefix dashboard/client run build || true)",
+    "postCreateCommand": "mkdir -p /root/.fbb/plugins; [ -e \"${containerWorkspaceFolder}/plugins\" ] || ln -sf /root/.fbb/plugins \"${containerWorkspaceFolder}/plugins\"; [ -x /usr/local/bin/fbb ] || ln -sf \"${containerWorkspaceFolder}/bin/fbb\" /usr/local/bin/fbb; [ -f /etc/bash_completion.d/fbb ] || cp \"${containerWorkspaceFolder}/scripts/fbb_completion.bash\" /etc/bash_completion.d/fbb; (npm --prefix dashboard install && npm --prefix dashboard/client install && npm --prefix dashboard/client run build || true)",
     "forwardPorts": [8080]
 }

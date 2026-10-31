@@ -25,6 +25,7 @@ RUN apt-get update && apt-get install -y \
     gdb \
     strace \
     procps \
+    nano \
     gtkwave \
     bash-completion \
     && rm -rf /var/lib/apt/lists/*
@@ -100,7 +101,30 @@ RUN printf '%s\n' \
     '    done' \
     '}' \
     '_fbb_load_completion 2>/dev/null' \
-    'unset -f _fbb_load_completion' > /etc/bash_completion.d/fbb
+    'unset -f _fbb_load_completion' > /etc/bash_completion.d/fbb && \
+    printf '%s\n' \
+    '#!/usr/bin/env bash' \
+    '# VS Code CLI Forwarder & Friendly Navigation Helper' \
+    'REAL_CODE=$(find /root/.vscode-server/bin /root/.vscode-server-insiders/bin /root/.antigravity-ide-server/bin -name "code" -o -name "agy-ide" -o -name "antigravity-ide" 2>/dev/null | head -n 1)' \
+    'if [ -n "$REAL_CODE" ] && [ -x "$REAL_CODE" ]; then' \
+    '    exec "$REAL_CODE" "$@"' \
+    'fi' \
+    'TARGET_FILE="$1"' \
+    'if [ -n "$TARGET_FILE" ]; then' \
+    '    echo "💡 Note: VS Code CLI (\"code\") is not attached to this terminal session."' \
+    '    echo "To edit in VS Code on Windows / Host:"' \
+    '    echo "  • Open from VS Code Left Sidebar (Explorer): $TARGET_FILE"' \
+    '    echo "  • Or press Ctrl+P (Cmd+P) in VS Code and search for: $(basename "$TARGET_FILE")"' \
+    '    if command -v nano >/dev/null 2>&1 && [ -t 0 ]; then' \
+    '        echo "  • Launching terminal editor (nano)..."' \
+    '        exec nano "$TARGET_FILE"' \
+    '    fi' \
+    'else' \
+    '    echo "💡 Note: VS Code CLI (\"code\") is not attached to this terminal session."' \
+    '    echo "Please open files directly from VS Code'\''s Left Sidebar (Explorer),"' \
+    '    echo "or press Ctrl+P (Cmd+P) to quick-open files by name."' \
+    'fi' > /usr/local/bin/code && \
+    chmod +x /usr/local/bin/code
 
 # Set workspace directory
 WORKDIR /workspace

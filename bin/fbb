@@ -850,6 +850,49 @@ def command_debug(args):
         print("[F-BB Debug] Session finished.")
 
 
+def ensure_workspace_plugins_link():
+    """
+    Ensure PROJECT_ROOT/plugins points to ~/.fbb/plugins so that
+    installed plugins are visible and editable in the VS Code file explorer.
+    """
+    ws_plugins = os.path.join(PROJECT_ROOT, "plugins")
+    user_plugins = os.path.join(os.path.expanduser("~"), ".fbb/plugins")
+    os.makedirs(user_plugins, exist_ok=True)
+    if not os.path.exists(ws_plugins) and not os.path.islink(ws_plugins):
+        try:
+            os.symlink(user_plugins, ws_plugins)
+        except Exception:
+            pass
+
+
+def get_workspace_relative_path(abs_path):
+    """
+    Resolve an absolute path into a clean workspace-relative path
+    (e.g. plugins/<plugin_name>/scenario/... or relative to PROJECT_ROOT)
+    so that VS Code / IDE users on Windows / macOS can easily locate and open it.
+    """
+    if not abs_path:
+        return abs_path
+    abs_norm = os.path.normpath(abs_path)
+    # 1. Directly inside PROJECT_ROOT
+    if abs_norm.startswith(PROJECT_ROOT):
+        return os.path.normpath(os.path.relpath(abs_norm, PROJECT_ROOT))
+    # 2. Inside ~/.fbb/plugins
+    user_p = os.path.normpath(os.path.expanduser("~/.fbb/plugins"))
+    if abs_norm.startswith(user_p):
+        return os.path.normpath(os.path.join("plugins", os.path.relpath(abs_norm, user_p)))
+    # 3. Inside a symlinked plugin target
+    if os.path.isdir(user_p):
+        for entry in os.listdir(user_p):
+            ep = os.path.join(user_p, entry)
+            if os.path.islink(ep):
+                real_target = os.path.normpath(os.path.realpath(ep))
+                if abs_norm.startswith(real_target):
+                    rel = os.path.relpath(abs_norm, real_target)
+                    return os.path.normpath(os.path.join("plugins", entry, rel))
+    return abs_path
+
+
 def command_plugin_list(args):
     """
     @intent:responsibility
@@ -1415,30 +1458,38 @@ def command_plugin_man(args):
     print("\n🛠️ How to Edit & Customize:")
     if light_script:
         has_light = True
+        ws_script = get_workspace_relative_path(light_script)
+        base_name = os.path.basename(light_script)
         print("  • Light User (Scenario & Script Tuning):")
-        print("    # Open and edit scenario code directly in VS Code:")
-        print(f"    $ code {light_script}")
+        print(f"    # In VS Code File Explorer (Left sidebar): open '{ws_script}'")
+        print(f"    # (Or Quick Open in VS Code: press Ctrl+P / Cmd+P -> type '{base_name}')")
+        if shutil.which("code"):
+            print(f"    $ code {ws_script}")
+        else:
+            print(f"    $ nano {ws_script}  # or open in VS Code Explorer")
     else:
         scn_fallback = os.path.join(real_p, "scenario")
         if os.path.isdir(scn_fallback):
             has_light = True
+            ws_scn = get_workspace_relative_path(scn_fallback)
             print("  • Light User (Scenario & Script Tuning):")
-            print("    # Open scenario directory in VS Code:")
-            print(f"    $ code {scn_fallback}")
+            print(f"    # In VS Code File Explorer (Left sidebar): open '{ws_scn}'")
+            print(f"    $ code {ws_scn}")
 
     if has_light:
         print()
     print("  • Heavy User (Full-Stack RTL / DTS / C++ Firmware):")
+    ws_real = get_workspace_relative_path(real_p)
     if is_linked:
-        print(f"    # Open full project workspace in VS Code:")
-        print(f"    $ code {real_p}")
+        print(f"    # In VS Code File Explorer: open '{ws_real}'")
+        print(f"    $ code {ws_real}")
         print(f"    # Link local repository into F-BB (with auto-build):")
         print(f"    $ fbb plugin link {real_p}")
         print(f"    # Safely unlink (preserves original source files):")
         print(f"    $ fbb plugin remove {p_name}")
     else:
-        print(f"    # Open plugin workspace in VS Code:")
-        print(f"    $ code {real_p}")
+        print(f"    # In VS Code File Explorer: open '{ws_real}'")
+        print(f"    $ code {ws_real}")
         print(f"    # Link your local Git clone into F-BB (with auto-build):")
         print(f"    $ fbb plugin link /path/to/your/clone")
 
@@ -2069,6 +2120,7 @@ def main():
     parser_debug.add_argument("--target-bin", type=str, default=None, help="Path to custom executable binary to debug")
 
     args = parser.parse_args()
+    ensure_workspace_plugins_link()
 
     if args.command == "new":
         command_new(args)
