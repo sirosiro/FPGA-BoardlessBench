@@ -379,6 +379,53 @@ def command_test(args):
             res = subprocess.run(cmd, cwd=PROJECT_ROOT, env=env)
             sys.exit(res.returncode)
         else:
+            first_s_dir = resolve_scenario_name_or_path(scenarios_input[0])
+            remaining_are_all_scenarios = (
+                all(bool(resolve_scenario_name_or_path(s)) for s in scenarios_input[1:])
+                if first_s_dir else False
+            )
+
+            if first_s_dir and not remaining_are_all_scenarios:
+                s_dir = first_s_dir
+                scenario_name = os.path.basename(s_dir)
+                extra_args = scenarios_input[1:]
+                runner_script = os.path.join(PROJECT_ROOT, "tests/scenario_runner.sh")
+                cmd = [runner_script, s_dir] + extra_args
+
+                if getattr(args, "clean", False):
+                    cmd.append("--clean")
+                if getattr(args, "build_only", False):
+                    cmd.append("--build-only")
+                if getattr(args, "skip_build", False):
+                    cmd.append("--skip-build")
+                if getattr(args, "chaos", False):
+                    cmd.append("--chaos")
+                if getattr(args, "seed", None):
+                    cmd.append(f"--seed={args.seed}")
+                if getattr(args, "chaos_rate", None):
+                    cmd.append(f"--chaos-rate={args.chaos_rate}")
+                if getattr(args, "chaos_targets", None):
+                    cmd.append(f"--chaos-targets={args.chaos_targets}")
+
+                env = os.environ.copy()
+                if getattr(args, "chaos", False):
+                    env["FBB_CHAOS_MODE"] = "1"
+                if getattr(args, "seed", None):
+                    env["FBB_CHAOS_SEED"] = str(args.seed)
+                if getattr(args, "chaos_rate", None):
+                    env["FBB_CHAOS_RATE"] = str(args.chaos_rate)
+                if getattr(args, "chaos_targets", None):
+                    env["FBB_CHAOS_TARGETS"] = str(args.chaos_targets)
+
+                action_desc = "Testing"
+                if getattr(args, "build_only", False):
+                    action_desc = "Building"
+                elif getattr(args, "clean", False):
+                    action_desc = "Cleaning & Testing"
+                print(f"🧪 {action_desc} scenario '{scenario_name}' with args: {' '.join(extra_args)}...")
+                res = subprocess.run(cmd, cwd=PROJECT_ROOT, env=env)
+                sys.exit(res.returncode)
+
             resolved_dirs = []
             scenario_names = []
             for s_input in scenarios_input:
@@ -423,6 +470,8 @@ def command_lab(args):
     """
     @intent:responsibility
       指定シナリオのフルスタック環境（シミュレータ + コントローラ + Webダッシュボード）をワンショット起動する。
+      個別シナリオやプラグインが受け取る任意の追加引数（例: .hex プログラムファイルやオプション）を
+      透過的に start_lab.sh へ転送する。
     """
     scenario_input = args.scenario or "01_standard_uio"
     s_dir = resolve_scenario_name_or_path(scenario_input)
@@ -431,10 +480,15 @@ def command_lab(args):
         sys.exit(1)
 
     scenario_name = os.path.basename(s_dir)
-    print(f"🚀 Launching F-BB Interactive Lab for scenario '{scenario_name}'...")
+    extra_args = getattr(args, "extra_args", []) or []
+    if extra_args:
+        print(f"🚀 Launching F-BB Interactive Lab for scenario '{scenario_name}' with args: {' '.join(extra_args)}...")
+    else:
+        print(f"🚀 Launching F-BB Interactive Lab for scenario '{scenario_name}'...")
     lab_script = os.path.join(PROJECT_ROOT, "start_lab.sh")
+    cmd = [lab_script, s_dir] + extra_args
     try:
-        res = subprocess.run([lab_script, s_dir], cwd=PROJECT_ROOT)
+        res = subprocess.run(cmd, cwd=PROJECT_ROOT)
         sys.exit(res.returncode)
     except KeyboardInterrupt:
         print("\n🛑 Stopping F-BB Interactive Lab...")
@@ -1710,6 +1764,7 @@ def main():
     lab_epilog = """Examples:
   fbb lab 01                              Launch interactive lab for scenario matching '01'
   fbb lab 10_st7789_spi                   Launch interactive lab for ST7789 display scenario
+  fbb lab rct-z80/scenario examples/fibonacci.hex Launch with scenario-specific payload files/arguments
   fbb start 01                            Alias for 'fbb lab 01'
 """
     parser_lab = subparsers.add_parser(
@@ -1719,6 +1774,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser_lab.add_argument("scenario", nargs="?", default="01_standard_uio", help="Scenario name, fuzzy prefix, or directory path (default: 01_standard_uio)")
+    parser_lab.add_argument("extra_args", nargs=argparse.REMAINDER, help="Additional arguments or file paths forwarded directly to scenario runner")
 
     parser_start = subparsers.add_parser(
         "start",
@@ -1727,6 +1783,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser_start.add_argument("scenario", nargs="?", default="01_standard_uio", help="Scenario name, fuzzy prefix, or directory path (default: 01_standard_uio)")
+    parser_start.add_argument("extra_args", nargs=argparse.REMAINDER, help="Additional arguments or file paths forwarded directly to scenario runner")
 
     # 4. clean
     clean_epilog = """Examples:
