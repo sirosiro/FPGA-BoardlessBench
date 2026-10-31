@@ -1,1 +1,17 @@
-bin/fbb
+#!/usr/bin/env bash
+# ==============================================================================
+# FPGA-BoardlessBench (F-BB) Root CLI Wrapper
+#
+# @intent:responsibility
+#   リポジトリルートからの ./fbb コマンド実行を bin/fbb へ透過的に中継する。
+#   Windows (NTFS / Git for Windows) においてシンボリックリンクが無効化され、
+#   テキストファイル化によって引数 ($@) が欠落する問題を解消する。
+# @intent:rationale
+#   exec を用いてプロセスを置き換え、すべての引数・オプション・終了コードを
+#   オーバーヘッドなく完全に維持する。
+# ==============================================================================
+set -e
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+exec "$SCRIPT_DIR/bin/fbb" "$@"
+
