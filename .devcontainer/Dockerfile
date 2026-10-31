@@ -50,5 +50,51 @@ RUN mkdir -p /lib/firmware
 RUN curl --proto '=https' --tlsv1.2 -sSf https://sh.rustup.rs | sh -s -- -y
 ENV PATH="/root/.cargo/bin:${PATH}"
 
+# Install Universal F-BB CLI Launcher & Dynamic Bash Completion
+RUN printf '%s\n' \
+    '#!/usr/bin/env bash' \
+    '# FPGA-BoardlessBench (F-BB) Universal CLI Launcher' \
+    'set -e' \
+    'DIR="$PWD"' \
+    'while [ "$DIR" != "/" ] && [ -n "$DIR" ]; do' \
+    '    if [ -x "$DIR/bin/fbb" ]; then' \
+    '        exec "$DIR/bin/fbb" "$@"' \
+    '    fi' \
+    '    DIR="$(dirname "$DIR")"' \
+    'done' \
+    'if [ -n "$FBB_ROOT" ] && [ -x "$FBB_ROOT/bin/fbb" ]; then' \
+    '    exec "$FBB_ROOT/bin/fbb" "$@"' \
+    'fi' \
+    'for CANDIDATE in /workspaces/*/bin/fbb /workspace/bin/fbb /workspaces/FPGA-BoardlessBench/bin/fbb; do' \
+    '    if [ -x "$CANDIDATE" ]; then' \
+    '        exec "$CANDIDATE" "$@"' \
+    '    fi' \
+    'done' \
+    'echo "Error: FPGA-BoardlessBench CLI (bin/fbb) not found." >&2' \
+    'echo "Please execute from within the F-BB workspace or set FBB_ROOT." >&2' \
+    'exit 1' > /usr/local/bin/fbb && \
+    chmod +x /usr/local/bin/fbb && \
+    printf '%s\n' \
+    '# Dynamic F-BB Bash Completion Loader' \
+    '_fbb_load_completion() {' \
+    '    local dir="$PWD"' \
+    '    while [ "$dir" != "/" ] && [ -n "$dir" ]; do' \
+    '        if [ -f "$dir/scripts/fbb_completion.bash" ]; then' \
+    '            source "$dir/scripts/fbb_completion.bash"' \
+    '            return 0' \
+    '        fi' \
+    '        dir="$(dirname "$dir")"' \
+    '    done' \
+    '    for cand in /workspaces/*/scripts/fbb_completion.bash /workspace/scripts/fbb_completion.bash; do' \
+    '        if [ -f "$cand" ]; then' \
+    '            source "$cand"' \
+    '            return 0' \
+    '        fi' \
+    '    done' \
+    '}' \
+    '_fbb_load_completion 2>/dev/null' \
+    'unset -f _fbb_load_completion' > /etc/bash_completion.d/fbb
+
 # Set workspace directory
 WORKDIR /workspace
+

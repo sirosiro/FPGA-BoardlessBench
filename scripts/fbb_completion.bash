@@ -5,7 +5,7 @@ _fbb_completions() {
     COMPREPLY=()
     cur="${COMP_WORDS[COMP_CWORD]}"
     prev="${COMP_WORDS[COMP_CWORD-1]}"
-    subcmds="new test inspect plugin"
+    subcmds="new test lab start clean inspect plugin debug"
 
     if [ $COMP_CWORD -eq 1 ]; then
         COMPREPLY=( $(compgen -W "${subcmds}" -- ${cur}) )
