@@ -251,16 +251,21 @@ fbb inspect 02b_multi_spi
 # 7. 新しいテストシナリオの雛形（DTS / C / Verilog / CMake）を一発自動生成
 fbb new my_custom_scenario --target zynq7000
 
-# 8. 発見された PPA/DPPA プラグイン・UIペイン一覧の確認 (左側固定幅整列)
-fbb plugin list
+# 8. 発見された PPA/DPPA プラグイン・UIペイン一覧の確認
+fbb plugin list                         # コンパクト一覧表示（左側固定幅整列）
+fbb plugin list -v                      # 詳細表示（実配置パス、シンボリックリンク元、マニフェスト位置）
 
-# 9. プラグイン仕様 (v1.0) の静的検証
+# 9. プラグインの即時実行マニュアル（Quick-Run Card）と用例表示
+fbb plugin man <プラグイン名>             # スクロール不要な1画面実行カードの表示（実パス自動補正）
+fbb plugin man <プラグイン名> --all       # README.md 全文をリッチ閲覧（glow 優先、less -R フォールバック）
+
+# 10. プラグイン仕様 (v1.0) の静的検証
 fbb plugin validate src/peripherals/official_plugins/solomon_ssd1306
 
-# 10. サードパーティ製 PPA プラグインのワンコマンドインストール
+# 11. サードパーティ製 PPA プラグインのワンコマンドインストール
 fbb plugin install https://github.com/vendor/fbb-plugin-st7789
 
-# 11. 対話型 GDB デバッグ起動 (DTS駆動 GDB 拡張 fbb_gdb.py 自動ロード)
+# 12. 対話型 GDB デバッグ起動 (DTS駆動 GDB 拡張 fbb_gdb.py 自動ロード)
 fbb debug 01_standard_uio               # Debugビルド＆シミュレータ＆対話型GDB起動
 fbb debug 01b --server-only             # IDEデバッグ用シミュレーションサーバーのみ起動
 fbb debug --stop-server                 # バックグラウンドデバッグサーバーの停止
@@ -551,6 +556,12 @@ my_sensor_plugin/
   "name": "fbb-plugin-my-sensor",
   "vendor": "Acme Corp",
   "version": "1.0.0",
+  "commands": [
+    {
+      "desc": "Launch Interactive Sensor Demo Lab",
+      "cmd": "fbb lab {PLUGIN_DIR}/scenario/"
+    }
+  ],
   "peripherals": [
     {
       "bus": "i2c",
@@ -628,6 +639,58 @@ Hybrid | v1     | spi    | Ready (Binary)  | fbb-plugin-winbond-w25q128   | winb
 Total discovered plugins: 7 (PPA: 0, DPPA: 0, Hybrid: 7)
 ```
 ※ Python スクリプト（`binary: "my_sensor.py"`）で実装した場合は、コンパイル不要で直接実行されます。
+
+#### ④ プラグイン実行マニュアル（`fbb plugin man`）の仕様と表示ルール
+
+プラグインを導入した開発者やユーザーが、GitHub の README を確認しに行ったり環境差異によるパスの書き換えに迷うことなく、ターミナルから即座にシナリオやツールを実行できるようにするため、`fbb` CLI にはマニュアル閲覧機能（`fbb plugin man`）が統合されています。
+
+```bash
+# 1. プラグインの即時実行カード（Quick-Run Card）を表示
+fbb plugin man <プラグイン名>
+# （例: fbb plugin man space, fbb plugin man rct）
+
+# 2. プラグインの全ドキュメント（README.md）を安全に閲覧（glow 優先、less フォールバック）
+fbb plugin man <プラグイン名> --all
+```
+
+##### 1. Quick-Run Card（1画面チートシート）の設計思想
+* **スクロールアウトの完全防止**: 長大な `README.md` で重要なコマンドがターミナル画面外へ流れてしまうのを防ぎ、1画面（15〜20行程度）に収まる即時実行カードとして出力します。
+* **動的パス補正（Path Interpolation）**: コマンド内の `{PLUGIN_DIR}` や相対パスは、現在の実行環境（`/workspaces` や `~/.fbb/plugins`）の物理絶対パスへ自動置換されます。ユーザーは表示されたコマンドをそのままコピー＆ペースト（またはクリック）するだけで実行できます。
+* **ターミナル Markdown ビューアー（`glow`）の優先統合**:
+  Docker 環境に統合された `glow` コマンドを最優先で使用し、Markdown の見出し、コードブロックのシンタックスハイライト、表組、引用ブロックを美しく整形して内蔵ページャー（`glow -p`）で表示します。`glow` が未導入の環境では自動的に `less -R` へフォールバックし、端末を乱さず安全に閲覧できます。
+
+##### 2. コマンド情報の自動探索ルール（4段階カスケード）
+特定のプラグイン固有の処理を設けることなく（プラグイン完全隔離原則の遵守）、以下の優先順位で汎用的にコマンド情報を解決します：
+
+| 優先度 | 取得ソース | 仕様と動作 |
+| :---: | :--- | :--- |
+| **優先度 1**<br>*(推奨規格)* | `fbb-plugin.json` の<br>`"commands"` 配列 | マニフェストに定義されたラベルと実行コマンドを展開します。<br>`{PLUGIN_DIR}` を記述することで、環境に合わせた実パスへ自動展開されます。 |
+| **優先度 2** | `USAGE.md` / `MANUAL.md` | プラグイン直下に軽量マニュアルが存在する場合、その中の ````bash ```` ブロックからコマンドと直前コメント（説明文）を自動抽出します。 |
+| **優先度 3** | `scenario/` フォルダ自動検出 | プラグイン内に `scenario/` または `scenarios/` が存在する場合、含まれる各テストシナリオ用の `fbb test` や `fbb lab` コマンドを自動生成します。 |
+| **優先度 4** | `README.md` スマート抽出 | 上記が存在しない場合、`README.md` 内のコードブロックから `fbb` や `start_lab.sh` コマンドを自動抽出し、環境パスに合わせて整形します。 |
+| **フォールバック** | ハードウェア・DTS情報 | シナリオを持たない単体ペリフェラル（I2C/SPIセンサ等）の場合は、DTS `compatible` や接続バス規格を表示し、`--all` による詳細閲覧を案内します。 |
+
+##### 3. `fbb-plugin.json` への `"commands"` の記述フォーマット
+プラグイン作者は、`fbb-plugin.json` に以下のように `"commands"` を定義することで、ユーザーに最適な実行コマンドを案内できます：
+
+```json
+{
+  "schema_version": 1,
+  "name": "fbb-plugin-my-game",
+  "version": "1.0.0",
+  "commands": [
+    {
+      "desc": "Stage 1: Basic Line Tracking Tutorial",
+      "cmd": "fbb lab {PLUGIN_DIR}/scenario/01_line_trace"
+    },
+    {
+      "desc": "Run Automated RTL End-to-End Test",
+      "cmd": "fbb test {PLUGIN_DIR}/scenario/"
+    }
+  ],
+  "peripherals": [ ... ]
+}
+```
 
 ---
 

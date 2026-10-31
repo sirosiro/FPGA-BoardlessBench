@@ -23,6 +23,7 @@ import subprocess
 import json
 import glob
 import time
+import re
 
 # Ensure scripts directory is in sys.path (using realpath to resolve symlinks)
 SCRIPT_REAL_PATH = os.path.realpath(__file__)
@@ -800,10 +801,15 @@ def command_plugin_list(args):
     @intent:responsibility
       PPA (Peripheral Plugin Architecture) および DPPA (Dashboard Dynamic Pane Architecture) の
       両プラグインを探索し、固定幅フィールド（Type, Schema, Bus, Status）を左端に整列配置して一覧表示する。
+      -v / --verbose オプション指定時には、各プラグインの物理配置パス（Location）、
+      シンボリックリンク解決関係、およびマニフェスト（fbb-plugin.json / pane script）のフルパスを展開表示する。
     @intent:rationale
       文字長の揃った項目（Type, Schema, Bus, Status）を左側に配置することで、
       縦に一覧を眺めた際の視線移動時の段差（ジャギー）を排除し、視認性と開発体験を向上させる。
+      通常時はコンパクトな一覧性を最優先し、-v / --verbose 指定時に詳細パスを展開することで、
+      環境（/workspaces や ~/.fbb/plugins）に依存せずユーザーが迷わずパスを把握できるようにする。
     """
+    is_verbose = getattr(args, "verbose", False)
     print("🔌 Scanning F-BB Plug-and-Play Architecture (PPA 5.1 & DPPA v1.0) Plugins & Panes...")
 
     # 5 PPA & DPPA Discovery Paths
@@ -883,7 +889,10 @@ def command_plugin_list(args):
                             "name": name,
                             "compat": compat,
                             "title": widget,
-                            "path": plugin_dir
+                            "path": plugin_dir,
+                            "orig_path": plugin_dir,
+                            "real_path": os.path.realpath(plugin_dir),
+                            "manifest_path": os.path.realpath(manifest_file)
                         })
                 except Exception:
                     pass
@@ -915,6 +924,7 @@ def command_plugin_list(args):
                 if f.endswith(".js") and not f.endswith(".test.js"):
                     pane_name = f.replace(".js", "")
                     rel_p = os.path.relpath(os.path.join(root, f), PROJECT_ROOT)
+                    f_full = os.path.join(root, f)
                     key = f"DPPA:{pane_name}"
                     if key not in seen_keys:
                         seen_keys.add(key)
@@ -926,7 +936,10 @@ def command_plugin_list(args):
                             "name": pane_name,
                             "compat": os.path.basename(os.path.dirname(root)),
                             "title": pane_name.replace("Pane", " Live Display"),
-                            "path": rel_p
+                            "path": rel_p,
+                            "orig_path": f_full,
+                            "real_path": os.path.realpath(f_full),
+                            "manifest_path": os.path.realpath(f_full)
                         })
 
     # Sort entries: Hybrid -> PPA -> DPPA, then by Name
@@ -947,12 +960,367 @@ def command_plugin_list(args):
         cp = p["compat"][:24]
         ti = p["title"][:26]
         print(f"{t:<6} | {sch:<6} | {b:<6} | {st:<15} | {nm:<28} | {cp:<24} | {ti:<26}")
+        if is_verbose:
+            orig_p = p.get("orig_path", p.get("path", ""))
+            real_p = p.get("real_path", os.path.realpath(orig_p))
+            m_path = p.get("manifest_path", "")
+            home = os.path.expanduser("~")
+            disp_real = real_p.replace(home, "~") if real_p.startswith(home) else real_p
+            disp_orig = orig_p.replace(home, "~") if orig_p.startswith(home) else orig_p
+            disp_m = m_path.replace(home, "~") if m_path.startswith(home) else m_path
+
+            link_info = f" (symlink from {disp_orig})" if (os.path.islink(orig_p) or orig_p != real_p) else ""
+            if p["type"] == "DPPA":
+                print(f"  ├─ Script   : {disp_real}{link_info}")
+                print(f"  └─ Directory: {os.path.dirname(disp_real)}")
+            else:
+                print(f"  ├─ Location : {disp_real}{link_info}")
+                print(f"  └─ Manifest : {disp_m}")
     print("-" * 126)
 
     ppa_cnt = sum(1 for e in found_entries if e["type"] == "PPA")
     dppa_cnt = sum(1 for e in found_entries if e["type"] == "DPPA")
     hyb_cnt = sum(1 for e in found_entries if e["type"] == "Hybrid")
     print(f"Total discovered plugins: {len(found_entries)} (PPA: {ppa_cnt}, DPPA: {dppa_cnt}, Hybrid: {hyb_cnt})")
+    if not is_verbose:
+        print("💡 Tip: Run 'fbb plugin list -v' or '--verbose' to view full directory paths and manifest locations.")
+
+
+def command_plugin_man(args):
+    """
+    @intent:responsibility
+      指定されたプラグイン（またはUIペイン）の実行マニュアルおよび即時実行コマンド（Quick-Run Card）を表示する。
+      --all / -a オプション指定時には、README.md などの完全マニュアルをページャー（less）経由で展開する。
+    @intent:rationale
+      長大な README.md を無差別にターミナルへ出力すると、肝心の実行コマンドが画面外へスクロールアウトして
+      見失うという重大な DX 課題を解消する。通常時はスクロール不要な 1 画面以内のカードを出力し、
+      プラグインの実際の配置パス（/workspaces や ~/.fbb/plugins）を動的に解決・置換して表示することで、
+      ユーザーが迷わずそのままコマンドを実行できるようにする。
+    """
+    ppa_paths = [
+        os.path.join(PROJECT_ROOT, ".fbb/plugins"),
+        os.path.join(PROJECT_ROOT, "src/peripherals/official_plugins"),
+        os.path.join(os.path.expanduser("~"), ".fbb/plugins"),
+        "/usr/local/share/fbb/plugins"
+    ]
+    if os.environ.get("FBB_PLUGIN_PATH"):
+        for p in os.environ.get("FBB_PLUGIN_PATH").split(":"):
+            if p.strip():
+                ppa_paths.append(p.strip())
+
+    discovered = []
+    seen_dirs = set()
+
+    for base_p in ppa_paths:
+        if not os.path.exists(base_p):
+            continue
+        for entry in os.listdir(base_p):
+            p_dir = os.path.join(base_p, entry)
+            m_file = os.path.join(p_dir, "fbb-plugin.json")
+            if os.path.isdir(p_dir):
+                real_d = os.path.realpath(p_dir)
+                if real_d in seen_dirs:
+                    continue
+                seen_dirs.add(real_d)
+                m_data = {}
+                if os.path.exists(m_file):
+                    try:
+                        with open(m_file, "r", encoding="utf-8") as f:
+                            m_data = json.load(f)
+                    except Exception:
+                        pass
+                discovered.append({
+                    "entry_name": entry,
+                    "plugin_dir": p_dir,
+                    "real_path": real_d,
+                    "manifest_path": m_file if os.path.exists(m_file) else None,
+                    "data": m_data
+                })
+
+    target_query = getattr(args, "name", None)
+    if not target_query:
+        print("📖 Usage: fbb plugin man <plugin-name> [--all]\n")
+        print("Discovered Plugins:")
+        for item in discovered:
+            p_name = item["data"].get("name", item["entry_name"])
+            p_desc = item["data"].get("description", "No description")
+            print(f"  • {p_name:<30} : {p_desc}")
+        print("\n💡 Tip: Run 'fbb plugin man <name>' to view the Quick-Run card for a plugin.")
+        sys.exit(0)
+
+    matched = None
+    if os.path.isdir(target_query):
+        real_d = os.path.realpath(target_query)
+        m_file = os.path.join(real_d, "fbb-plugin.json")
+        m_data = {}
+        if os.path.exists(m_file):
+            try:
+                with open(m_file, "r", encoding="utf-8") as f:
+                    m_data = json.load(f)
+            except Exception:
+                pass
+        matched = {
+            "entry_name": os.path.basename(real_d),
+            "plugin_dir": target_query,
+            "real_path": real_d,
+            "manifest_path": m_file if os.path.exists(m_file) else None,
+            "data": m_data
+        }
+    else:
+        q = target_query.lower().strip()
+        best_item = None
+        best_score = -1
+
+        for item in discovered:
+            m_data = item["data"]
+            p_name = m_data.get("name", "").lower()
+            dir_name = item["entry_name"].lower()
+            base_dir = os.path.basename(item["real_path"]).lower()
+            periphs = m_data.get("peripherals", [])
+            compat_list = [p.get("compatible", "").lower() for p in periphs if isinstance(p, dict)]
+            title_list = [p.get("ui_widget", {}).get("title", "").lower() for p in periphs if isinstance(p, dict) and isinstance(p.get("ui_widget"), dict)]
+            desc = m_data.get("description", "").lower()
+
+            score = 0
+            if q == p_name or q == dir_name or q == base_dir:
+                score = 100
+            elif q in p_name:
+                score = 85
+            elif q in dir_name or q in base_dir:
+                score = 80
+            elif any(q in c for c in compat_list):
+                score = 75
+            elif any(q in t for t in title_list):
+                score = 70
+            elif q in desc:
+                score = 50
+
+            if score > best_score and score >= 50:
+                best_score = score
+                best_item = item
+
+        matched = best_item
+
+    if not matched:
+        print(f"❌ Error: No plugin found matching '{target_query}'")
+        print("💡 Run 'fbb plugin list' to see all available plugins and their registered names.")
+        sys.exit(1)
+
+    real_p = matched["real_path"]
+    data = matched["data"]
+    p_name = data.get("name", matched["entry_name"])
+    version = f"v{data.get('version', '1.0.0')}"
+    vendor = data.get("vendor", "Community")
+    desc = data.get("description", "")
+
+    periphs = data.get("peripherals", [])
+    p0 = periphs[0] if (periphs and isinstance(periphs, list)) else {}
+    bus = p0.get("bus", data.get("bus_type", "generic"))
+    compat = p0.get("compatible", data.get("compatible", "N/A"))
+    ui_w = p0.get("ui_widget", data.get("ui_widget", {}))
+    title = ui_w.get("title", p_name) if isinstance(ui_w, dict) else p_name
+    bin_name = p0.get("binary", data.get("binary"))
+
+    has_pane = os.path.exists(os.path.join(real_p, "pane")) or os.path.exists(os.path.join(real_p, "panes")) or "panes" in data
+    plugin_type = "Hybrid" if (ui_w or has_pane) else "PPA"
+
+    doc_file = None
+    for cand in ["README.md", "readme.md", "README.rst", "USAGE.md", "MANUAL.md"]:
+        cp = os.path.join(real_p, cand)
+        if os.path.exists(cp):
+            doc_file = cp
+            break
+
+    if getattr(args, "all", False):
+        if not doc_file:
+            print(f"⚠️ No documentation file (README.md) found in plugin directory: {real_p}")
+            sys.exit(1)
+
+        # 1. Prefer glow (Terminal Markdown Viewer) if available
+        if shutil.which("glow"):
+            try:
+                cmd = ["glow"]
+                if sys.stdout.isatty():
+                    cmd.append("-p")
+                cmd.append(doc_file)
+                res = subprocess.run(cmd)
+                sys.exit(res.returncode)
+            except Exception:
+                pass
+
+        # 2. Fallback to less -R if interactive and available
+        if sys.stdout.isatty() and shutil.which("less"):
+            try:
+                res = subprocess.run(["less", "-R", doc_file])
+                sys.exit(res.returncode)
+            except Exception:
+                pass
+
+        # 3. Direct stdout fallback
+        with open(doc_file, "r", encoding="utf-8", errors="replace") as f:
+            print(f.read())
+        sys.exit(0)
+
+    # Quick-Run Card mode: discover runnable commands
+    commands = []
+
+    # Priority 1: fbb-plugin.json "commands" or "usage"
+    raw_cmds = data.get("commands") or data.get("usage")
+    if raw_cmds and isinstance(raw_cmds, list):
+        for item in raw_cmds:
+            if isinstance(item, str):
+                c_desc = ""
+                c_cmd = item
+            elif isinstance(item, dict):
+                c_desc = item.get("desc") or item.get("description") or item.get("label") or item.get("title") or ""
+                c_cmd = item.get("cmd") or item.get("command") or ""
+            else:
+                continue
+            if c_cmd:
+                c_cmd = c_cmd.replace("{PLUGIN_DIR}", real_p).replace("{DIR}", real_p)
+                commands.append({"desc": c_desc, "cmd": c_cmd})
+
+    # Priority 2: USAGE.md or MANUAL.md
+    if not commands:
+        usage_md = None
+        for cand in ["USAGE.md", "usage.md", "MANUAL.md", "manual.md"]:
+            cp = os.path.join(real_p, cand)
+            if os.path.exists(cp):
+                usage_md = cp
+                break
+        if usage_md:
+            try:
+                with open(usage_md, "r", encoding="utf-8", errors="replace") as f:
+                    u_content = f.read()
+                in_block = False
+                cur_desc = ""
+                for line in u_content.splitlines():
+                    sline = line.strip()
+                    if sline.startswith("```"):
+                        in_block = not in_block
+                        continue
+                    if in_block:
+                        if sline.startswith("#"):
+                            cur_desc = sline.lstrip("#").strip()
+                        elif sline.startswith("fbb ") or sline.startswith("./start_lab.sh") or sline.startswith("start_lab.sh"):
+                            c_cmd = sline.replace("{PLUGIN_DIR}", real_p)
+                            commands.append({"desc": cur_desc, "cmd": c_cmd})
+                            cur_desc = ""
+            except Exception:
+                pass
+
+    # Priority 3: scenario / scenarios auto-discovery
+    if not commands:
+        scen_base = None
+        for s_cand in ["scenario", "scenarios"]:
+            cp = os.path.join(real_p, s_cand)
+            if os.path.isdir(cp):
+                scen_base = cp
+                break
+        if scen_base:
+            is_self_scen = (
+                os.path.exists(os.path.join(scen_base, "CMakeLists.txt")) or
+                os.path.exists(os.path.join(scen_base, "config.dts")) or
+                os.path.exists(os.path.join(scen_base, "run.sh"))
+            )
+            if is_self_scen:
+                commands.append({
+                    "desc": "Run automated RTL test harness",
+                    "cmd": f"fbb test {scen_base}/"
+                })
+                commands.append({
+                    "desc": "Launch interactive studio dashboard",
+                    "cmd": f"fbb lab {scen_base}/"
+                })
+            else:
+                sub_entries = sorted(os.listdir(scen_base))
+                for sub in sub_entries:
+                    sub_p = os.path.join(scen_base, sub)
+                    if os.path.isdir(sub_p):
+                        if (
+                            os.path.exists(os.path.join(sub_p, "CMakeLists.txt")) or
+                            os.path.exists(os.path.join(sub_p, "config.dts")) or
+                            os.path.exists(os.path.join(sub_p, "run.sh")) or
+                            os.path.exists(os.path.join(sub_p, "vfpga_config.json"))
+                        ):
+                            sub_label = sub.replace("_", " ").title()
+                            commands.append({
+                                "desc": f"Launch scenario: {sub_label}",
+                                "cmd": f"fbb lab {sub_p}"
+                            })
+
+    # Priority 4: Fallback to extract fbb/lab commands from README.md
+    if not commands and doc_file:
+        try:
+            with open(doc_file, "r", encoding="utf-8", errors="replace") as f:
+                r_content = f.read()
+            in_block = False
+            cur_desc = ""
+            for line in r_content.splitlines():
+                sline = line.strip()
+                if sline.startswith("```"):
+                    in_block = not in_block
+                    continue
+                if in_block:
+                    if sline.startswith("#"):
+                        cur_desc = sline.lstrip("#").strip()
+                    elif (sline.startswith("fbb lab ") or sline.startswith("fbb test ") or
+                          sline.startswith("./start_lab.sh ") or sline.startswith("bin/fbb ")):
+                        norm_cmd = sline.replace("bin/fbb", "fbb")
+                        norm_cmd = re.sub(r'~/\.fbb/plugins/[A-Za-z0-9_\-]+', real_p, norm_cmd)
+                        norm_cmd = re.sub(r'\.\./[A-Za-z0-9_\-]+', real_p, norm_cmd)
+                        commands.append({"desc": cur_desc, "cmd": norm_cmd})
+                        cur_desc = ""
+        except Exception:
+            pass
+
+    # Render Card
+    term_cols = shutil.get_terminal_size((80, 24)).columns
+    box_w = max(60, min(term_cols, 100))
+    bar_double = "═" * box_w
+    bar_single = "─" * box_w
+
+    print(bar_double)
+    print(f"📖 Plugin Quick Manual: {title} ({version})")
+    print(f"   Name    : {p_name}")
+    print(f"   Type    : {plugin_type} (Bus: {bus})")
+    print(f"   Location: {real_p}")
+    print(bar_double)
+
+    if desc:
+        print(f"\n{desc}\n")
+
+    if commands:
+        print("💡 Ready-to-Run Commands (Click or copy & paste):")
+        shown_cmds = commands[:6]
+        for idx, c in enumerate(shown_cmds):
+            if c["desc"]:
+                print(f"  # {c['desc']}")
+            print(f"  $ {c['cmd']}")
+            if idx < len(shown_cmds) - 1:
+                print()
+        if len(commands) > 6:
+            print(f"\n  (... and {len(commands) - 6} more command(s) in documentation)")
+    else:
+        print("💡 Integration & Hardware Mapping:")
+        if compat != "N/A":
+            print(f"  • DTS Compatible : {compat}")
+        if bus != "generic":
+            print(f"  • Bus Interface  : {bus}")
+        if bin_name:
+            print(f"  • Peripheral Bin : {bin_name}")
+        print("\n  Refer to full documentation for device tree and registers:")
+        print(f"  $ fbb plugin man {target_query} --all")
+
+    print("\n" + bar_single)
+    if doc_file:
+        doc_rel = os.path.relpath(doc_file, PROJECT_ROOT) if doc_file.startswith(PROJECT_ROOT) else doc_file
+        print(f"📄 Full Doc : {doc_rel}")
+        pager_tool = "glow" if shutil.which("glow") else "pager"
+        print(f"💡 Tip      : Run 'fbb plugin man {target_query} --all' to view full documentation ({pager_tool}).")
+    else:
+        print(f"💡 Tip      : Run 'fbb plugin list -v' to view all installed plugins and paths.")
+    print(bar_double)
 
 
 def command_plugin_validate(args):
@@ -1069,6 +1437,9 @@ def command_plugin_validate(args):
                 print(f"    • Peripheral #{idx+1}: Bus={p_bus}, Compatible={p_compat}, Binary={p_bin}")
                 if "ui_widget" in p:
                     print(f"      - UI Widget: {p['ui_widget'].get('title', 'Untitled')}")
+
+        if "commands" in data and isinstance(data["commands"], list):
+            print(f"  ✓ Quick Commands: {len(data['commands'])} runnable command(s) defined")
 
     else:
         # DPPA Validation
@@ -1390,6 +1761,9 @@ def main():
     # 6. plugin
     plugin_epilog = """Examples:
   fbb plugin list
+  fbb plugin list -v
+  fbb plugin man space
+  fbb plugin man rct --all
   fbb plugin validate src/peripherals/official_plugins/solomon_ssd1306
   fbb plugin install https://github.com/vendor/fbb-plugin-st7789
   fbb plugin remove fbb-plugin-st7789
@@ -1403,7 +1777,38 @@ def main():
     plugin_subparsers = parser_plugin.add_subparsers(dest="plugin_command", help="Plugin subcommands")
 
     # plugin list
-    plugin_subparsers.add_parser("list", help="List all discovered PPA & DPPA plugins and UI panes")
+    parser_p_list = plugin_subparsers.add_parser(
+        "list",
+        help="List all discovered PPA & DPPA plugins and UI panes",
+        epilog="""Examples:
+  fbb plugin list
+  fbb plugin list -v
+  fbb plugin list --verbose
+""",
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser_p_list.add_argument(
+        "-v", "--verbose",
+        action="store_true",
+        help="Show detailed plugin information including full filesystem paths, symlinks, and manifest locations"
+    )
+
+    # plugin man / manual
+    man_epilog = """Examples:
+  fbb plugin man space                      Show quick execution card with runnable commands
+  fbb plugin man rct                        Show ready-to-run commands for RetroCoreTracer
+  fbb plugin man space --all                View full architectural README in pager (less)
+  fbb plugin manual /path/to/plugin         Show manual for a specific local directory
+"""
+    parser_p_man = plugin_subparsers.add_parser(
+        "man",
+        aliases=["manual"],
+        help="Display quick execution manual and runnable commands for an installed plugin",
+        epilog=man_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser_p_man.add_argument("name", nargs="?", default=None, help="Plugin name, keyword, or directory path")
+    parser_p_man.add_argument("-a", "--all", action="store_true", help="Open full documentation (README.md) in a pager (less)")
 
     # plugin validate
     parser_p_validate = plugin_subparsers.add_parser("validate", help="Validate a PPA plugin or DPPA pane against specification v1.0")
@@ -1456,6 +1861,8 @@ def main():
     elif args.command == "plugin":
         if args.plugin_command == "list":
             command_plugin_list(args)
+        elif args.plugin_command in ("man", "manual"):
+            command_plugin_man(args)
         elif args.plugin_command == "validate":
             command_plugin_validate(args)
         elif args.plugin_command == "install":
