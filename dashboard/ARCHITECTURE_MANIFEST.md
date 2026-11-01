@@ -28,6 +28,7 @@
     - **マルチコア・シナリオ・ライフサイクル管理 API**: 実行中のプロセス（Aコア/Mコア等）の自動検知 (`GET /api/scenario/cores`)、個別コアまたは全体の停止 (`POST /api/scenario/stop`)、およびカオス障害注入設定を反映した動的再起動 (`POST /api/scenario/restart`) を提供。
     - **カオス・エンジン・ログ監視**: `/tmp/fbb_chaos_injection.log` をポーリング監視し、発生した障害イベントを WebSocket (`scenario:chaos_event`) 経由でフロントエンドへ即時配信。
     - **レイアウト永続化 API**: シナリオフォルダの `fbb_layout.json`（またはスクリーン指定時は `fbb_layout_${screen}.json`）を通じてレイアウト情報をロード (`GET /api/layout?screen=...`) および保存 (`POST /api/layout?screen=...`) するエンドポイントを提供。
+    - **シナリオファイル安全アクセス API (Generic Script Bridge)**: 実行中シナリオフォルダ内のスクリプトファイル（`.py`, `.c`, `.dts` 等）を Web エディタから直接参照・編集・復元するためのセキュアなエンドポイント (`GET /api/scenario/file?name=...`, `POST /api/scenario/file`) を提供。パストラバーサル防止 (`..` / 絶対パス遮断)、サンドボックス境界防衛、キャッシュ無効化ヘッダー (`no-store`)、および拡張子ホワイトリスト検証を内蔵。
 - **データ構造**:
     - `shmBuffer`: SHM ファイルのメモリマッピング。
     - `traceHistory`: レジスタ状態の時系列スナップショット配列。

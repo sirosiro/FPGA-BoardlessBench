@@ -1404,6 +1404,96 @@ app.post('/api/layout', (req, res) => {
     }
 });
 
+// =============================================================================
+// Active Scenario File Read/Write API (Generic Scenario Script Editor Bridge)
+// =============================================================================
+const ALLOWED_SCENARIO_FILE_EXTENSIONS = new Set([
+    '.py', '.c', '.h', '.cpp', '.hpp', '.dts', '.dtsi', '.json', '.txt', '.md', '.sh', '.v', '.sv'
+]);
+
+function resolveScenarioFilePath(filename) {
+    if (!filename || typeof filename !== 'string') return null;
+    const normalized = path.normalize(filename).replace(/\\/g, '/');
+    if (normalized.startsWith('..') || path.isAbsolute(normalized)) return null;
+
+    const ext = path.extname(normalized).toLowerCase();
+    if (!ALLOWED_SCENARIO_FILE_EXTENSIONS.has(ext)) return null;
+
+    const scnDir = getActiveScenarioDir();
+    if (!scnDir || !fs.existsSync(scnDir)) return null;
+
+    const fullPath = path.resolve(scnDir, normalized);
+    const resolvedScn = path.resolve(scnDir);
+    if (!fullPath.startsWith(resolvedScn + path.sep) && fullPath !== resolvedScn) return null;
+
+    return { fullPath, normalized, scnDir };
+}
+
+// GET /api/scenario/file?name=<relative_file_path>
+app.get('/api/scenario/file', (req, res) => {
+    const filename = req.query.name || req.query.file;
+    const resolved = resolveScenarioFilePath(filename);
+    if (!resolved) {
+        return res.status(400).json({ error: 'Invalid file name, path traversal detected, or unsupported extension' });
+    }
+    try {
+        if (!fs.existsSync(resolved.fullPath)) {
+            return res.status(404).json({ error: `File not found: ${resolved.normalized}` });
+        }
+        const stat = fs.statSync(resolved.fullPath);
+        if (!stat.isFile()) {
+            return res.status(400).json({ error: 'Target path is not a regular file' });
+        }
+        const content = fs.readFileSync(resolved.fullPath, 'utf8');
+        res.set('Cache-Control', 'no-store, no-cache, must-revalidate, private');
+        res.set('Pragma', 'no-cache');
+        res.set('Expires', '0');
+        return res.json({
+            success: true,
+            name: resolved.normalized,
+            scenario: path.basename(resolved.scnDir),
+            content,
+            mtime: stat.mtimeMs,
+            size: stat.size
+        });
+    } catch (e) {
+        console.error(`[Backend] Failed to read scenario file: ${e.message}`);
+        return res.status(500).json({ error: e.message });
+    }
+});
+
+// POST /api/scenario/file - Write text file to the active scenario folder
+app.post('/api/scenario/file', (req, res) => {
+    const filename = req.body.name || req.body.file;
+    const content = req.body.content;
+    if (content === undefined || typeof content !== 'string') {
+        return res.status(400).json({ error: 'Missing or invalid "content" in request body' });
+    }
+    const resolved = resolveScenarioFilePath(filename);
+    if (!resolved) {
+        return res.status(400).json({ error: 'Invalid file name, path traversal detected, or unsupported extension' });
+    }
+    try {
+        const dir = path.dirname(resolved.fullPath);
+        if (!fs.existsSync(dir)) {
+            fs.mkdirSync(dir, { recursive: true });
+        }
+        fs.writeFileSync(resolved.fullPath, content, 'utf8');
+        const stat = fs.statSync(resolved.fullPath);
+        console.log(`[Backend] Scenario file saved: ${resolved.normalized} (${stat.size} bytes)`);
+        return res.json({
+            success: true,
+            name: resolved.normalized,
+            scenario: path.basename(resolved.scnDir),
+            bytesWritten: stat.size,
+            mtime: stat.mtimeMs
+        });
+    } catch (e) {
+        console.error(`[Backend] Failed to write scenario file: ${e.message}`);
+        return res.status(500).json({ error: e.message });
+    }
+});
+
 // Virtual SD Card API Endpoints
 const getSdCardDir = () => {
     if (process.env.FBB_SD_DIR) {
