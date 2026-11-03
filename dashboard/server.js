@@ -33,6 +33,7 @@ const MANIFEST_PATH = path.join(__dirname, 'data/board_manifest.json');
 let manifest = {};
 let shmBuffer = null;
 let hdmiWatcher = null;
+let detectedGhostOffsets = {};
 
 function setupHdmiWatcher() {
     if (hdmiWatcher) {
@@ -527,9 +528,12 @@ function broadcastRegisters(force = false) {
 
     uioGpioDevs.forEach(dev => {
         const devBaseAddr = dev.base_addr || 0;
+        const knownOffsets = new Set();
+
         dev.registers.forEach(reg => {
             const regOffset = typeof reg.offset === 'string' ? parseInt(reg.offset, 16) : (reg.offset || 0);
             if (isNaN(regOffset)) return;
+            knownOffsets.add(regOffset);
             const physAddr = devBaseAddr + regOffset;
             const shmOffset = physAddr - shmBaseAddr;
             if (shmOffset >= 0 && shmOffset + 4 <= shmBuffer.length) {
@@ -543,12 +547,59 @@ function broadcastRegisters(force = false) {
                     offset: reg.offset,
                     value: `0x${value.toString(16).padStart(8, '0')}`,
                     decimal: value,
-                    deviceName: dev.name
+                    deviceName: dev.name,
+                    group: reg.group || 'General'
                 });
                 
                 currentState[regKey] = value;
             }
         });
+
+        // -------------------------------------------------------------
+        // [FBB Logic Distillation] Ghost / Undeclared Register Detection
+        // -------------------------------------------------------------
+        if (!detectedGhostOffsets[dev.name]) {
+            detectedGhostOffsets[dev.name] = new Set();
+        }
+        const ghostSet = detectedGhostOffsets[dev.name];
+
+        // Clean up any previously detected ghost offsets that are now in knownOffsets (e.g. after DTS fix)
+        for (const off of Array.from(ghostSet)) {
+            if (knownOffsets.has(off)) {
+                ghostSet.delete(off);
+            }
+        }
+
+        const devSize = dev.size || 4096;
+        const maxScanOffset = Math.min(devSize, shmBuffer.length, 1024);
+        for (let off = 0; off + 4 <= maxScanOffset; off += 4) {
+            if (!knownOffsets.has(off)) {
+                const physAddr = devBaseAddr + off;
+                const shmOffset = physAddr - shmBaseAddr;
+                if (shmOffset >= 0 && shmOffset + 4 <= shmBuffer.length) {
+                    const value = shmBuffer.readUInt32LE(shmOffset);
+                    if (value !== 0) {
+                        ghostSet.add(off);
+                    }
+                    if (ghostSet.has(off)) {
+                        const hexOff = `0x${off.toString(16).toUpperCase()}`;
+                        const ghostKey = `${dev.name}_UNDECLARED_${hexOff}`;
+                        regData.push({
+                            name: `GHOST_${hexOff}`,
+                            logical_name: `[UNDECLARED] 0x${off.toString(16).padStart(2, '0')}`,
+                            direction_mode: null,
+                            offset: `0x${off.toString(16).padStart(2, '0')}`,
+                            value: `0x${value.toString(16).padStart(8, '0')}`,
+                            decimal: value,
+                            deviceName: dev.name,
+                            isUndeclared: true,
+                            group: 'Undeclared (Ghost)'
+                        });
+                        currentState[ghostKey] = value;
+                    }
+                }
+            }
+        }
     });
 
     // 変化検知と履歴への記録

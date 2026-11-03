@@ -6,10 +6,10 @@ import {
   YAxis,
   CartesianGrid,
   Tooltip,
-  Legend,
   ResponsiveContainer,
   ReferenceLine
 } from 'recharts';
+import { Layers, Eye, EyeOff, CheckSquare, Square } from 'lucide-react';
 import { useDashboard } from './DashboardContext';
 
 // 32-bit 符号なし整数 (uint32) を 2の補数符号付き整数 (int32) に変換
@@ -20,31 +20,116 @@ const toInt32 = (val) => {
   return (n & 0x80000000) ? n - 0x100000000 : n;
 };
 
+// オシロスコープ用パレット（見やすくコントラストの高い24色）
+const TRACE_COLORS = [
+  '#00f2fe', '#4facfe', '#00e676', '#ffea00', '#ff007f', '#7928ca',
+  '#ff9100', '#00b0ff', '#f50057', '#76ff03', '#d500f9', '#ffd600',
+  '#1de9b6', '#ff1744', '#651fff', '#3d5afe', '#00e5ff', '#ff3d00',
+  '#c6ff00', '#f50057', '#00c853', '#aa00ff', '#2979ff', '#ff6d00'
+];
+
 const RegisterTracer = () => {
   const { 
     traceHistory: historyData, 
     handleClearTrace: onClear, 
     hiddenTraceKeys: hiddenKeys, 
     toggleTraceKey,
+    setTraceKeysVisibility,
+    effectiveRegisters,
     timeTravelState,
     isTimeTravelActive,
     scrubTo,
-    returnToLive
+    returnToLive,
+    tracerState,
+    updateTracerState
   } = useDashboard();
   
   // 表示モード: 'zero_center' (ゼロ中央固定) | 'signed' (符号付き自動レンジ) | 'unsigned' (従来の非負)
-  const [mode, setMode] = useState('zero_center');
+  const mode = tracerState?.mode || 'zero_center';
+  const setMode = (m) => updateTracerState && updateTracerState({ mode: m });
 
   // オシロスコープ時間軸スパン: 50 | 100 | 250 | 'all'
-  const [timebaseSpan, setTimebaseSpan] = useState('all');
+  const timebaseSpan = tracerState?.timebaseSpan || 'all';
+  const setTimebaseSpan = (s) => updateTracerState && updateTracerState({ timebaseSpan: s });
 
   // ドラッグ操作判定
   const [isMouseDown, setIsMouseDown] = useState(false);
 
-  // ESCキーでLIVEへ復帰 & 左右矢印キー(◄/►)でコマ送り/コマ戻し (Shift同時押しで10フレームジャンプ)
+  // 選択中のレジスタグループフィルター
+  const selectedGroup = tracerState?.selectedGroup;
+  const setSelectedGroup = (g) => updateTracerState && updateTracerState({ selectedGroup: g });
+
+  // レジスタメタデータマップ (キー: `${deviceName}_${regName}`)
+  const regMetaMap = useMemo(() => {
+    const map = {};
+    (effectiveRegisters || []).forEach(reg => {
+      const key = `${reg.deviceName}_${reg.name}`;
+      map[key] = reg;
+    });
+    return map;
+  }, [effectiveRegisters]);
+
+  // 履歴データからレジスタ名のリストを抽出
+  const registerKeys = useMemo(() => {
+    if (!historyData || historyData.length === 0) return [];
+    return Object.keys(historyData[0]).filter(key => key !== 'index' && key !== 'time' && key !== 'telemetry');
+  }, [historyData]);
+
+  // グループ分類
+  const { groupNames, groupMap } = useMemo(() => {
+    const gMap = {};
+    registerKeys.forEach((key, idx) => {
+      const meta = regMetaMap[key];
+      const grp = meta?.group || 'General';
+      if (!gMap[grp]) gMap[grp] = [];
+      gMap[grp].push({
+        key,
+        originalIndex: idx,
+        name: meta?.name || key.replace(/^[^_]+_/, ''),
+        group: grp,
+        offset: meta?.offset || ''
+      });
+    });
+
+    const gNames = Object.keys(gMap);
+    return { groupNames: gNames, groupMap: gMap };
+  }, [registerKeys, regMetaMap]);
+
+  // 初期グループ選択: グループが複数ある場合は先頭のグループ（制御系）をデフォルト選択（未保存時）
+  useEffect(() => {
+    if (groupNames.length > 0 && !selectedGroup) {
+      const defaultGroup = groupNames.length > 1 ? groupNames[0] : 'ALL';
+      if (updateTracerState) {
+        updateTracerState({ selectedGroup: defaultGroup });
+      }
+    }
+  }, [groupNames, selectedGroup]);
+
+  // 文字列バッファ（波形表示に適さないもの）を自動識別
+  const isStringBufferKey = (key) => {
+    const meta = regMetaMap[key];
+    const grp = (meta?.group || '').toLowerCase();
+    const name = (meta?.name || key).toUpperCase();
+    return grp.includes('string') || grp.includes('buffer') || name.startsWith('GRADE_STR') || name.startsWith('EVENT_STR') || name === 'SHM_MAGIC';
+  };
+
+  // 現在の選択グループに属するレジスタ
+  const activeGroupItems = useMemo(() => {
+    if (!selectedGroup || selectedGroup === 'ALL') {
+      return registerKeys.map((key, idx) => ({
+        key,
+        originalIndex: idx,
+        name: regMetaMap[key]?.name || key.replace(/^[^_]+_/, ''),
+        group: regMetaMap[key]?.group || 'General',
+        offset: regMetaMap[key]?.offset || ''
+      }));
+    }
+    return groupMap[selectedGroup] || [];
+  }, [selectedGroup, registerKeys, groupMap, regMetaMap]);
+
+  // ESCキーでLIVEへ復帰 & 左右矢印キー(◄/►)でコマ送り/コマ戻し
   useEffect(() => {
     const handleKeyDown = (e) => {
-      // 入力フォームやターミナル等にフォーカスがある時はスキップ
       const tag = e.target?.tagName?.toLowerCase();
       if (tag === 'input' || tag === 'textarea' || e.target?.isContentEditable) {
         return;
@@ -66,7 +151,6 @@ const RegisterTracer = () => {
           currIdx = historyData.findIndex(d => d.index === timeTravelState.snapshot.index);
         }
         if (currIdx === -1) {
-          // LIVE状態から左キーを押した場合は最新から1つ前へ
           currIdx = historyData.length - 1;
         }
         const targetIdx = Math.max(0, currIdx - step);
@@ -75,13 +159,12 @@ const RegisterTracer = () => {
         }
       } else if (e.key === 'ArrowRight') {
         if (!timeTravelState?.snapshot) {
-          return; // すでにLIVE中なら右へは進めない
+          return;
         }
         e.preventDefault();
         const currIdx = historyData.findIndex(d => d.index === timeTravelState.snapshot.index);
         if (currIdx !== -1) {
           if (currIdx >= historyData.length - 1) {
-            // 右端（最新）に到達したらLIVEへ復帰
             returnToLive();
           } else {
             const targetIdx = Math.min(historyData.length - 1, currIdx + step);
@@ -96,13 +179,7 @@ const RegisterTracer = () => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [historyData, timeTravelState, scrubTo, returnToLive]);
 
-  // 履歴データからレジスタ名のリストを抽出（全体から抽出して欠損防止）
-  const registerKeys = useMemo(() => {
-    if (!historyData || historyData.length === 0) return [];
-    return Object.keys(historyData[0]).filter(key => key !== 'index' && key !== 'time' && key !== 'telemetry');
-  }, [historyData]);
-
-  // オシロスコープ・スパンによるデータ切り出し (選択カーソルまたは最新を中心)
+  // オシロスコープ・スパンによるデータ切り出し
   const slicedHistoryData = useMemo(() => {
     if (!historyData || historyData.length === 0) return [];
     if (timebaseSpan === 'all' || historyData.length <= timebaseSpan) return historyData;
@@ -112,7 +189,7 @@ const RegisterTracer = () => {
       centerIdx = historyData.findIndex(d => d.index === timeTravelState.snapshot.index);
     }
     if (centerIdx === -1) {
-      centerIdx = historyData.length - 1; // LIVE時は最新点
+      centerIdx = historyData.length - 1;
     }
     
     const half = Math.floor(timebaseSpan / 2);
@@ -148,53 +225,59 @@ const RegisterTracer = () => {
         const min = values.length > 0 ? Math.min(...values) : 0;
         const max = values.length > 0 ? Math.max(...values) : 0;
         stats[key] = { min, max, range: max - min };
-      } else { // zero_center
+      } else if (mode === 'zero_center') {
         const values = slicedHistoryData
-          .map(d => (d[key] != null ? toInt32(d[key]) : NaN))
+          .map(d => {
+            if (d[key] == null) return NaN;
+            return toInt32(d[key]);
+          })
           .filter(v => !isNaN(v));
-        const absMax = values.length > 0 ? Math.max(...values.map(Math.abs)) : 0;
-        stats[key] = { absMax };
+        const maxAbs = values.length > 0 ? Math.max(...values.map(v => Math.abs(v))) : 1;
+        stats[key] = { maxAbs: Math.max(maxAbs, 1) };
       }
     });
 
-    return slicedHistoryData.map(d => {
-      const normalizedEntry = { ...d };
+    return slicedHistoryData.map(item => {
+      const normItem = { ...item };
       registerKeys.forEach(key => {
+        const val = item[key];
+        if (val == null) {
+          normItem[`${key}_norm`] = null;
+          return;
+        }
+
         if (mode === 'unsigned') {
-          const { min, range } = stats[key];
-          const rawVal = d[key] != null ? Number(d[key]) : min;
-          const val = isNaN(rawVal) ? min : rawVal;
-          normalizedEntry[`${key}_norm`] = range === 0 ? 50 : ((val - min) / range) * 100;
+          const { min, range } = stats[key] || { min: 0, range: 0 };
+          const num = typeof val === 'number' ? val : Number(val);
+          normItem[`${key}_norm`] = range === 0 ? 50 : ((num - min) / range) * 100;
         } else if (mode === 'signed') {
-          const { min, range } = stats[key];
-          const val = toInt32(d[key]);
-          normalizedEntry[`${key}_norm`] = range === 0 ? 50 : ((val - min) / range) * 100;
-        } else { // zero_center
-          const { absMax } = stats[key];
-          const val = toInt32(d[key]);
-          normalizedEntry[`${key}_norm`] = absMax === 0 ? 50 : 50 + (val / absMax) * 46;
+          const { min, range } = stats[key] || { min: 0, range: 0 };
+          const sVal = toInt32(val);
+          normItem[`${key}_norm`] = range === 0 ? 50 : ((sVal - min) / range) * 100;
+        } else if (mode === 'zero_center') {
+          const { maxAbs } = stats[key] || { maxAbs: 1 };
+          const sVal = toInt32(val);
+          const ratio = Math.max(-1, Math.min(1, sVal / maxAbs));
+          normItem[`${key}_norm`] = 50 + ratio * 45;
         }
       });
-      return normalizedEntry;
+      return normItem;
     });
   }, [slicedHistoryData, registerKeys, mode]);
 
-  const getColor = (index) => {
-    const colors = [
-      '#58a6ff', '#3fb950', '#d29922', '#f85149', '#bc8cff', 
-      '#1f6feb', '#238636', '#9e6a03', '#da3633', '#8957e5'
-    ];
-    return colors[index % colors.length];
-  };
+  // 波形プロット対象キー（選択グループ内 かつ 非非表示）
+  const plottedKeys = useMemo(() => {
+    return activeGroupItems.filter(({ key }) => {
+      if (hiddenKeys[key]) return false;
+      // 文字列バッファは初期状態で非表示扱い（未設定時）
+      if (hiddenKeys[key] === undefined && isStringBufferKey(key)) return false;
+      return true;
+    });
+  }, [activeGroupItems, hiddenKeys]);
 
-  // 凡例クリック時のハンドラ
-  const handleLegendClick = (e) => {
-    const { dataKey } = e;
-    const key = dataKey.replace('_norm', '');
-    toggleTraceKey(key);
-  };
+  const getColor = (index) => TRACE_COLORS[index % TRACE_COLORS.length];
 
-  // チャートクリックまたはなぞりドラッグによるシーク
+  // クリック・ドラッグでスクラブ
   const handleChartInteraction = (e) => {
     if (!e) return;
     let targetIndex = null;
@@ -214,6 +297,23 @@ const RegisterTracer = () => {
     }
   };
 
+  // グループ内一括表示/非表示切り替え
+  const handleGroupVisibility = (show) => {
+    if (!setTraceKeysVisibility) return;
+    const updates = {};
+    activeGroupItems.forEach(({ key }) => {
+      updates[key] = !show; // hidden = true if hide
+    });
+    setTraceKeysVisibility(updates);
+  };
+
+  // 最新スナップショット（凡例値表示用）
+  const latestSnapshot = useMemo(() => {
+    if (timeTravelState?.snapshot) return timeTravelState.snapshot;
+    if (historyData && historyData.length > 0) return historyData[historyData.length - 1];
+    return null;
+  }, [timeTravelState, historyData]);
+
   return (
     <div style={{ 
       padding: '12px', 
@@ -222,7 +322,8 @@ const RegisterTracer = () => {
       height: '100%',
       boxSizing: 'border-box'
     }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '10px', flexWrap: 'wrap', gap: '8px' }}>
+      {/* Top Header Bar */}
+      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <h3 style={{ margin: 0, fontSize: '0.9rem', color: '#e6edf3' }}>Register State Tracer</h3>
           <span style={{ 
@@ -233,10 +334,10 @@ const RegisterTracer = () => {
             color: '#8b949e',
             border: '1px solid #30363d'
           }}>
-            {historyData?.length || 0} snapshots
+            {historyData?.length || 0} pts
           </span>
 
-          {/* Time-Travel Status Badge & Return Button */}
+          {/* Time-Travel Status Badge */}
           {isTimeTravelActive ? (
             <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
               <span style={{
@@ -251,7 +352,7 @@ const RegisterTracer = () => {
                 alignItems: 'center',
                 gap: '4px'
               }}>
-                ⏪ TIME-TRAVEL: #{timeTravelState.snapshot.index} ({timeTravelState.snapshot.time})
+                ⏪ TIME-TRAVEL: #{timeTravelState.snapshot.index}
               </span>
               <button
                 onClick={returnToLive}
@@ -264,9 +365,6 @@ const RegisterTracer = () => {
                   borderRadius: '4px',
                   cursor: 'pointer',
                   fontWeight: '600',
-                  display: 'flex',
-                  alignItems: 'center',
-                  gap: '4px',
                   boxShadow: '0 0 6px rgba(35, 134, 54, 0.4)'
                 }}
                 title="Return to LIVE real-time telemetry (Shortcut: ESC)"
@@ -289,8 +387,9 @@ const RegisterTracer = () => {
           )}
         </div>
 
+        {/* Right Controls: Span & Mode */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          {/* Oscilloscope Timebase Span Selector */}
+          {/* Span Selector */}
           <div style={{
             display: 'flex',
             alignItems: 'center',
@@ -316,14 +415,13 @@ const RegisterTracer = () => {
                   fontWeight: timebaseSpan === s ? '600' : '400',
                   transition: 'all 0.15s ease'
                 }}
-                title={s === 'all' ? 'Show all snapshots (max 500)' : `Zoom to ${s} snapshots centered on cursor`}
               >
                 {s === 'all' ? 'All' : `${s}pt`}
               </button>
             ))}
           </div>
 
-          {/* Segmented Mode Selector */}
+          {/* Mode Selector */}
           <div style={{
             display: 'flex',
             alignItems: 'center',
@@ -342,10 +440,9 @@ const RegisterTracer = () => {
                 fontSize: '0.7rem',
                 borderRadius: '4px',
                 cursor: 'pointer',
-                fontWeight: mode === 'zero_center' ? '600' : '400',
-                transition: 'all 0.15s ease'
+                fontWeight: mode === 'zero_center' ? '600' : '400'
               }}
-              title="Zero-Center Mode: 0x00 / 0xFFFF centered at 50% baseline (ideal for signed commands & physical variables)"
+              title="Zero-Center Mode: 0 centered at 50% baseline (ideal for physical signed commands)"
             >
               Zero-Center
             </button>
@@ -359,10 +456,8 @@ const RegisterTracer = () => {
                 fontSize: '0.7rem',
                 borderRadius: '4px',
                 cursor: 'pointer',
-                fontWeight: mode === 'signed' ? '600' : '400',
-                transition: 'all 0.15s ease'
+                fontWeight: mode === 'signed' ? '600' : '400'
               }}
-              title="Signed Mode: 2's complement auto-range (min to max)"
             >
               Signed
             </button>
@@ -376,10 +471,8 @@ const RegisterTracer = () => {
                 fontSize: '0.7rem',
                 borderRadius: '4px',
                 cursor: 'pointer',
-                fontWeight: mode === 'unsigned' ? '600' : '400',
-                transition: 'all 0.15s ease'
+                fontWeight: mode === 'unsigned' ? '600' : '400'
               }}
-              title="Unsigned Mode: Standard 0 ~ 4.29G range (for memory addresses & bitmasks)"
             >
               Unsigned
             </button>
@@ -402,13 +495,173 @@ const RegisterTracer = () => {
         </div>
       </div>
 
+      {/* Register Group Filter Tabs */}
+      {groupNames.length > 1 && (
+        <div style={{
+          display: 'flex',
+          gap: '4px',
+          overflowX: 'auto',
+          paddingBottom: '4px',
+          marginBottom: '6px',
+          scrollbarWidth: 'thin'
+        }}>
+          {['ALL', ...groupNames].map(grp => {
+            const count = grp === 'ALL' ? registerKeys.length : (groupMap[grp]?.length || 0);
+            const isSelected = (selectedGroup === grp) || (grp === 'ALL' && selectedGroup === 'ALL');
+            return (
+              <button
+                key={grp}
+                onClick={() => setSelectedGroup(grp)}
+                style={{
+                  backgroundColor: isSelected ? '#1f6feb' : '#161b22',
+                  color: isSelected ? '#ffffff' : '#8b949e',
+                  border: isSelected ? '1px solid #388bfd' : '1px solid #30363d',
+                  padding: '3px 9px',
+                  fontSize: '0.68rem',
+                  borderRadius: '12px',
+                  cursor: 'pointer',
+                  fontWeight: isSelected ? 600 : 400,
+                  whiteSpace: 'nowrap',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  transition: 'all 0.15s ease'
+                }}
+              >
+                <Layers size={11} style={{ opacity: isSelected ? 1 : 0.6 }} />
+                <span>{grp}</span>
+                <span style={{ 
+                  fontSize: '0.6rem', 
+                  backgroundColor: isSelected ? 'rgba(255,255,255,0.2)' : '#21262d', 
+                  padding: '1px 4px', 
+                  borderRadius: '8px' 
+                }}>
+                  {count}
+                </span>
+              </button>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Interactive Compact Legend & Scope Bar */}
+      <div style={{
+        backgroundColor: '#161b22',
+        border: '1px solid #30363d',
+        borderRadius: '6px',
+        padding: '6px 10px',
+        marginBottom: '8px'
+      }}>
+        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '4px' }}>
+          <div style={{ fontSize: '0.68rem', color: '#8b949e', display: 'flex', alignItems: 'center', gap: '6px' }}>
+            <span style={{ fontWeight: 600, color: '#c9d1d9' }}>
+              {selectedGroup === 'ALL' ? 'All Groups' : selectedGroup}
+            </span>
+            <span>({plottedKeys.length} active of {activeGroupItems.length} regs)</span>
+          </div>
+          <div style={{ display: 'flex', gap: '6px' }}>
+            <button
+              onClick={() => handleGroupVisibility(true)}
+              style={{
+                fontSize: '0.62rem',
+                backgroundColor: 'transparent',
+                border: '1px solid #30363d',
+                color: '#3fb950',
+                padding: '1px 6px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '3px'
+              }}
+            >
+              <CheckSquare size={10} /> Show All
+            </button>
+            <button
+              onClick={() => handleGroupVisibility(false)}
+              style={{
+                fontSize: '0.62rem',
+                backgroundColor: 'transparent',
+                border: '1px solid #30363d',
+                color: '#f85149',
+                padding: '1px 6px',
+                borderRadius: '4px',
+                cursor: 'pointer',
+                display: 'flex',
+                alignItems: 'center',
+                gap: '3px'
+              }}
+            >
+              <Square size={10} /> Hide All
+            </button>
+          </div>
+        </div>
+
+        {/* Scrollable Legend Chips Container */}
+        <div style={{
+          display: 'flex',
+          flexWrap: 'wrap',
+          gap: '4px',
+          maxHeight: '62px',
+          overflowY: 'auto',
+          paddingRight: '4px'
+        }}>
+          {activeGroupItems.map(({ key, originalIndex, name, offset }) => {
+            const isHidden = hiddenKeys[key] ?? isStringBufferKey(key);
+            const color = getColor(originalIndex);
+            const val = latestSnapshot ? latestSnapshot[key] : null;
+            const valStr = val != null ? `0x${(Number(val) >>> 0).toString(16).padStart(4, '0')}` : '';
+
+            return (
+              <div
+                key={key}
+                onClick={() => toggleTraceKey(key)}
+                style={{
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  backgroundColor: isHidden ? '#21262d' : 'rgba(255, 255, 255, 0.05)',
+                  border: `1px solid ${isHidden ? '#30363d' : color}`,
+                  opacity: isHidden ? 0.45 : 1.0,
+                  borderRadius: '4px',
+                  padding: '2px 6px',
+                  cursor: 'pointer',
+                  userSelect: 'none',
+                  fontSize: '0.65rem',
+                  fontFamily: 'monospace',
+                  transition: 'all 0.12s ease'
+                }}
+                title={`Click to ${isHidden ? 'show' : 'hide'} ${name} (Offset ${offset})`}
+              >
+                <div style={{
+                  width: '7px',
+                  height: '7px',
+                  borderRadius: '50%',
+                  backgroundColor: color,
+                  boxShadow: isHidden ? 'none' : `0 0 4px ${color}`
+                }} />
+                <span style={{ color: isHidden ? '#8b949e' : '#e6edf3', fontWeight: isHidden ? 'normal' : 600 }}>
+                  {name}
+                </span>
+                {valStr && (
+                  <span style={{ color: '#8b949e', fontSize: '0.6rem' }}>
+                    {valStr}
+                  </span>
+                )}
+              </div>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Waveform Chart Area */}
       <div 
         onMouseDown={() => setIsMouseDown(true)}
         onMouseUp={() => setIsMouseDown(false)}
         onMouseLeave={() => setIsMouseDown(false)}
         style={{ 
           flex: 1, 
-          minHeight: '300px', 
+          minHeight: '260px', 
           position: 'relative',
           cursor: isMouseDown ? 'col-resize' : 'crosshair'
         }}
@@ -483,30 +736,19 @@ const RegisterTracer = () => {
                   }
                 }}
               />
-              <Legend 
-                verticalAlign="top" 
-                height={36}
-                iconType="circle"
-                wrapperStyle={{ fontSize: '0.7rem', paddingTop: '0', cursor: 'pointer' }}
-                onClick={handleLegendClick}
-              />
-              {registerKeys
-                .map((key, i) => ({ key, originalIndex: i }))
-                .filter(({ key }) => !hiddenKeys[key])
-                .map(({ key, originalIndex }) => (
-                  <Line
-                    key={key}
-                    type="stepAfter"
-                    dataKey={`${key}_norm`}
-                    stroke={getColor(originalIndex)}
-                    dot={slicedHistoryData.length <= 1 ? { r: 3 } : false}
-                    activeDot={{ r: 3 }}
-                    name={key.replace(/_/g, ': ')}
-                    strokeWidth={1.5}
-                    isAnimationActive={false}
-                  />
-                ))
-              }
+              {plottedKeys.map(({ key, originalIndex, name }) => (
+                <Line
+                  key={key}
+                  type="stepAfter"
+                  dataKey={`${key}_norm`}
+                  name={name}
+                  stroke={getColor(originalIndex)}
+                  dot={slicedHistoryData.length <= 1 ? { r: 3 } : false}
+                  activeDot={{ r: 3 }}
+                  strokeWidth={1.5}
+                  isAnimationActive={false}
+                />
+              ))}
             </LineChart>
           </ResponsiveContainer>
         ) : (
@@ -526,11 +768,13 @@ const RegisterTracer = () => {
           </div>
         )}
       </div>
+
+      {/* Bottom Status / Navigation Hints */}
       <div style={{ fontSize: '0.65rem', color: '#8b949e', marginTop: '8px', display: 'flex', justifyContent: 'space-between', flexWrap: 'wrap', gap: '4px' }}>
-        <span>* Click/drag or use ◄/► arrow keys (Shift+◄/►: x10) to scrub frame-by-frame. Press ESC to return to LIVE. Click legend to toggle lines.</span>
+        <span>* Click/drag or use ◄/► arrow keys (Shift+◄/►: x10) to scrub frame-by-frame. Press ESC to return to LIVE. Click badge to toggle.</span>
         <span>
           Current Mode: <strong style={{ color: mode === 'zero_center' ? '#3fb950' : mode === 'signed' ? '#58a6ff' : '#d29922' }}>
-            {mode === 'zero_center' ? 'Zero-Center (0/0xFFFF at 50% baseline)' : mode === 'signed' ? 'Signed 32-bit (Auto Min/Max)' : 'Unsigned 32-bit (0-100%)'}
+            {mode === 'zero_center' ? 'Zero-Center (0 at 50% baseline)' : mode === 'signed' ? 'Signed 32-bit (Auto Min/Max)' : 'Unsigned 32-bit (0-100%)'}
           </strong>
         </span>
       </div>

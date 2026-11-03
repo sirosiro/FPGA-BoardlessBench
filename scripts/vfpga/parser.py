@@ -535,10 +535,34 @@ class DTSParser:
                             device.spi_slaves.append(slave)
 
                 if "registers" in props:
-                    reg_raw = props["registers"].replace("\\n", " ").replace('\\"', "").replace("\\t", " ")
-                    reg_list = reg_raw.split(",")
-                    for r_str in reg_list:
-                        r_str = r_str.strip().strip('"').strip()
+                    reg_raw = props["registers"]
+                    token_pattern = re.compile(r"/\*(.*?)\*/|//(.*?)(?:\n|$)|(\"[^\"]+\")", re.DOTALL)
+                    current_group = "General"
+                    parsed_items = []
+                    for match in token_pattern.finditer(reg_raw):
+                        c1, c2, qstr = match.groups()
+                        comment = c1 if c1 is not None else c2
+                        if comment is not None:
+                            c_clean = comment.strip()
+                            c_no_paren = re.sub(r"\(.*?\)", "", c_clean).strip()
+                            if ":" in c_no_paren:
+                                c_title = c_no_paren.split(":", 1)[1].strip()
+                            else:
+                                c_title = c_no_paren
+                            c_title = re.sub(r"^(?:0x[0-9a-fA-F]+\s*-\s*0x[0-9a-fA-F]+:?\s*|\[|\]|\s*Group:?\s*)", "", c_title).strip(" []*:-\t")
+                            if c_title:
+                                current_group = c_title
+                        elif qstr is not None:
+                            parsed_items.append((qstr.strip("\" \t"), current_group))
+
+                    # Fallback for unquoted comma-separated legacy format
+                    if not parsed_items:
+                        for item in reg_raw.replace("\\n", " ").replace('\\"', "").replace("\\t", " ").split(","):
+                            item_clean = item.strip().strip('"').strip()
+                            if "@" in item_clean:
+                                parsed_items.append((item_clean, "General"))
+
+                    for r_str, r_group in parsed_items:
                         if "@" in r_str:
                             reg_direction = "RW"
                             if ":" in r_str:
@@ -596,7 +620,7 @@ class DTSParser:
                                     direction_mode = "active_high_input"
 
                             device.registers.append(
-                                Register(reg_name, reg_offset, reg_direction, logical_name, direction_mode)
+                                Register(reg_name, reg_offset, reg_direction, logical_name, direction_mode, r_group)
                             )
                 base_name = device.name
                 counter = 1

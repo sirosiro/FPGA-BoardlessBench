@@ -503,6 +503,7 @@ class ManifestGenerator(BaseGenerator):
                         "logical_name": r.logical_name or r.name,
                         "offset": r.offset,
                         "direction_mode": getattr(r, "direction_mode", None),
+                        "group": getattr(r, "group", "General"),
                     }
                     for r in dev.registers
                 ],

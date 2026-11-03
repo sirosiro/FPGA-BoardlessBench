@@ -14,7 +14,16 @@ import {
 import './App.css';
 
 function DashboardInner() {
-  const { connected, manifest } = useDashboard();
+  const { 
+    connected, 
+    manifest, 
+    tracerState, 
+    monitorState, 
+    hiddenTraceKeys, 
+    setTracerState, 
+    setMonitorState, 
+    setHiddenTraceKeys 
+  } = useDashboard();
   const apiRef = useRef(null);
   const [saveStatus, setSaveStatus] = useState('Save Layout');
   const [isAddPaneOpen, setIsAddPaneOpen] = useState(false);
@@ -34,6 +43,14 @@ function DashboardInner() {
       if (response.ok) {
         const layoutData = await response.json();
         if (layoutData && Object.keys(layoutData).length > 0) {
+          // Restore pane selection / display states if present
+          if (layoutData._fbb_pane_state) {
+            const { tracer, monitor, hiddenTraceKeys: savedHidden } = layoutData._fbb_pane_state;
+            if (tracer) setTracerState(prev => ({ ...prev, ...tracer }));
+            if (monitor) setMonitorState(prev => ({ ...prev, ...monitor }));
+            if (savedHidden) setHiddenTraceKeys(savedHidden);
+          }
+
           // Remap stale UART device names in saved layout to actual manifest UARTs
           const validUartNames = (manifest?.uarts || []).map(u => u.name);
           if (layoutData.panels) {
@@ -332,6 +349,14 @@ function DashboardInner() {
   const handleSaveLayout = async () => {
     if (!apiRef.current) return;
     const layoutData = apiRef.current.toJSON();
+
+    // Preserve Registers & Tracer display / selection state
+    layoutData._fbb_pane_state = {
+      tracer: tracerState,
+      monitor: monitorState,
+      hiddenTraceKeys: hiddenTraceKeys
+    };
+
     const layoutUrl = screenParam && screenParam !== 'main' && screenParam !== 'default'
       ? `/api/layout?screen=${encodeURIComponent(screenParam)}`
       : '/api/layout';

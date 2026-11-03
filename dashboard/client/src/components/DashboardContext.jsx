@@ -20,6 +20,15 @@ export const DashboardProvider = ({ children }) => {
   const [display7SegFrame, setDisplay7SegFrame] = useState(null);
   const [peripheralFrames, setPeripheralFrames] = useState({});
   const [hiddenTraceKeys, setHiddenTraceKeys] = useState({});
+  const [tracerState, setTracerState] = useState({
+    selectedGroup: null,
+    mode: 'zero_center',
+    timebaseSpan: 'all'
+  });
+  const [monitorState, setMonitorState] = useState({
+    expandedDevices: {},
+    expandedGroups: {}
+  });
   const [memoryError, setMemoryError] = useState(null);
   const [timeTravelState, setTimeTravelState] = useState({
     isLive: true,
@@ -104,6 +113,10 @@ export const DashboardProvider = ({ children }) => {
             setHiddenTraceKeys(payload);
           } else if (type === 'SYNC_TIME_TRAVEL' && payload) {
             setTimeTravelState(payload);
+          } else if (type === 'SYNC_TRACER_STATE' && payload) {
+            setTracerState(payload);
+          } else if (type === 'SYNC_MONITOR_STATE' && payload) {
+            setMonitorState(payload);
           }
         };
       }
@@ -211,6 +224,53 @@ export const DashboardProvider = ({ children }) => {
     });
   };
 
+  const setTraceKeysVisibility = (updates) => {
+    setHiddenTraceKeys(prev => {
+      const updated = {
+        ...prev,
+        ...updates
+      };
+      try {
+        if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+          const ch = new BroadcastChannel('fbb_dashboard_sync');
+          ch.postMessage({ type: 'SYNC_HIDDEN_TRACE_KEYS', payload: updated });
+          ch.close();
+        }
+      } catch {
+        // ignore
+      }
+      return updated;
+    });
+  };
+
+  const updateTracerState = (partial) => {
+    setTracerState(prev => {
+      const next = { ...prev, ...partial };
+      try {
+        if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+          const ch = new BroadcastChannel('fbb_dashboard_sync');
+          ch.postMessage({ type: 'SYNC_TRACER_STATE', payload: next });
+          ch.close();
+        }
+      } catch {}
+      return next;
+    });
+  };
+
+  const updateMonitorState = (partial) => {
+    setMonitorState(prev => {
+      const next = { ...prev, ...partial };
+      try {
+        if (typeof window !== 'undefined' && 'BroadcastChannel' in window) {
+          const ch = new BroadcastChannel('fbb_dashboard_sync');
+          ch.postMessage({ type: 'SYNC_MONITOR_STATE', payload: next });
+          ch.close();
+        }
+      } catch {}
+      return next;
+    });
+  };
+
   const isGpioDev = (d) => {
     if (!d) return false;
     if (d.type === 'gpio') return true;
@@ -259,7 +319,15 @@ export const DashboardProvider = ({ children }) => {
         display7SegFrame,
         peripheralFrames,
         hiddenTraceKeys,
+        setHiddenTraceKeys,
         toggleTraceKey,
+        setTraceKeysVisibility,
+        tracerState,
+        setTracerState,
+        updateTracerState,
+        monitorState,
+        setMonitorState,
+        updateMonitorState,
         memoryError,
         setMemoryError,
       }}
