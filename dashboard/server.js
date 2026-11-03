@@ -18,7 +18,7 @@ const fs = require('fs');
 const path = require('path');
 const cors = require('cors');
 const chokidar = require('chokidar');
-const { spawn, execSync } = require('child_process');
+const { spawn, execSync, execFileSync } = require('child_process');
 
 
 const app = express();
@@ -1481,12 +1481,35 @@ app.post('/api/scenario/file', (req, res) => {
         fs.writeFileSync(resolved.fullPath, content, 'utf8');
         const stat = fs.statSync(resolved.fullPath);
         console.log(`[Backend] Scenario file saved: ${resolved.normalized} (${stat.size} bytes)`);
+
+        // Generic syntax pre-validation for Python scripts
+        let syntaxError = null;
+        if (resolved.normalized.endsWith('.py')) {
+            try {
+                execFileSync('python3', ['-m', 'py_compile', resolved.fullPath], {
+                    stdio: ['ignore', 'pipe', 'pipe'],
+                    timeout: 2500
+                });
+            } catch (pyErr) {
+                const stderr = pyErr.stderr ? pyErr.stderr.toString('utf8') : (pyErr.message || '');
+                const lineMatch = stderr.match(/line\s+(\d+)/i);
+                const lineNum = lineMatch ? parseInt(lineMatch[1], 10) : null;
+                const msgLines = stderr.trim().split('\n');
+                const lastLine = msgLines[msgLines.length - 1] || 'SyntaxError';
+                syntaxError = {
+                    line: lineNum,
+                    message: lastLine
+                };
+            }
+        }
+
         return res.json({
             success: true,
             name: resolved.normalized,
             scenario: path.basename(resolved.scnDir),
             bytesWritten: stat.size,
-            mtime: stat.mtimeMs
+            mtime: stat.mtimeMs,
+            syntaxError: syntaxError
         });
     } catch (e) {
         console.error(`[Backend] Failed to write scenario file: ${e.message}`);
