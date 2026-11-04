@@ -9,7 +9,9 @@ import {
   List, 
   Search, 
   X, 
-  ChevronsUpDown 
+  ChevronsUpDown,
+  GripVertical,
+  RotateCcw
 } from 'lucide-react';
 import { useDashboard } from './DashboardContext';
 
@@ -26,10 +28,13 @@ function RegisterMonitor() {
   } = useDashboard();
 
   const [searchQuery, setSearchQuery] = useState('');
+  const [draggedGroupKey, setDraggedGroupKey] = useState(null);
+  const [dragOverGroupKey, setDragOverGroupKey] = useState(null);
 
   const layoutMode = monitorState?.layoutMode || 'grid';
   const expandedDevices = monitorState?.expandedDevices || {};
   const expandedGroups = monitorState?.expandedGroups || {};
+  const groupOrders = monitorState?.groupOrders || {};
 
   // Group by deviceName
   const groupedRegisters = useMemo(() => {
@@ -119,6 +124,80 @@ function RegisterMonitor() {
       expandedGroups: newExpanded
     });
   };
+
+  const getEffectiveGroupOrder = (devName, availableSubGroupNames) => {
+    const customOrder = groupOrders[devName];
+    if (!Array.isArray(customOrder) || customOrder.length === 0) {
+      return availableSubGroupNames;
+    }
+    const present = customOrder.filter(grp => availableSubGroupNames.includes(grp));
+    const missing = availableSubGroupNames.filter(grp => !present.includes(grp));
+    return [...present, ...missing];
+  };
+
+  const handleDragStart = (e, grpName) => {
+    if (e.target.closest('table') || e.target.closest('button') || e.target.tagName === 'INPUT') {
+      e.preventDefault();
+      return;
+    }
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', grpName);
+    setDraggedGroupKey(grpName);
+  };
+
+  const handleDragOver = (e, grpName) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = 'move';
+    if (dragOverGroupKey !== grpName) {
+      setDragOverGroupKey(grpName);
+    }
+  };
+
+  const handleDrop = (e, devName, targetGrpName, subGroupNames) => {
+    e.preventDefault();
+    if (!draggedGroupKey || draggedGroupKey === targetGrpName) {
+      setDraggedGroupKey(null);
+      setDragOverGroupKey(null);
+      return;
+    }
+
+    const currentOrder = getEffectiveGroupOrder(devName, subGroupNames);
+    const fromIdx = currentOrder.indexOf(draggedGroupKey);
+    const toIdx = currentOrder.indexOf(targetGrpName);
+
+    if (fromIdx !== -1 && toIdx !== -1) {
+      const nextOrder = [...currentOrder];
+      nextOrder.splice(fromIdx, 1);
+      nextOrder.splice(toIdx, 0, draggedGroupKey);
+
+      if (updateMonitorState) {
+        updateMonitorState({
+          groupOrders: {
+            ...groupOrders,
+            [devName]: nextOrder
+          }
+        });
+      }
+    }
+
+    setDraggedGroupKey(null);
+    setDragOverGroupKey(null);
+  };
+
+  const handleDragEnd = () => {
+    setDraggedGroupKey(null);
+    setDragOverGroupKey(null);
+  };
+
+  const resetAllGroupOrders = () => {
+    if (updateMonitorState) {
+      updateMonitorState({
+        groupOrders: {}
+      });
+    }
+  };
+
+  const hasCustomGroupOrders = Object.keys(groupOrders).some(k => Array.isArray(groupOrders[k]) && groupOrders[k].length > 0);
 
   const filterRegister = (r) => {
     if (!filterQuery) return true;
@@ -248,7 +327,7 @@ function RegisterMonitor() {
         )}
       </div>
 
-      {/* Toolbar Strip: Search, Layout Toggle, Expand/Collapse */}
+      {/* Toolbar Strip: Search, Layout Toggle, Expand/Collapse, Reset Order */}
       <div style={{
         display: 'flex',
         alignItems: 'center',
@@ -257,7 +336,8 @@ function RegisterMonitor() {
         background: '#161b22',
         borderBottom: '1px solid #30363d',
         gap: '6px',
-        flexShrink: 0
+        flexShrink: 0,
+        flexWrap: 'wrap'
       }}>
         {/* Search input */}
         <div style={{
@@ -269,6 +349,7 @@ function RegisterMonitor() {
           borderRadius: '4px',
           padding: '2px 8px',
           flex: 1,
+          minWidth: '120px',
           maxWidth: '260px'
         }}>
           <Search size={12} style={{ color: '#8b949e', flexShrink: 0 }} />
@@ -299,11 +380,35 @@ function RegisterMonitor() {
 
         {/* Action Controls */}
         <div style={{ display: 'flex', alignItems: 'center', gap: '5px', flexShrink: 0 }}>
+          {/* Reset Order Button (Shown if custom order exists) */}
+          {hasCustomGroupOrders && (
+            <button
+              type="button"
+              onClick={resetAllGroupOrders}
+              title="Reset groups to default DTS order"
+              style={{
+                display: 'flex',
+                alignItems: 'center',
+                gap: '4px',
+                padding: '2px 6px',
+                background: '#21262d',
+                border: '1px solid #30363d',
+                borderRadius: '4px',
+                color: '#f0883e',
+                fontSize: '0.68rem',
+                cursor: 'pointer'
+              }}
+            >
+              <RotateCcw size={11} />
+              <span>Reset Order</span>
+            </button>
+          )}
+
           {/* Layout Mode Toggle */}
           <button
             type="button"
             onClick={toggleLayoutMode}
-            title={layoutMode === 'grid' ? "Switch to Single-Column List" : "Switch to Multi-Column Grid"}
+            title={layoutMode === 'grid' ? "Switch to Single-Column List" : "Switch to Multi-Column Masonry"}
             style={{
               display: 'flex',
               alignItems: 'center',
@@ -367,8 +472,10 @@ function RegisterMonitor() {
             const subGroupNames = Object.keys(subGroups);
             const hasMultipleGroups = subGroupNames.length > 1;
 
+            const orderedSubGroupNames = getEffectiveGroupOrder(devName, subGroupNames);
+
             // When searching, find which groups have matching registers
-            const matchingSubGroups = subGroupNames.filter((grpName) => {
+            const matchingSubGroups = orderedSubGroupNames.filter((grpName) => {
               const grpRegs = subGroups[grpName];
               return grpRegs.some(filterRegister);
             });
@@ -380,6 +487,8 @@ function RegisterMonitor() {
                 </div>
               );
             }
+
+            const activeGroups = filterQuery ? matchingSubGroups : orderedSubGroupNames;
 
             return (
               <div key={devName} style={{ 
@@ -443,20 +552,22 @@ function RegisterMonitor() {
                     {!hasMultipleGroups ? (
                       renderRegisterTable(devRegs.filter(filterRegister))
                     ) : (
-                      <div style={{
-                        display: 'grid',
-                        gridTemplateColumns: layoutMode === 'list' 
-                          ? '1fr' 
-                          : 'repeat(auto-fill, minmax(min(350px, 100%), 1fr))',
-                        gap: '8px',
-                        alignItems: 'start'
+                      <div style={layoutMode === 'list' ? {
+                        display: 'flex',
+                        flexDirection: 'column',
+                        gap: '8px'
+                      } : {
+                        columnWidth: '350px',
+                        columnGap: '8px'
                       }}>
-                        {(filterQuery ? matchingSubGroups : subGroupNames).map((grpName) => {
+                        {activeGroups.map((grpName) => {
                           const groupKey = `${devName}_${grpName}`;
                           const grpRegs = subGroups[grpName];
                           const filteredGrpRegs = filterQuery ? grpRegs.filter(filterRegister) : grpRegs;
                           const grpGhostRegs = grpRegs.filter(r => r.isUndeclared);
                           const grpExpanded = isGroupExpanded(groupKey);
+                          const isDragging = draggedGroupKey === grpName;
+                          const isDragOver = dragOverGroupKey === grpName;
 
                           const allTraced = grpRegs.length > 0 && grpRegs.every(r => !hiddenTraceKeys[`${r.deviceName}_${r.name}`]);
 
@@ -472,15 +583,32 @@ function RegisterMonitor() {
                           };
 
                           return (
-                            <div key={groupKey} style={{
-                              border: grpGhostRegs.length > 0 ? '1px solid #da3633' : '1px solid #21262d',
-                              borderRadius: '5px',
-                              overflow: 'hidden',
-                              background: '#161b22',
-                              display: 'flex',
-                              flexDirection: 'column'
-                            }}>
-                              {/* Subgroup Header */}
+                            <div 
+                              key={groupKey}
+                              draggable={!filterQuery}
+                              onDragStart={(e) => handleDragStart(e, grpName)}
+                              onDragOver={(e) => handleDragOver(e, grpName)}
+                              onDrop={(e) => handleDrop(e, devName, grpName, subGroupNames)}
+                              onDragEnd={handleDragEnd}
+                              style={{
+                                breakInside: 'avoid',
+                                display: layoutMode === 'list' ? 'flex' : 'inline-block',
+                                flexDirection: 'column',
+                                width: '100%',
+                                marginBottom: '8px',
+                                border: grpGhostRegs.length > 0 
+                                  ? '1px solid #da3633' 
+                                  : (isDragOver ? '2px solid #58a6ff' : '1px solid #21262d'),
+                                borderRadius: '5px',
+                                overflow: 'hidden',
+                                background: '#161b22',
+                                opacity: isDragging ? 0.35 : 1,
+                                boxShadow: isDragOver ? '0 0 10px rgba(88, 166, 255, 0.4)' : 'none',
+                                transition: 'border 0.15s, opacity 0.15s, box-shadow 0.15s',
+                                verticalAlign: 'top'
+                              }}
+                            >
+                              {/* Subgroup Header (Draggable handle included) */}
                               <div
                                 onClick={() => toggleGroupExpand(groupKey)}
                                 style={{
@@ -494,7 +622,20 @@ function RegisterMonitor() {
                                   borderBottom: grpExpanded ? '1px solid #21262d' : 'none'
                                 }}
                               >
-                                <div style={{ display: 'flex', alignItems: 'center', gap: '6px', overflow: 'hidden', minWidth: 0 }}>
+                                <div style={{ display: 'flex', alignItems: 'center', gap: '5px', overflow: 'hidden', minWidth: 0 }}>
+                                  {/* Drag Handle */}
+                                  <span 
+                                    title="Drag to reorder group"
+                                    style={{ 
+                                      display: 'flex', 
+                                      alignItems: 'center', 
+                                      cursor: 'grab', 
+                                      color: '#6e7681',
+                                      flexShrink: 0
+                                    }}
+                                  >
+                                    <GripVertical size={13} />
+                                  </span>
                                   {grpExpanded ? <ChevronDown size={12} style={{ color: '#8b949e', flexShrink: 0 }} /> : <ChevronRight size={12} style={{ color: '#8b949e', flexShrink: 0 }} />}
                                   <Layers size={12} style={{ color: '#58a6ff', flexShrink: 0 }} />
                                   <span style={{ 
