@@ -1,2 +1,9 @@
 /dts-v1/;
 /include/ "config.dts"
+
+// 独自FPGAレジスタを追加する場合は、以下のようにノードラベルを参照して定義します：
+// &vfpga_0 {
+//     registers = "REG_CTRL @ 0x00 [rw]",
+//                 "REG_STATUS @ 0x04 [ro]";
+// };
+

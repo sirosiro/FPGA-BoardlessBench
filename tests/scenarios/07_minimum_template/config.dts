@@ -1,6 +1,6 @@
 /dts-v1/;
 / {
-    minimum_template@40000000 {
+    vfpga_0: minimum_template@40000000 {
         compatible = "generic-uio";
         reg = <0x40000000 0x1000>;
         label = "minimum_template";
