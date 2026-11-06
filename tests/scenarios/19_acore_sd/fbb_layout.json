@@ -36,13 +36,17 @@
         "sdCard": {
             "id": "sdCard",
             "contentComponent": "sdCard",
-            "title": "Virtual SD Card"
+            "title": "Virtual SD Card",
+            "params": {
+                "_componentName": "sdCard"
+            }
         },
         "uartTerminal_serial": {
             "id": "uartTerminal_serial",
             "contentComponent": "uartTerminal",
             "params": {
-                "deviceName": "serial"
+                "deviceName": "serial",
+                "_componentName": "uartTerminal"
             },
             "title": "UART: serial"
         }

@@ -71,14 +71,18 @@
             "id": "uartTerminal_serial",
             "contentComponent": "uartTerminal",
             "params": {
-                "deviceName": "serial"
+                "deviceName": "serial",
+                "_componentName": "uartTerminal"
             },
             "title": "UART Console"
         },
         "dtsVisualizer": {
             "id": "dtsVisualizer",
             "contentComponent": "dtsVisualizer",
-            "title": "DTS Visualizer & AI"
+            "title": "DTS Visualizer & AI",
+            "params": {
+                "_componentName": "dtsVisualizer"
+            }
         },
         "generic_peripheral_matrix_0": {
             "id": "generic_peripheral_matrix_0",
@@ -115,14 +119,18 @@
                             }
                         ]
                     }
-                }
+                },
+                "_componentName": "genericPeripheralPane"
             },
             "title": "HUB75 128x64 Dual-Panel Daisy-Chain Matrix"
         },
         "gpioPanel": {
             "id": "gpioPanel",
             "contentComponent": "gpioPanel",
-            "title": "GPIO / Pin Array"
+            "title": "GPIO / Pin Array",
+            "params": {
+                "_componentName": "gpioPanel"
+            }
         }
     },
     "activeGroup": "1"

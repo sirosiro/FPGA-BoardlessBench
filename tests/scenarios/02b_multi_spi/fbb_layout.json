@@ -21,9 +21,9 @@
                             "type": "leaf",
                             "data": {
                                 "views": [
-                                    "uartTerminal_vfpga_uart_1"
+                                    "uartTerminal_serial"
                                 ],
-                                "activeView": "uartTerminal_vfpga_uart_1",
+                                "activeView": "uartTerminal_serial",
                                 "id": "1"
                             },
                             "size": 400
@@ -61,29 +61,37 @@
         "orientation": "HORIZONTAL"
     },
     "panels": {
-        "uartTerminal_vfpga_uart_1": {
-            "id": "uartTerminal_vfpga_uart_1",
+        "uartTerminal_serial": {
+            "id": "uartTerminal_serial",
             "contentComponent": "uartTerminal",
             "params": {
-                "deviceName": "vfpga_uart_1"
+                "deviceName": "serial",
+                "_componentName": "uartTerminal"
             },
-            "title": "UART: vfpga_uart_1"
+            "title": "UART: serial"
         },
         "registerMonitor": {
             "id": "registerMonitor",
             "contentComponent": "registerMonitor",
-            "title": "Registers"
+            "title": "Registers",
+            "params": {
+                "_componentName": "registerMonitor"
+            }
         },
         "registerTracer": {
             "id": "registerTracer",
             "contentComponent": "registerTracer",
-            "title": "Tracer"
+            "title": "Tracer",
+            "params": {
+                "_componentName": "registerTracer"
+            }
         },
         "spiAdcPanel": {
             "id": "spiAdcPanel",
             "contentComponent": "genericPeripheralPane",
             "params": {
-                "pluginId": "microchip,mcp3208"
+                "pluginId": "microchip,mcp3208",
+                "_componentName": "genericPeripheralPane"
             },
             "title": "Microchip MCP3208 8-Ch SPI ADC (12-bit)"
         }

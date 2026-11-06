@@ -59,13 +59,17 @@
         "dtsVisualizer": {
             "id": "dtsVisualizer",
             "contentComponent": "dtsVisualizer",
-            "title": "DTS Visualizer & AI"
+            "title": "DTS Visualizer & AI",
+            "params": {
+                "_componentName": "dtsVisualizer"
+            }
         },
         "seg7Display": {
             "id": "seg7Display",
             "contentComponent": "genericPeripheralPane",
             "params": {
-                "pluginId": "adafruit,ht16k33-red"
+                "pluginId": "adafruit,ht16k33-red",
+                "_componentName": "genericPeripheralPane"
             },
             "title": "Adafruit 4-Digit 7-Segment LED (Red)"
         },
@@ -73,7 +77,8 @@
             "id": "oledDisplay",
             "contentComponent": "genericPeripheralPane",
             "params": {
-                "pluginId": "solomon,ssd1306"
+                "pluginId": "solomon,ssd1306",
+                "_componentName": "genericPeripheralPane"
             },
             "title": "SSD1306 OLED Display (128x64)"
         }

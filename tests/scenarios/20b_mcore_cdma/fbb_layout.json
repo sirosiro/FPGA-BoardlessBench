@@ -75,30 +75,43 @@
         "registerMonitor": {
             "id": "registerMonitor",
             "contentComponent": "registerMonitor",
-            "title": "Registers"
+            "title": "Registers",
+            "params": {
+                "_componentName": "registerMonitor"
+            }
         },
         "gpioPanel": {
             "id": "gpioPanel",
             "contentComponent": "gpioPanel",
-            "title": "GPIO / Pin Array"
+            "title": "GPIO / Pin Array",
+            "params": {
+                "_componentName": "gpioPanel"
+            }
         },
         "registerTracer": {
             "id": "registerTracer",
             "contentComponent": "registerTracer",
-            "title": "Tracer"
+            "title": "Tracer",
+            "params": {
+                "_componentName": "registerTracer"
+            }
         },
         "uartTerminal_serial": {
             "id": "uartTerminal_serial",
             "contentComponent": "uartTerminal",
             "params": {
-                "deviceName": "serial"
+                "deviceName": "serial",
+                "_componentName": "uartTerminal"
             },
             "title": "UART: serial"
         },
         "dtsVisualizer": {
             "id": "dtsVisualizer",
             "contentComponent": "dtsVisualizer",
-            "title": "DTS Visualizer & AI"
+            "title": "DTS Visualizer & AI",
+            "params": {
+                "_componentName": "dtsVisualizer"
+            }
         }
     },
     "activeGroup": "3"

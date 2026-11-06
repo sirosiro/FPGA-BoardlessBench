@@ -71,20 +71,25 @@
             "id": "uartTerminal_serial_1",
             "contentComponent": "uartTerminal",
             "params": {
-                "deviceName": "serial_1"
+                "deviceName": "serial_1",
+                "_componentName": "uartTerminal"
             },
             "title": "UART: serial_1"
         },
         "dtsVisualizer": {
             "id": "dtsVisualizer",
             "contentComponent": "dtsVisualizer",
-            "title": "DTS Visualizer & AI"
+            "title": "DTS Visualizer & AI",
+            "params": {
+                "_componentName": "dtsVisualizer"
+            }
         },
         "uartTerminal_serial_2": {
             "id": "uartTerminal_serial_2",
             "contentComponent": "uartTerminal",
             "params": {
-                "deviceName": "serial_2"
+                "deviceName": "serial_2",
+                "_componentName": "uartTerminal"
             },
             "title": "UART: serial_2"
         },
@@ -92,7 +97,8 @@
             "id": "uartTerminal_serial",
             "contentComponent": "uartTerminal",
             "params": {
-                "deviceName": "serial"
+                "deviceName": "serial",
+                "_componentName": "uartTerminal"
             },
             "title": "UART: serial"
         }

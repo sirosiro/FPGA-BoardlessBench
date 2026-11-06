@@ -226,6 +226,61 @@ class TestDTSParser(unittest.TestCase):
             self.assertIn("not found in Device Tree", str(ctx.exception))
             self.assertIn("&nonexistent_node", str(ctx.exception))
 
+    def test_quote_inside_block_comment(self):
+        """
+        @intent:responsibility ブロックコメント内の引用符（例: 0.56"）が後続コードの括弧を誤って巻き込まないことを検証。
+        """
+        dts = """/dts-v1/;
+/* 0.56" 7-segment display */
+/ {
+    vfpga_reg: vfpga_reg@40000000 {
+        compatible = "generic-uio";
+        reg = <0x40000000 0x1000>;
+    };
+};
+"""
+        with tempfile.NamedTemporaryFile("w", suffix=".dts", delete=False) as f:
+            f.write(dts)
+            f_path = f.name
+        try:
+            model = DTSParser.parse(f_path)
+            self.assertEqual(len(model.devices), 1)
+            self.assertEqual(model.devices[0].name, "vfpga_reg")
+        finally:
+            os.remove(f_path)
+
+    def test_commented_out_node_and_registers(self):
+        """
+        @intent:responsibility // や /* */ でコメントアウトされた &node や registers が実レジスタとして誤抽出されないことを検証。
+        """
+        gtr = """/dts-v1/;
+/ {
+    vfpga_reg: vfpga_reg@40000000 {
+        compatible = "generic-uio";
+        reg = <0x40000000 0x1000>;
+    };
+};
+
+// &vfpga_reg {
+//     registers = "UNUSED @ 0x00";
+// };
+
+/*
+&vfpga_reg {
+    registers = "BLOCK_UNUSED @ 0x04";
+};
+*/
+"""
+        with tempfile.NamedTemporaryFile("w", suffix=".gtr", delete=False) as f:
+            f.write(gtr)
+            f_path = f.name
+        try:
+            model = DTSParser.parse(f_path)
+            self.assertEqual(len(model.devices), 1)
+            self.assertEqual(len(model.devices[0].registers), 0)
+        finally:
+            os.remove(f_path)
+
 
 if __name__ == "__main__":
     unittest.main()

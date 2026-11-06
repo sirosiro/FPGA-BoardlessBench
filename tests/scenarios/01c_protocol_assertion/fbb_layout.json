@@ -76,25 +76,35 @@
         "dtsVisualizer": {
             "id": "dtsVisualizer",
             "contentComponent": "dtsVisualizer",
-            "title": "DTS Visualizer & AI"
+            "title": "DTS Visualizer & AI",
+            "params": {
+                "_componentName": "dtsVisualizer"
+            }
         },
         "gpioPanel": {
             "id": "gpioPanel",
             "contentComponent": "gpioPanel",
-            "title": "GPIO / Pin Array"
+            "title": "GPIO / Pin Array",
+            "params": {
+                "_componentName": "gpioPanel"
+            }
         },
         "uartTerminal_default": {
             "id": "uartTerminal_default",
             "contentComponent": "uartTerminal",
             "params": {
-                "deviceName": "default"
+                "deviceName": "default",
+                "_componentName": "uartTerminal"
             },
             "title": "UART Console"
         },
         "transactionLogger": {
             "id": "transactionLogger",
             "contentComponent": "transactionLogger",
-            "title": "Transaction Logger"
+            "title": "Transaction Logger",
+            "params": {
+                "_componentName": "transactionLogger"
+            }
         }
     },
     "activeGroup": "3"

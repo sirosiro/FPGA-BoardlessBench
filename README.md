@@ -835,28 +835,28 @@ F-BBは、ハードウェア記述言語（RTL）から、低レイヤーのシ�
 
 ビルド成果物（`build`, `dist`）、外部パッケージ（`node_modules`）、および一時ファイルを除外したリポジトリ全体の静的ソースコードを `cloc` (Count Lines of Code v1.90) にて正確に計測した結果です。
 
-F-BB 独自のプロジェクトコードのみ（`--cleanall` 時）で**純プログラムステップ数（Pure Code） 50,763 行 (約 50.8k LOC)**、総行数 **64,071 行**（全 413 ファイル）で構成されています。また、シナリオ 10〜15 で動的ロードされる外部 RTOS カーネル（FreeRTOS, ThreadX, CMSIS_5）のソース群を含むフル状態では **約 104,500 行 (104.5k+ LOC)** / **全 186,000 行**（全 816 ファイル）の規模となります。
+F-BB 独自のプロジェクトコードのみ（`--cleanall` 時）で**純プログラムステップ数（Pure Code） 50,960 行 (約 51.0k LOC)**、総行数 **64,317 行**（全 413 ファイル）で構成されています。また、シナリオ 10〜15 で動的ロードされる外部 RTOS カーネル（FreeRTOS, ThreadX, CMSIS_5）のソース群を含むフル状態では **約 104,700 行 (104.7k+ LOC)** / **全 186,200 行**（全 816 ファイル）の規模となります。
 
 > **Project Scale Summary (`cloc` 計測値):**
-> - **Pure F-BB Code (F-BB独自コードのみ):** **50,763 Lines of Code** *(総行数 64,071行 / 413ファイル / コメント 4,146行 / 空行 9,162行)*
-> - **Full Environment (外部RTOSカーネル同梱時):** **約 104,500 Lines of Code** *(総行数 約 186,000行 / 816ファイル)*
-> - **主要言語構成:** *(Markdown/Doc: ~13.9k LOC, JSON: ~7.3k LOC, React/JSX/JS/CSS: ~9.6k LOC, C/C++: ~12.7k LOC (全シナリオFW/Shim/PPA), Python: ~3.7k LOC)*
+> - **Pure F-BB Code (F-BB独自コードのみ):** **50,960 Lines of Code** *(総行数 64,317行 / 413ファイル / コメント 4,186行 / 空行 9,171行)*
+> - **Full Environment (外部RTOSカーネル同梱時):** **約 104,700 Lines of Code** *(総行数 約 186,200行 / 816ファイル)*
+> - **主要言語構成:** *(Markdown/Doc: ~13.9k LOC, JSON: ~7.5k LOC, React/JSX/JS/CSS: ~9.6k LOC, C/C++: ~12.7k LOC (全シナリオFW/Shim/PPA), Python: ~3.8k LOC)*
 
 | 言語分類 (cloc) | 拡張子 | ファイル数 | 空行 (Blank) | コメント (Comment) | 純コード (Pure LOC) | 総行数 (Total Lines) | 主な構成要素と役割 |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **Markdown** | `.md` | 133 | 5,060 | 0 | **13,854行** | **18,914行** | システム仕様書、ADR、初学者学習ロードマップ、全36シナリオREADME/ADVANCED仕様書、PPA 5.1 開発ガイド |
+| **Markdown** | `.md` | 133 | 5,061 | 0 | **13,859行** | **18,920行** | システム仕様書、ADR、初学者学習ロードマップ、全36シナリオREADME/ADVANCED仕様書、PPA 5.1 開発ガイド |
 | **JSX** | `.jsx` | 22 | 628 | 228 | **7,518行** | **8,374行** | Vite + React 19 UI（Dockview, DPPA `paneRegistry.jsx`, `PopoutWindow.jsx`, `DockHeaderActions.jsx`, Recharts, AMR 4特化型コックピットペイン, 各種診断ペイン） |
-| **JSON / Manifest** | `.json` | 35 | 0 | 0 | **7,335行** | **7,335行** | PPAペリフェラルマニフェスト (`fbb-plugin.json`)、ボード構造メタデータ、AMR ロボット定義 (`amr_manifest.json`) |
+| **JSON / Manifest** | `.json` | 35 | 0 | 0 | **7,510行** | **7,510行** | PPAペリフェラルマニフェスト (`fbb-plugin.json`)、ボード構造メタデータ、AMR ロボット定義 (`amr_manifest.json`)、全シナリオレイアウト契約 |
 | **C++** | `.cpp` | 25 | 978 | 986 | **6,146行** | **8,110行** | Verilator シミュレーションコア、PPA ペリフェラルプラグイン実装、Scenario 22 & P02 AMR ros2_control ハードウェア層・運動学エンジン |
 | **C** | `.c` | 35 | 835 | 700 | **5,391行** | **6,926行** | システムコール横取り Shim、エミュレータデーモン、カオス障害注入エンジン、全シナリオ FW |
-| **Python** | `.py` / CLI | 15 | 643 | 1,227 | **3,749行** | **5,619行** | 統合 CLI (`bin/fbb`), GTR/DTSパース・診断エンジン (`DTSParserError`)、コード自動生成、GDB 拡張自動生成 (`generator_gdb.py`)、PPA プラグイン自動ビルド・起動 |
+| **Python** | `.py` / CLI | 15 | 652 | 1,269 | **3,806行** | **5,727行** | 統合 CLI (`bin/fbb`), GTR/DTSパース・診断エンジン (`DTSParserError`)、コード自動生成、GDB 拡張自動生成 (`generator_gdb.py`)、PPA プラグイン自動ビルド・起動 |
 | **JavaScript** | `.js` | 3 | 190 | 91 | **1,719行** | **2,000行** | ダッシュボード WebSockets サーバー（`dashboard/server.js`）、マルチスクリーンレイアウト永続化 API、AMR コマンド/テレメトリ仲介 |
 | **C/C++ Header** | `.h` / `.hpp` | 38 | 206 | 320 | **1,151行** | **1,677行** | 統一 CLI パーサー (`cli_helper.hpp`)、デバイス共通ヘッダー、レジスタ定義、Shimマクロ、hardware_interface ゼロインストール互換層 |
 | **Bourne Shell** | `.sh` | 41 | 213 | 202 | **1,098行** | **1,513行** | 自動検証ランナー（`run_tests.sh`）、シナリオ単体ランナー（`scenario_runner.sh`）、ラボ起動スクリプト（`start_lab.sh`）、プラグイン隔離検証 |
-| **Verilog** | `.v` | 20 | 115 | 205 | **1,019行** | **1,339行** | シミュレーション対象の FPGA ハードウェア記述 (RTL: PWM/QEI/E-STOP回路含む) |
+| **Verilog** | `.v` | 20 | 114 | 203 | **979行** | **1,296行** | シミュレーション対象の FPGA ハードウェア記述 (RTL: PWM/QEI/E-STOP回路含む) |
 | **CMake** | `CMakeLists.txt` / `.cmake` | 24 | 130 | 69 | **845行** | **1,044行** | マルチターゲットビルド設定（シナリオ・PPA・カーネル・ハードウェア抽象化層） |
 | **Other / Rust** | `.rs` / `.css` / 他 | 22 | 164 | 118 | **938行** | **1,220行** | UIスタイルシート (CSS), Mコア Rust FW, SVGアイコン, Dockerfile, 設定メタデータ |
-| **合計 (SUM Total)** | **-** | **413** | **9,162** | **4,146** | **50,763行** | **64,071行** | **F-BB プラットフォーム全体の静的ソースコード総数** |
+| **合計 (SUM Total)** | **-** | **413** | **9,171** | **4,186** | **50,960行** | **64,317行** | **F-BB プラットフォーム全体の静的ソースコード総数** |
 
 
 > **コード生成エンジンによる動的コード**

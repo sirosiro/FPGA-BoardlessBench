@@ -435,7 +435,13 @@
         1. ゼロヘビーインストールと実機運用の完全両立: 数秒でビルド・実行可能な軽量性を維持しつつ、ROS 2 エコシステム（`/cmd_vel`, `/odom`）と 100% 相互運用可能とするため。
         2. DPPA/PPA 責務分離の堅持: ダッシュボードコアに特定ロボットの幾何寸法やパラメータをハードコードせず、`amr_manifest.json` を Single Source of Truth として動的取得することで、他車種やカスタムロボットへの高い拡張性を担保するため。
 
-- **2026-11-06: ADR #014 Linux標準Device Tree (DTS) の完全維持とGeneral Tree Registers (GTR) 仮想ハードウェア契約分離アーキテクチャの導入 (Decoupling of Upstream-Compliant Linux DTS and General Tree Registers (GTR) Virtual Contract Architecture)**
+- **2026-10-17: ADR #014 シナリオ別 UI レイアウト契約 (fbb_layout.json) と DTS 整合性の標準化 (Standardization of Scenario-Specific UI Layout Contracts and DTS SSoT Invariants)**
+  - **Decision:**
+        1. 各テストシナリオに配置される `fbb_layout.json`（およびマルチスクリーン用 `fbb_layout_${screen}.json`）について、DTS ノード名との完全一致（SSoT 拘束）、必須メタデータ `params._componentName` の付与、およびダッシュボード本体側での対症療法的名前リマップの禁止を定めた。
+  - **Rationale:**
+        1. シナリオごとに異なる非標準実装が放置される構造的要因を断ち、DTS と UI レイアウトの厳格な結合契約を明文化するため。
+
+- **2026-11-06: ADR #015 Linux標準Device Tree (DTS) の完全維持とGeneral Tree Registers (GTR) 仮想ハードウェア契約分離アーキテクチャの導入 (Decoupling of Upstream-Compliant Linux DTS and General Tree Registers (GTR) Virtual Contract Architecture)**
   - **Decision:**
         1. ハードウェア仕様定義を upstream Linux カーネル準拠の `config.dts` と、仮想ハードウェア・シミュレータ契約の `config.gtr` に完全分離。
         2. `config.dts` からすべての `registers = ...;` 独自プロパティを排除し、実機ボード（Yocto/PetaLinux等）と完全同一のファイル共有を実現。

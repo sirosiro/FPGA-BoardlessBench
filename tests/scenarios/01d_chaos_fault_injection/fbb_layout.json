@@ -70,25 +70,35 @@
         "registerMonitor": {
             "id": "registerMonitor",
             "contentComponent": "registerMonitor",
-            "title": "Registers"
+            "title": "Registers",
+            "params": {
+                "_componentName": "registerMonitor"
+            }
         },
         "dtsVisualizer": {
             "id": "dtsVisualizer",
             "contentComponent": "dtsVisualizer",
-            "title": "DTS Visualizer & AI"
+            "title": "DTS Visualizer & AI",
+            "params": {
+                "_componentName": "dtsVisualizer"
+            }
         },
         "uartTerminal_default": {
             "id": "uartTerminal_default",
             "contentComponent": "uartTerminal",
             "params": {
-                "deviceName": "default"
+                "deviceName": "default",
+                "_componentName": "uartTerminal"
             },
             "title": "UART Console"
         },
         "chaosEngine": {
             "id": "chaosEngine",
             "contentComponent": "chaosEngine",
-            "title": "Chaos & Fault Injection"
+            "title": "Chaos & Fault Injection",
+            "params": {
+                "_componentName": "chaosEngine"
+            }
         }
     },
     "activeGroup": "1"

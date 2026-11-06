@@ -98,27 +98,42 @@
         "ros2PoseMap2D": {
             "id": "ros2PoseMap2D",
             "contentComponent": "ros2PoseMap2D",
-            "title": "AMR 2D Odometry Map"
+            "title": "AMR 2D Odometry Map",
+            "params": {
+                "_componentName": "ros2PoseMap2D"
+            }
         },
         "ros2TeleopConsole": {
             "id": "ros2TeleopConsole",
             "contentComponent": "ros2TeleopConsole",
-            "title": "AMR Teleop & Mission Console"
+            "title": "AMR Teleop & Mission Console",
+            "params": {
+                "_componentName": "ros2TeleopConsole"
+            }
         },
         "ros2JointWaveform": {
             "id": "ros2JointWaveform",
             "contentComponent": "ros2JointWaveform",
-            "title": "Actuator Tracking Waveform"
+            "title": "Actuator Tracking Waveform",
+            "params": {
+                "_componentName": "ros2JointWaveform"
+            }
         },
         "ros2ControlStatus": {
             "id": "ros2ControlStatus",
             "contentComponent": "ros2ControlStatus",
-            "title": "ros2_control & Jitter"
+            "title": "ros2_control & Jitter",
+            "params": {
+                "_componentName": "ros2ControlStatus"
+            }
         },
         "registerMonitor": {
             "id": "registerMonitor",
             "contentComponent": "registerMonitor",
-            "title": "Registers"
+            "title": "Registers",
+            "params": {
+                "_componentName": "registerMonitor"
+            }
         },
         "dtsVisualizer": {
             "id": "dtsVisualizer",

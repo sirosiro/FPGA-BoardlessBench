@@ -1614,7 +1614,7 @@ def command_plugin_validate(args):
 
         if peripherals and isinstance(peripherals, list):
             print(f"  ✓ Peripherals: {len(peripherals)} defined")
-            valid_buses = {"i2c", "spi", "uart", "can", "gpio", "axil", "uio", "generic", "shm"}
+            valid_buses = {"i2c", "spi", "uart", "can", "gpio", "axil", "uio", "generic", "shm", "raw_pins"}
             p_dir = target_path if os.path.isdir(target_path) else os.path.dirname(target_path)
             for idx, p in enumerate(peripherals):
                 p_bus = p.get("bus", "generic")

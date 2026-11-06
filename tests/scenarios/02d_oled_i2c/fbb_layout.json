@@ -42,13 +42,17 @@
         "dtsVisualizer": {
             "id": "dtsVisualizer",
             "contentComponent": "dtsVisualizer",
-            "title": "DTS Visualizer & AI"
+            "title": "DTS Visualizer & AI",
+            "params": {
+                "_componentName": "dtsVisualizer"
+            }
         },
         "oledDisplay": {
             "id": "oledDisplay",
             "contentComponent": "genericPeripheralPane",
             "params": {
-                "pluginId": "solomon,ssd1306"
+                "pluginId": "solomon,ssd1306",
+                "_componentName": "genericPeripheralPane"
             },
             "title": "SSD1306 OLED Display (128x64)"
         }

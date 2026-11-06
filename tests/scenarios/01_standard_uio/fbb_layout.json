@@ -78,12 +78,18 @@
         "registerTracer": {
             "id": "registerTracer",
             "contentComponent": "registerTracer",
-            "title": "Tracer"
+            "title": "Tracer",
+            "params": {
+                "_componentName": "registerTracer"
+            }
         },
         "registerMonitor": {
             "id": "registerMonitor",
             "contentComponent": "registerMonitor",
-            "title": "Registers"
+            "title": "Registers",
+            "params": {
+                "_componentName": "registerMonitor"
+            }
         },
         "dtsVisualizer": {
             "id": "dtsVisualizer",

@@ -92,16 +92,66 @@ class DTSParser:
             コメント（/* ... */, // ...）および文字列リテラル（"..."）を行数・文字位置を崩さずに空白でマスクする。
         @intent:rationale
             コメントや文字列の中に含まれる '{', '}' などの記号が中括弧バランス検査を誤認させるのを完全に防ぐ。
+            先頭から順にコメント・文字列を正しくトークナイズすることで、
+            コメント内のクォート（例: 0.56"）が文字列として誤判定されるのを防ぐ。
         @intent:pre-condition
             text は有効な UTF-8 文字列であること。
         """
-        def repl_str(m):
-            return '"' + ' ' * (len(m.group(0)) - 2) + '"'
-        text_no_str = re.sub(r'"([^"\\]|\\.)*"', repl_str, text)
-        def repl_block(m):
-            return '\n' * m.group(0).count('\n')
-        text_no_comm = re.sub(r'/\*.*?\*/', repl_block, text_no_str, flags=re.DOTALL)
-        return re.sub(r'//.*$', '', text_no_comm, flags=re.MULTILINE)
+        pattern = r'/\*.*?\*/|//[^\n]*|"(?:[^"\\]|\\.)*"'
+        def repl(m):
+            s = m.group(0)
+            if s.startswith('/*'):
+                return '\n' * s.count('\n')
+            elif s.startswith('//'):
+                return ' ' * len(s)
+            elif s.startswith('"'):
+                return '"' + ' ' * (len(s) - 2) + '"'
+            return s
+        return re.sub(pattern, repl, text, flags=re.DOTALL)
+
+    @staticmethod
+    def _strip_comments_preserving_registers(text):
+        """
+        @intent:responsibility
+            ノード構造やプロパティの誤抽出を防ぐため、Device Tree ソースからコメントを消去する。
+            ただし、registers プロパティ内のグループ注記コメント（/* Group: ... */）は保持する。
+        @intent:rationale
+            初学者向けテンプレート（07_minimum_template 等）でコメントアウトされたノード（// &node { ... }）や
+            コメントアウトされたプロパティが誤って実体としてパースされるのを防止する。
+        """
+        pattern = r'(/\*.*?\*/)|(//[^\n]*)|("(?:[^"\\]|\\.)*")|(\bregisters\s*=)|(;)'
+        result = []
+        last_end = 0
+        in_registers = False
+
+        for m in re.finditer(pattern, text, flags=re.DOTALL):
+            start, end = m.span()
+            result.append(text[last_end:start])
+            last_end = end
+
+            block_comm, line_comm, str_lit, reg_start, semi = m.groups()
+            if block_comm:
+                if in_registers:
+                    result.append(block_comm)
+                else:
+                    result.append('\n' * block_comm.count('\n'))
+            elif line_comm:
+                if in_registers:
+                    result.append(line_comm)
+                else:
+                    result.append(' ')
+            elif str_lit:
+                result.append(str_lit)
+            elif reg_start:
+                in_registers = True
+                result.append(reg_start)
+            elif semi:
+                if in_registers:
+                    in_registers = False
+                result.append(semi)
+
+        result.append(text[last_end:])
+        return "".join(result)
 
     @staticmethod
     def validate_syntax_precheck(content, file_path):
@@ -308,6 +358,9 @@ class DTSParser:
 
         # Preprocess #include statements recursively
         content = DTSParser.preprocess_includes(raw_content, os.path.dirname(os.path.abspath(dts_path)), source_file=dts_path)
+
+        # Strip comments outside of active registers definitions to prevent commented-out nodes/properties from leaking
+        content = DTSParser._strip_comments_preserving_registers(content)
 
         # Expand #define macros (e.g. #define FBB_I2C_BUS i2c0)
         defines = dict(re.findall(r"#define\s+([A-Za-z0-9_]+)\s+([A-Za-z0-9_]+)", content))

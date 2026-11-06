@@ -7,9 +7,9 @@
                     "type": "leaf",
                     "data": {
                         "views": [
-                            "uartTerminal_vfpga_uart_1"
+                            "uartTerminal_serial"
                         ],
-                        "activeView": "uartTerminal_vfpga_uart_1",
+                        "activeView": "uartTerminal_serial",
                         "id": "1"
                     },
                     "size": 1285
@@ -22,13 +22,14 @@
         "orientation": "HORIZONTAL"
     },
     "panels": {
-        "uartTerminal_vfpga_uart_1": {
-            "id": "uartTerminal_vfpga_uart_1",
+        "uartTerminal_serial": {
+            "id": "uartTerminal_serial",
             "contentComponent": "uartTerminal",
             "params": {
-                "deviceName": "vfpga_uart_1"
+                "deviceName": "serial",
+                "_componentName": "uartTerminal"
             },
-            "title": "UART: vfpga_uart_1"
+            "title": "UART: serial"
         }
     },
     "activeGroup": "1"
