@@ -1,0 +1,10 @@
+/dts-v1/;
+/include/ "config.dts"
+
+&gpio0 {
+    registers = "GPIO_DATA @ 0x00, GPIO_TRI @ 0x04";
+};
+
+&cdma0 {
+    registers = "CDMACR @ 0x00, CDMASR @ 0x04, SA @ 0x18, DA @ 0x20, BTT @ 0x28";
+};

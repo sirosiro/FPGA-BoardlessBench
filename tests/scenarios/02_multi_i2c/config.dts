@@ -8,7 +8,7 @@
      * ベースアドレス 0xe0004000 にある Cadence I2C コントローラを定義します。
      * スレーブデバイス (eeprom@50) はベンダー提供の at24c02c.dtsi を #include して配置します。
      */
-    i2c1: i2c@e0004000 {
+    i2c0: i2c@e0004000 {
         compatible = "cdns,i2c-r1p10";
         reg = <0xe0004000 0x1000>;
         bus_id = <0>;

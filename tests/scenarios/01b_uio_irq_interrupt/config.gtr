@@ -1,0 +1,10 @@
+/dts-v1/;
+/include/ "config.dts"
+
+&vfpga_irq_timer {
+    registers = 
+            "CTRL    @ 0x00",
+            "STATUS  @ 0x04",
+            "INT_ACK @ 0x08",
+            "CNT     @ 0x0C";
+};

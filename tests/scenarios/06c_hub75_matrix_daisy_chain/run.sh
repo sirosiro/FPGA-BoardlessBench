@@ -9,7 +9,11 @@ echo " Running Scenario 06c: HUB75 128x64 Daisy-Chain Matrix"
 echo "=========================================================="
 
 cd "$PROJECT_ROOT"
-PYTHONPATH=scripts python3 scripts/gen_vfpga.py "$SCENARIO_DIR/config.dts"
+CONFIG_FILE="${SCENARIO_DIR}/config.gtr"
+if [ ! -f "$CONFIG_FILE" ]; then
+    CONFIG_FILE="${SCENARIO_DIR}/config.dts"
+fi
+PYTHONPATH=scripts python3 scripts/gen_vfpga.py "$CONFIG_FILE"
 
 cd "$PROJECT_ROOT/build"
 cmake ..

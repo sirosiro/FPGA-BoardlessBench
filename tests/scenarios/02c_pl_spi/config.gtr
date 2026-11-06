@@ -1,0 +1,16 @@
+/dts-v1/;
+/include/ "config.dts"
+
+&pl_spi_ctrl {
+    registers =
+            "REG_SPI_TX @ 0x00",
+            "REG_SPI_RX @ 0x04",
+            "REG_SPI_CTRL @ 0x08",
+            "REG_SPI_STATUS @ 0x0c";
+};
+
+&vfpga_gpio {
+    registers =
+            "DATA @ 0x00",
+            "TRI  @ 0x04";
+};

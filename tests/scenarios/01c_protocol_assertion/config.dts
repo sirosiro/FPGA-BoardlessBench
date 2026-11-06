@@ -10,27 +10,20 @@
         stdout-path = "/vfpga_uart@40002000";
     };
 
-    vfpga_reg@40000000 {
+    vfpga_reg: vfpga_reg@40000000 {
         compatible = "generic-uio";
         reg = <0x40000000 0x1000>;
         label = "/dev/uio0";
         status = "okay";
-        registers = 
-            "CTRL   @ 0x00 : RW",
-            "STATUS @ 0x04 : RO",
-            "TRIG   @ 0x08 : WO";
+
     };
 
-    vfpga_gpio@40001000 {
+    vfpga_gpio: vfpga_gpio@40001000 {
         compatible = "xlnx,xps-gpio-1.00.a";
         reg = <0x40001000 0x1000>;
         label = "/dev/uio1";
         status = "okay";
-        registers = 
-            "GPIO_DATA  (DATA_IN) @ 0x00 : RO",
-            "GPIO_TRI   (INV)     @ 0x04 : RW",
-            "GPIO2_DATA (DATA_IN) @ 0x08 : RO",
-            "GPIO2_TRI  (INV)     @ 0x0C : RW";
+
     };
 
     vfpga_uart@40002000 {

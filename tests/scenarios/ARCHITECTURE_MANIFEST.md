@@ -27,8 +27,8 @@
 ### 1. 核となる原則 (Core Principles)
 - **原則 1: 実機透過性の維持 (Hardware Transparency 100%)**
   - アプリケーション側のソースコード（C/C++、ベアメタル/RTOS用のMコアFWを含む）に、シミュレータ専用の条件分岐（`#ifdef SIMULATION` など）を一切持ち込まない。実機と全く同じバイナリおよびソースがホスト環境で透過的に動作することを最優先する。
-- **原則 2: DTSを唯一の真実とする設計 (DTS-Centricity)**
-  - レジスタアドレスやバスの定義は `config.dts` のみに記述し、そこからShimやスケルトンコードを一貫して自動生成する。
+- **原則 2: Linux標準DTSの完全維持と仮想レジスタ契約GTRの分離 (Pure DTS & GTR Contract Separation)**
+  - Linux標準準拠のベースハードウェア定義は `config.dts` に、仮想レジスタ仕様は `/include/ "config.dts"` を含む `config.gtr` に分離記述し、そこからShimやスケルトンコードを一貫して自動生成する。
 - **原則 3: シナリオの自律性と可搬性 (Scenario Autonomy & Portability)**
   - 各シナリオフォルダは、単体で「ビルド (`Makefile`)」「実行 (`run.sh`)」「解説 (`README.md`)」を完結させる。
   - `Makefile` 内では `CC ?= gcc` のように標準的な環境変数を尊重し、実機環境（PetaLinuxのSDKなど）でそのままクロスコンパイルできるように設計する。

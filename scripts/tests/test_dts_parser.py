@@ -124,5 +124,108 @@ class TestDTSParser(unittest.TestCase):
             os.remove(f_path)
 
 
+    def test_gtr_include_and_label_merging(self):
+        """
+        @intent:responsibility GTR ファイルが DTS をインクルードし、&label でレジスタを正常にバインドできることを検証。
+        """
+        base_dts = """/dts-v1/;
+/ {
+    vfpga_reg: vfpga_reg@40000000 {
+        compatible = "generic-uio";
+        reg = <0x40000000 0x1000>;
+        label = "/dev/uio0";
+    };
+};
+"""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            dts_path = os.path.join(tmp_dir, "config.dts")
+            gtr_path = os.path.join(tmp_dir, "config.gtr")
+            with open(dts_path, "w") as f:
+                f.write(base_dts)
+
+            gtr_content = """/dts-v1/;
+/include/ "config.dts";
+
+&vfpga_reg {
+    registers = "CTRL @ 0x00", "STATUS @ 0x04:RO";
+};
+"""
+            with open(gtr_path, "w") as f:
+                f.write(gtr_content)
+
+            model = DTSParser.parse(gtr_path)
+            self.assertEqual(len(model.devices), 1)
+            self.assertEqual(len(model.devices[0].registers), 2)
+            self.assertEqual(model.devices[0].registers[0].name, "CTRL")
+            self.assertEqual(model.devices[0].registers[1].name, "STATUS")
+            self.assertEqual(model.devices[0].registers[1].direction, "RO")
+
+    def test_gtr_node_name_fallback_merging(self):
+        """
+        @intent:responsibility コロン付きラベルが無い場合でもノード名でフォールバック結合できることを検証。
+        """
+        base_dts = """/dts-v1/;
+/ {
+    vfpga_reg@40000000 {
+        compatible = "generic-uio";
+        reg = <0x40000000 0x1000>;
+        label = "/dev/uio0";
+    };
+};
+"""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            dts_path = os.path.join(tmp_dir, "config.dts")
+            gtr_path = os.path.join(tmp_dir, "config.gtr")
+            with open(dts_path, "w") as f:
+                f.write(base_dts)
+
+            gtr_content = """/dts-v1/;
+#include "config.dts"
+
+&vfpga_reg {
+    registers = "RST @ 0x10";
+};
+"""
+            with open(gtr_path, "w") as f:
+                f.write(gtr_content)
+
+            model = DTSParser.parse(gtr_path)
+            self.assertEqual(len(model.devices[0].registers), 1)
+            self.assertEqual(model.devices[0].registers[0].name, "RST")
+
+    def test_unmerged_label_error(self):
+        """
+        @intent:responsibility 存在しないノードへの &label 参照時に無言破棄されず DTSParserError が発生することを検証。
+        """
+        base_dts = """/dts-v1/;
+/ {
+    vfpga_reg@40000000 {
+        compatible = "generic-uio";
+        reg = <0x40000000 0x1000>;
+    };
+};
+"""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            dts_path = os.path.join(tmp_dir, "config.dts")
+            gtr_path = os.path.join(tmp_dir, "config.gtr")
+            with open(dts_path, "w") as f:
+                f.write(base_dts)
+
+            gtr_content = """/dts-v1/;
+#include "config.dts"
+
+&nonexistent_node {
+    registers = "ERR @ 0x00";
+};
+"""
+            with open(gtr_path, "w") as f:
+                f.write(gtr_content)
+
+            with self.assertRaises(DTSParserError) as ctx:
+                DTSParser.parse(gtr_path)
+            self.assertIn("not found in Device Tree", str(ctx.exception))
+            self.assertIn("&nonexistent_node", str(ctx.exception))
+
+
 if __name__ == "__main__":
     unittest.main()

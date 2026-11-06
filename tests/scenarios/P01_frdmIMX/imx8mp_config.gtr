@@ -1,0 +1,9 @@
+/dts-v1/;
+/include/ "imx8mp_config.dts"
+
+&gpio1 {
+    registers = 
+        "DR(DATA) @ 0x00",
+        "GDIR(INV_TRI) @ 0x04";
+};
+

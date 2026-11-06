@@ -20,20 +20,20 @@
     };
 
     /* 標準 AXI GPIO: LED表示用 */
-    vfpga_gpio@41200000 {
+    vfpga_gpio: vfpga_gpio@41200000 {
         compatible = "xlnx,xps-gpio-1.00.a";
         reg = <0x41200000 0x1000>;
         label = "/dev/uio0";
         xlnx,is-dual = <0x0>;
-        registers = "DATA @ 0x00, TRI @ 0x04";
+
     };
 
     /* 独自 IP: Pattern Engine (LFSR/Sequencer) */
-    vfpga_custom@42000000 {
+    vfpga_custom: vfpga_custom@42000000 {
         compatible = "vfpga,custom-engine-1.0";
         reg = <0x42000000 0x1000>;
         label = "/dev/uio1";
         /* CTRL: [0]=RUN, [2:1]=MODE(0:SEQ, 1:BIN, 2:LFSR) */
-        registers = "CTRL @ 0x00, SPEED @ 0x04, STATUS @ 0x08";
+
     };
 };

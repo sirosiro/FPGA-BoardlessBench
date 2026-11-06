@@ -9,7 +9,7 @@
     /*
      * AXI GPIO Simulation
      */
-    vfpga_gpio@41200000 {
+    vfpga_gpio: vfpga_gpio@41200000 {
         compatible = "xlnx,xps-gpio-1.00.a";
         reg = <0x41200000 0x1000>;
         label = "/dev/uio0";
@@ -20,10 +20,6 @@
          * DATA2: 0x08
          * TRI2: 0x0C
          */
-        registers = 
-            "DATA @ 0x00",
-            "TRI  @ 0x04",
-            "DATA2 @ 0x08",
-            "TRI2  @ 0x0C";
+
     };
 };

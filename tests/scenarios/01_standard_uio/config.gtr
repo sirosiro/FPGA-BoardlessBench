@@ -1,0 +1,16 @@
+/dts-v1/;
+
+/*
+ * 【解説: GTR (General Tree Registers) 定義】
+ * Linux 標準 Device Tree (config.dts) をインクルードし、
+ * F-BB の仮想ハードウェアに必要なレジスタ契約仕様（registers プロパティ）をノード参照 (&vfpga_reg) で結合します。
+ */
+/include/ "config.dts"
+
+&vfpga_reg {
+    registers = 
+        "RST @ 0x10",
+        "EN  @ 0x14",
+        "CNT @ 0x18";
+};
+

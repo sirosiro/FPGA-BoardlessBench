@@ -10,9 +10,6 @@
         compatible = "fsl,imx8mp-gpio";
         reg = <0x30200000 0x1000>;
         label = "/dev/uio0";
-        registers = 
-            "DR(DATA) @ 0x00",
-            "GDIR(INV_TRI) @ 0x04";
     };
 
     /* 

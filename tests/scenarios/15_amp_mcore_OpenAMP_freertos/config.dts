@@ -23,11 +23,11 @@
     };
 
     /* Virtual IPI Controller */
-    ipi@3ee2c000 {
+    ipi: ipi@3ee2c000 {
         compatible = "generic-uio";
         reg = <0x3ee2c000 0x1000>;
         label = "/dev/uio3";
-        registers = "TRIG @ 0x00";
+
     };
 
     /* A-Core アプリケーションがアクセスする RPMsg デバイス */

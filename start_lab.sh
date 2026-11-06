@@ -13,10 +13,12 @@ fi
 
 PROJECT_ROOT=$(cd "$(dirname "$0")" && pwd)
 SCENARIO_DIR=$1
-DTS_PATH="${SCENARIO_DIR}/config.dts"
-
-if [ ! -f "${DTS_PATH}" ]; then
-    echo "[Error] DTS file not found: ${DTS_PATH}"
+if [ -f "${SCENARIO_DIR}/config.gtr" ]; then
+    DTS_PATH="${SCENARIO_DIR}/config.gtr"
+elif [ -f "${SCENARIO_DIR}/config.dts" ]; then
+    DTS_PATH="${SCENARIO_DIR}/config.dts"
+else
+    echo "[Error] Configuration file (config.gtr or config.dts) not found in: ${SCENARIO_DIR}"
     exit 1
 fi
 

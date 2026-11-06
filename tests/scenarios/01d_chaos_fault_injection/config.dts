@@ -12,15 +12,12 @@
         stdout-path = "/vfpga_uart@40002000";
     };
 
-    vfpga_reg@40000000 {
+    vfpga_reg: vfpga_reg@40000000 {
         compatible = "generic-uio";
         reg = <0x40000000 0x1000>;
         label = "/dev/uio0";
         status = "okay";
-        registers = 
-            "CTRL   @ 0x00 : RW",
-            "STATUS @ 0x04 : RO",
-            "COUNTER@ 0x08 : RO";
+
     };
 
     vfpga_uart@40002000 {

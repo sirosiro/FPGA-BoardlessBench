@@ -1,0 +1,10 @@
+/dts-v1/;
+/include/ "config.dts"
+
+&vfpga_gpio {
+    registers = "DATA @ 0x00, TRI @ 0x04";
+};
+
+&vfpga_custom {
+    registers = "CTRL @ 0x00, SPEED @ 0x04, STATUS @ 0x08";
+};

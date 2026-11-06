@@ -39,14 +39,15 @@ elif [ "$1" = "imx95" ]; then
     shift
 fi
 
-echo "[P01_frdmIMX] Preparing config.dts for SOC: ${SOC_TYPE}"
+echo "[P01_frdmIMX] Preparing config.dts and config.gtr for SOC: ${SOC_TYPE}"
 cp "${SCRIPT_DIR}/${SOC_TYPE}_config.dts" "${SCRIPT_DIR}/config.dts"
+cp "${SCRIPT_DIR}/${SOC_TYPE}_config.gtr" "${SCRIPT_DIR}/config.gtr"
 
 if [ "$FBB_ACTIVE" = "1" ]; then
     cd "${SCRIPT_DIR}/../../.."
     ./tests/scenarios/P01_frdmIMX/test_bin
 else
-    cd ../../../
+    cd "${SCRIPT_DIR}/../../.."
     ./start_lab.sh tests/scenarios/P01_frdmIMX/ "$@"
 fi
 

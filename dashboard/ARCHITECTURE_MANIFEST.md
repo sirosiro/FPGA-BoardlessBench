@@ -28,7 +28,7 @@
     - **マルチコア・シナリオ・ライフサイクル管理 API**: 実行中のプロセス（Aコア/Mコア等）の自動検知 (`GET /api/scenario/cores`)、個別コアまたは全体の停止 (`POST /api/scenario/stop`)、およびカオス障害注入設定を反映した動的再起動 (`POST /api/scenario/restart`) を提供。
     - **カオス・エンジン・ログ監視**: `/tmp/fbb_chaos_injection.log` をポーリング監視し、発生した障害イベントを WebSocket (`scenario:chaos_event`) 経由でフロントエンドへ即時配信。
     - **レイアウト永続化 API**: シナリオフォルダの `fbb_layout.json`（またはスクリーン指定時は `fbb_layout_${screen}.json`）を通じてレイアウト情報をロード (`GET /api/layout?screen=...`) および保存 (`POST /api/layout?screen=...`) するエンドポイントを提供。
-    - **シナリオファイル安全アクセス API (Generic Script Bridge)**: 実行中シナリオフォルダ内のスクリプトファイル（`.py`, `.c`, `.dts` 等）を Web エディタから直接参照・編集・復元するためのセキュアなエンドポイント (`GET /api/scenario/file?name=...`, `POST /api/scenario/file`) を提供。パストラバーサル防止 (`..` / 絶対パス遮断)、サンドボックス境界防衛、キャッシュ無効化ヘッダー (`no-store`)、および拡張子ホワイトリスト検証を内蔵。
+    - **シナリオファイル安全アクセス API (Generic Script Bridge)**: 実行中シナリオフォルダ内のスクリプトファイル（`.py`, `.c`, `.gtr`, `.dts` 等）を Web エディタから直接参照・編集・復元するためのセキュアなエンドポイント (`GET /api/scenario/file?name=...`, `POST /api/scenario/file`) を提供。パストラバーサル防止 (`..` / 絶対パス遮断)、サンドボックス境界防衛、キャッシュ無効化ヘッダー (`no-store`)、および拡張子ホワイトリスト検証を内蔵。
 - **データ構造**:
     - `shmBuffer`: SHM ファイルのメモリマッピング。
     - `traceHistory`: レジスタ状態の時系列スナップショット配列。
@@ -43,7 +43,7 @@
     - **Chaos & Multi-Core Lifecycle Panel (`ChaosPanel`)**: シナリオ内の各コア（Aコア `test_bin` / Mコア `remoteproc*`）の稼働状態表示と個別選択再起動、シード指定モード（Off / Random / Fixed）、シード再ロール（Reroll）、CLI 再現用コマンド（`fbb test --chaos --seed ...`）のワンクリックコピー、障害率スライダー（0〜100%）、およびペリフェラル別（I2C, SPI, UIO, CAN, CDMA）障害有効化チェックボックスを統合した高機能検証ペイン。
     - **Register Monitor**: デバイス（モジュール）ごとにアコーディオンパネルで展開・折りたたみ可能にグルーピング表示。各レジスタに「Trace」チェックボックスを備え、Tracerでの描画および凡例の動的フィルタリングを双方向同期。タイムトラベル中は過去スナップショットの値をシアン色で強調表示し、実機への誤操作を防ぐ安全インターロック（Read-Only ロック）を適用。
     - **GPIO / Pin Array**: GPIO をグリッド表示し、マニフェスト経由で配信される方向モード属性（`direction_mode`: `active_low_input` / `active_high_input`）や複数チャネル構成（DATA/TRI, DATA2/TRI2 等）に基づき LED（出力）とトグルスイッチ（入力）を完全なデータ駆動（SoC非依存）で動的に切り替えて描画。タイムトラベル中は過去のピン点灯状態を復元し、入力トグルを自動無効化。
-    - **DTS Visualizer & AI Diagnostics**: 32-bit物理アドレス空間全体を一括俯瞰する「一体型メモリマップダイアグラム」を表示。マップ上の各デバイスブロックをクリックで直下にインライン展開し、アラインメント・レジスタ・プロパティを詳細確認可能。デバイス間の未割り当て空間（Unmapped Space Gap）をシックなグレーのパターン領域として可視化し、新規IP用空き容量バッファを提示。さらに Ollama LLM / CIP プロンプトと連動した「AI Smart DTS Check」により、コンパイルエラーの自然言語解説と推奨Fix Diffを提示。
+    - **GTR / DTS Visualizer & AI Diagnostics**: 32-bit物理アドレス空間全体を一括俯瞰する「一体型メモリマップダイアグラム」を表示。マップ上の各デバイスブロックをクリックで直下にインライン展開し、アラインメント・レジスタ・プロパティを詳細確認可能。デバイス間の未割り当て空間（Unmapped Space Gap）をシックなグレーのパターン領域として可視化し、新規IP用空き容量バッファを提示。さらに Ollama LLM / CIP プロンプトと連動した「AI Smart GTR/DTS Check」により、コンパイルエラーの自然言語解説と推奨Fix Diffを提示。
     - **Register State Tracer**: レジスタの変化履歴を正規化表示し、微小な変化も可視化。Zero-Center（ゼロ中央50%基準）、Signed（2の補数符号付き自動レンジ）、Unsigned（絶対値0〜4.29G）のモード切替をサポート。波形上のクリック／なぞりドラッグによるタイムトラベル静止シーク、オシロスコープ式時間軸スパン切替（50pt / 100pt / 250pt / All）、キーボード左右キー（◄/►）コマ送り/コマ戻し、および別ウィンドウを含む 3D Orbit Viewer / 全計器との連動に対応。
     - **IDE-style Docking Layout (Dockview)**: VS Code互換のドッキングレイアウトを採用。パネルのドラッグ＆ドロップによる分割・結合・タブ化・フローティング化をネイティブサポートし、UI全体の配置リセット機能（Reset Layout）も完備。レガシーな手動リサイズコードを撤去し、高精度なリサイズ体験を提供。
     - **Generic Peripheral View (PPA 2.0 Equalization)**: 公式・サードパーティを問わず全ペリフェラルプラグインを 100% 均一に扱う汎用ビューペイン。`fbb-plugin.json` 内で指定されたベクターグラフィック `board.svg` を解像度低下ゼロ（500%+ 拡大耐性）でレンダリングし、その上にリアルタイムフレームバッファ（Canvas Stream）やセンサー制御スライダー等を自動オーバーレイ描画。ペリフェラル非接続時は特定機器に偏らないスタイリッシュな **`NO ACTIVE PERIPHERAL CONNECTED` (スタンバイ画面)** を表示。

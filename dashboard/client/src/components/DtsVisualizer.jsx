@@ -69,7 +69,7 @@ function DtsVisualizer() {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          dtsContent: dtsData?.rawDts || '',
+          dtsContent: dtsData?.rawGtr ? `${dtsData.rawGtr}\n\n/* Included config.dts: */\n${dtsData.rawDts || ''}` : (dtsData?.rawDts || ''),
           errorMessage: customErrorInput || dtsData?.lastError || ''
         })
       });
@@ -179,7 +179,7 @@ function DtsVisualizer() {
       <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', padding: '8px 12px', background: '#252526', borderBottom: '1px solid #2d2d2d', flexShrink: 0 }}>
         <div style={{ display: 'flex', alignItems: 'center', gap: '6px', fontWeight: 600, fontSize: '0.85rem', color: '#ffffff' }}>
           <Cpu size={16} style={{ color: '#007acc' }} />
-          <span>DTS Visualizer</span>
+          <span>GTR / DTS Visualizer</span>
         </div>
         <div style={{ display: 'flex', gap: '4px' }}>
           <button 

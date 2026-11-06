@@ -1,0 +1,9 @@
+/dts-v1/;
+/include/ "config.dts"
+
+&vfpga_reg {
+    registers = 
+            "CTRL   @ 0x00 : RW",
+            "STATUS @ 0x04 : RO",
+            "COUNTER@ 0x08 : RO";
+};

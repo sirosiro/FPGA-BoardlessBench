@@ -1,0 +1,17 @@
+/dts-v1/;
+/include/ "config.dts"
+
+&vfpga_reg {
+    registers = 
+            "CTRL   @ 0x00 : RW",
+            "STATUS @ 0x04 : RO",
+            "TRIG   @ 0x08 : WO";
+};
+
+&vfpga_gpio {
+    registers = 
+            "GPIO_DATA  (DATA_IN) @ 0x00 : RO",
+            "GPIO_TRI   (INV)     @ 0x04 : RW",
+            "GPIO2_DATA (DATA_IN) @ 0x08 : RO",
+            "GPIO2_TRI  (INV)     @ 0x0C : RW";
+};

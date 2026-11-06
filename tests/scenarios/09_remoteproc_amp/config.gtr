@@ -1,0 +1,9 @@
+/dts-v1/;
+/include/ "config.dts"
+
+&vfpga_reg {
+    registers = 
+            "RST @ 0x10",
+            "EN  @ 0x14",
+            "CNT @ 0x18";
+};

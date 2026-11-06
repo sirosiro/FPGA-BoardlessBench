@@ -1753,16 +1753,23 @@ app.get('/api/dts/tree', (req, res) => {
         }
 
         let rawDts = "";
+        let rawGtr = "";
         const scenarioDir = process.env.SCENARIO_DIR || "";
-        if (scenarioDir && fs.existsSync(path.join(scenarioDir, "config.dts"))) {
-            rawDts = fs.readFileSync(path.join(scenarioDir, "config.dts"), "utf8");
+        if (scenarioDir) {
+            if (fs.existsSync(path.join(scenarioDir, "config.gtr"))) {
+                rawGtr = fs.readFileSync(path.join(scenarioDir, "config.gtr"), "utf8");
+            }
+            if (fs.existsSync(path.join(scenarioDir, "config.dts"))) {
+                rawDts = fs.readFileSync(path.join(scenarioDir, "config.dts"), "utf8");
+            }
         }
 
         res.json({
             devices: devices,
             memoryMap: memoryMap,
             hasOverlap: hasOverlap,
-            rawDts: rawDts
+            rawDts: rawDts,
+            rawGtr: rawGtr
         });
     } catch (e) {
         res.status(500).json({ error: e.message });

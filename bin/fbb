@@ -93,7 +93,8 @@ def resolve_scenario_name_or_path(input_str):
 def resolve_dts_path(input_str):
     """
     @intent:responsibility
-      シナリオ名、フォルダパス、または直接の DTS ファイルパスから対象 config.dts の絶対パスを解決する。
+      シナリオ名、フォルダパス、または直接の GTR/DTS ファイルパスから対象 config.gtr または config.dts の絶対パスを解決する。
+      (config.gtr を最優先で解決)
     """
     if not input_str:
         return None
@@ -103,12 +104,22 @@ def resolve_dts_path(input_str):
     if os.path.isfile(clean_input):
         return os.path.abspath(clean_input)
 
-    if os.path.isdir(clean_input) and os.path.exists(os.path.join(clean_input, "config.dts")):
-        return os.path.abspath(os.path.join(clean_input, "config.dts"))
+    if os.path.isdir(clean_input):
+        gtr_path = os.path.join(clean_input, "config.gtr")
+        dts_path = os.path.join(clean_input, "config.dts")
+        if os.path.exists(gtr_path):
+            return os.path.abspath(gtr_path)
+        if os.path.exists(dts_path):
+            return os.path.abspath(dts_path)
 
     s_dir = resolve_scenario_name_or_path(clean_input)
-    if s_dir and os.path.exists(os.path.join(s_dir, "config.dts")):
-        return os.path.join(s_dir, "config.dts")
+    if s_dir:
+        gtr_path = os.path.join(s_dir, "config.gtr")
+        dts_path = os.path.join(s_dir, "config.dts")
+        if os.path.exists(gtr_path):
+            return gtr_path
+        if os.path.exists(dts_path):
+            return dts_path
 
     return None
 
@@ -129,7 +140,7 @@ def command_new(args):
     print(f"Scaffolding new F-BB scenario: '{scenario_name}' (Target: {target})...")
     os.makedirs(target_dir, exist_ok=True)
 
-    # 1. config.dts
+    # 1. config.dts (100% Pure Linux-compliant Device Tree)
     dts_content = f"""/dts-v1/;
 
 / {{
@@ -138,20 +149,31 @@ def command_new(args):
     model = "{target}-vfpga-{scenario_name}";
     compatible = "generic,fbb-vfpga";
 
-    vfpga_reg@40000000 {{
+    vfpga_reg: vfpga_reg@40000000 {{
         compatible = "generic-uio";
         reg = <0x40000000 0x1000>;
         label = "/dev/uio0";
         status = "okay";
-        registers = 
-            "CTRL   @ 0x00",
-            "STATUS @ 0x04",
-            "ACK    @ 0x08";
     }};
 }};
 """
     with open(os.path.join(target_dir, "config.dts"), "w", encoding="utf-8") as f:
         f.write(dts_content)
+
+    # 1b. config.gtr (General Tree Registers: Virtual Register Specification)
+    gtr_content = f"""/dts-v1/;
+
+/include/ "config.dts"
+
+&vfpga_reg {{
+    registers = 
+        "CTRL   @ 0x00",
+        "STATUS @ 0x04",
+        "ACK    @ 0x08";
+}};
+"""
+    with open(os.path.join(target_dir, "config.gtr"), "w", encoding="utf-8") as f:
+        f.write(gtr_content)
 
     # 2. vfpga_top.v
     v_content = """`timescale 1ns / 1ps
@@ -537,15 +559,15 @@ def command_inspect(args):
     dts_file = resolve_dts_path(dts_input)
 
     if not dts_file or not os.path.exists(dts_file):
-        print(f"❌ Error: DTS file not found for input '{dts_input}'")
-        print("💡 Tip: You can specify a config.dts file, a scenario folder, or scenario name (e.g. 01_standard_uio)")
+        print(f"❌ Error: Configuration file (config.gtr or config.dts) not found for input '{dts_input}'")
+        print("💡 Tip: You can specify a config.gtr/config.dts file, a scenario folder, or scenario name (e.g. 01_standard_uio)")
         sys.exit(1)
 
-    print(f"🔍 Inspecting DTS Address Map & Devices: {os.path.relpath(dts_file, PROJECT_ROOT)}")
+    print(f"🔍 Inspecting GTR/DTS Address Map & Devices: {os.path.relpath(dts_file, PROJECT_ROOT)}")
     try:
         model = DTSParser.parse(dts_file)
     except Exception as e:
-        print(f"❌ Failed to parse DTS: {e}")
+        print(f"❌ Failed to parse configuration: {e}")
         sys.exit(1)
 
     model_name = getattr(model, "model_name", "vfpga")
@@ -696,7 +718,7 @@ def command_debug(args):
     scenario_input = getattr(args, "scenario", None)
     if not scenario_input:
         cwd = os.getcwd()
-        if os.path.exists(os.path.join(cwd, "config.dts")):
+        if os.path.exists(os.path.join(cwd, "config.gtr")) or os.path.exists(os.path.join(cwd, "config.dts")):
             s_dir = cwd
         else:
             print("❌ Error: Scenario name or path required (e.g. 'fbb debug 01b' or run from scenario directory).")
@@ -708,9 +730,9 @@ def command_debug(args):
             sys.exit(1)
 
     scenario_name = os.path.basename(s_dir)
-    dts_path = os.path.join(s_dir, "config.dts")
+    dts_path = os.path.join(s_dir, "config.gtr") if os.path.exists(os.path.join(s_dir, "config.gtr")) else os.path.join(s_dir, "config.dts")
     if not os.path.exists(dts_path):
-        print(f"❌ Error: config.dts not found in scenario directory: {s_dir}")
+        print(f"❌ Error: Neither config.gtr nor config.dts found in scenario directory: {s_dir}")
         sys.exit(1)
 
     # Clean up any existing stale server
@@ -1317,6 +1339,7 @@ def command_plugin_man(args):
         if scen_base:
             is_self_scen = (
                 os.path.exists(os.path.join(scen_base, "CMakeLists.txt")) or
+                os.path.exists(os.path.join(scen_base, "config.gtr")) or
                 os.path.exists(os.path.join(scen_base, "config.dts")) or
                 os.path.exists(os.path.join(scen_base, "run.sh"))
             )
@@ -1336,6 +1359,7 @@ def command_plugin_man(args):
                     if os.path.isdir(sub_p):
                         if (
                             os.path.exists(os.path.join(sub_p, "CMakeLists.txt")) or
+                            os.path.exists(os.path.join(sub_p, "config.gtr")) or
                             os.path.exists(os.path.join(sub_p, "config.dts")) or
                             os.path.exists(os.path.join(sub_p, "run.sh")) or
                             os.path.exists(os.path.join(sub_p, "vfpga_config.json"))
@@ -2009,16 +2033,16 @@ def main():
     inspect_epilog = """Examples:
   fbb inspect 01_standard_uio
   fbb inspect 02_multi_i2c
-  fbb inspect tests/scenarios/01_standard_uio/config.dts
-  fbb inspect config.dts
+  fbb inspect tests/scenarios/01_standard_uio/config.gtr
+  fbb inspect config.gtr
 """
     parser_inspect = subparsers.add_parser(
         "inspect",
-        help="Inspect DTS address map, register permissions, IRQs, and sub-slaves",
+        help="Inspect GTR / DTS address map, register permissions, IRQs, and sub-slaves",
         epilog=inspect_epilog,
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
-    parser_inspect.add_argument("dts", help="Path to config.dts file, scenario folder, or scenario name")
+    parser_inspect.add_argument("dts", help="Path to config.gtr or config.dts file, scenario folder, or scenario name")
 
     # 6. plugin
     plugin_epilog = """Examples:

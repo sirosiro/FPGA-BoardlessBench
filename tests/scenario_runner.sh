@@ -116,7 +116,11 @@ fi
 CONTROLLER="${PROJECT_ROOT}/src/controller/vlogic_controller.py"
 SIMULATOR="${PROJECT_ROOT}/vfpga_sim"
 SHIM="${PROJECT_ROOT}/libfpgashim.so"
-DTS="${SCENARIO_DIR}/config.dts"
+if [ -f "${SCENARIO_DIR}/config.gtr" ]; then
+    DTS="${SCENARIO_DIR}/config.gtr"
+else
+    DTS="${SCENARIO_DIR}/config.dts"
+fi
 
 # --- プロセス掃除関数 ---
 cleanup() {

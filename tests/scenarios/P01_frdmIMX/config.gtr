@@ -1,0 +1,10 @@
+/dts-v1/;
+/include/ "imx95_config.dts"
+
+&gpio1 {
+    registers = 
+        "PDOR(DATA_OUT) @ 0x00",
+        "PDIR(DATA_IN) @ 0x04",
+        "PDDR(INV_TRI) @ 0x08";
+};
+

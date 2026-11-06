@@ -261,7 +261,7 @@ function RegisterMonitor() {
                   </div>
                   {isGhost && (
                     <div style={{ fontSize: '0.62rem', color: '#d29922', fontWeight: 'normal', marginTop: '1px' }}>
-                      ⚠️ Not in DTS (Ghost)
+                      ⚠️ Not in GTR (Ghost)
                     </div>
                   )}
                 </td>
@@ -385,7 +385,7 @@ function RegisterMonitor() {
             <button
               type="button"
               onClick={resetAllGroupOrders}
-              title="Reset groups to default DTS order"
+              title="Reset groups to default GTR order"
               style={{
                 display: 'flex',
                 alignItems: 'center',
@@ -530,7 +530,7 @@ function RegisterMonitor() {
                         alignItems: 'center',
                         gap: '4px'
                       }}>
-                        <AlertTriangle size={11} /> {ghostRegs.length} UNDECLARED IN DTS
+                        <AlertTriangle size={11} /> {ghostRegs.length} UNDECLARED IN GTR
                       </span>
                     )}
                   </div>

@@ -31,20 +31,14 @@
         compatible = "generic-uio";
         reg = <0x40000000 0x1000>;
         label = "/dev/uio0";
-        registers =
-            "REG_SPI_TX @ 0x00",
-            "REG_SPI_RX @ 0x04",
-            "REG_SPI_CTRL @ 0x08",
-            "REG_SPI_STATUS @ 0x0c";
+
     };
 
     /* Dummy GPIO device for dashboard rendering (Ordered second) */
-    vfpga_gpio@40002000 {
+    vfpga_gpio: vfpga_gpio@40002000 {
         compatible = "xlnx,xps-gpio-1.00.a";
         reg = <0x40002000 0x1000>;
         label = "/dev/uio1";
-        registers =
-            "DATA @ 0x00",
-            "TRI  @ 0x04";
+
     };
 };

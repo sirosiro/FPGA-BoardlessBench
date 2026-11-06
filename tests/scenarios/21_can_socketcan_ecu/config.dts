@@ -6,11 +6,11 @@
     model = "zynq-vfpga-21_can_socketcan_ecu";
     compatible = "xlnx,zynq-7000";
 
-    vfpga_reg@40000000 {
+    vfpga_reg: vfpga_reg@40000000 {
         compatible = "generic-uio";
         reg = <0x40000000 0x1000>;
         label = "/dev/uio0";
-        registers = "CTRL @ 0x00:RW, STATUS @ 0x04:RO, TX_COUNT @ 0x08:RO, RX_COUNT @ 0x0C:RO, SPEED_RPM @ 0x10:RO";
+
     };
 
     can0: can@e0008000 {

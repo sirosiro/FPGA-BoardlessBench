@@ -5,7 +5,11 @@ SCENARIO_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 PROJECT_ROOT="$(cd "$SCENARIO_DIR/../../.." && pwd)"
 
 cd "$PROJECT_ROOT"
-PYTHONPATH=scripts python3 scripts/gen_vfpga.py "$SCENARIO_DIR/config.dts"
+CONFIG_FILE="${SCENARIO_DIR}/config.gtr"
+if [ ! -f "$CONFIG_FILE" ]; then
+    CONFIG_FILE="${SCENARIO_DIR}/config.dts"
+fi
+PYTHONPATH=scripts python3 scripts/gen_vfpga.py "$CONFIG_FILE"
 
 cd "$PROJECT_ROOT/build"
 cmake ..

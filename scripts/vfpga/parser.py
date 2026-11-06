@@ -240,6 +240,8 @@ class DTSParser:
             try:
                 with open(target_path, "r", encoding="utf-8") as f_inc:
                     inc_content = f_inc.read()
+                # Precheck syntax on included files before recursion
+                DTSParser.validate_syntax_precheck(inc_content, target_path)
                 return DTSParser.preprocess_includes(inc_content, os.path.dirname(target_path), visited, target_path)
             except DTSParserError:
                 raise
@@ -254,8 +256,8 @@ class DTSParser:
                     tip="Ensure the file has read permissions and is valid UTF-8 text."
                 )
 
-        # Match #include "..." or #include <...>
-        pattern = r'#include\s+["<]([^">]+)[">]'
+        # Match #include "..." or /include/ "..." with optional semicolon
+        pattern = r'(?:#include|/include/)\s+["<]([^">]+)[">]\s*;?'
         return re.sub(pattern, replace_inc, content)
 
     @staticmethod
@@ -332,8 +334,14 @@ class DTSParser:
             if b_start != -1:
                 label_name = rmatch.group(0).split("{")[0].strip("& \t")
                 block_body = content[b_start + 1 : b_end - 1]
+                cut_end = b_end
+                # Consume optional trailing semicolon and whitespace
+                trailing_semi = re.match(r"^\s*;", content[b_end:])
+                if trailing_semi:
+                    cut_end = b_end + trailing_semi.end()
                 ref_contents.append((label_name, block_body))
-                content = content[: rmatch.start()] + content[b_end:]
+                content = content[: rmatch.start()] + content[cut_end:]
+        ref_contents.reverse()
 
         devices = []
 
@@ -348,10 +356,22 @@ class DTSParser:
         for label_name, block_body in ref_contents:
             lbl_pattern = r"(" + re.escape(label_name) + r"\s*:\s*[a-zA-Z0-9_@:-]+\s*\{)"
             m_lbl = re.search(lbl_pattern, content)
+            if not m_lbl:
+                # Fallback: match node by name without label prefix (e.g. "vfpga_reg@40000000 {" or "vfpga_reg {")
+                fallback_pattern = r"(\b" + re.escape(label_name) + r"(?:@[0-9a-fA-F]+)?\s*\{)"
+                m_lbl = re.search(fallback_pattern, content)
+
             if m_lbl:
                 b_start, b_end = DTSParser.find_matching_braces(content, m_lbl.start())
                 if b_start != -1:
                     content = content[: b_end - 1] + "\n" + block_body + "\n" + content[b_end - 1 :]
+            else:
+                raise DTSParserError(
+                    f"Referenced node '&{label_name}' not found in Device Tree",
+                    file_path=dts_path,
+                    node=f"&{label_name}",
+                    tip=f"Ensure a node with label '{label_name}:' or name '{label_name}' exists in the included DTS files."
+                )
 
         pos = 0
         while True:
@@ -401,7 +421,7 @@ class DTSParser:
                     continue
                 if v.startswith("<") and v.endswith(">"):
                     v = v[1:-1].strip()
-                if v.startswith('"') and v.endswith('"'):
+                if k != "registers" and v.startswith('"') and v.endswith('"'):
                     v = v[1:-1].strip()
                 props[k] = v
 
@@ -553,7 +573,14 @@ class DTSParser:
                             if c_title:
                                 current_group = c_title
                         elif qstr is not None:
-                            parsed_items.append((qstr.strip("\" \t"), current_group))
+                            q_clean = qstr.strip("\" \t")
+                            if q_clean.count("@") > 1:
+                                for sub in q_clean.split(","):
+                                    sub_clean = sub.strip()
+                                    if sub_clean:
+                                        parsed_items.append((sub_clean, current_group))
+                            else:
+                                parsed_items.append((q_clean, current_group))
 
                     # Fallback for unquoted comma-separated legacy format
                     if not parsed_items:

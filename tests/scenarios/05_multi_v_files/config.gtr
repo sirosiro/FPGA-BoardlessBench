@@ -1,0 +1,6 @@
+/dts-v1/;
+/include/ "config.dts"
+
+&my_dev {
+    registers = "REG0@0x0", "REG1@0x4";
+};

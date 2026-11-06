@@ -70,8 +70,9 @@ def main():
         path = os.path.join(scenarios_dir, item)
         if os.path.isdir(path):
             run_sh = os.path.join(path, "run.sh")
+            config_gtr = os.path.join(path, "config.gtr")
             config_dts = os.path.join(path, "config.dts")
-            if os.path.exists(run_sh) and os.path.exists(config_dts):
+            if os.path.exists(run_sh) and (os.path.exists(config_gtr) or os.path.exists(config_dts)):
                 scenarios.append(item)
                 
     if len(sys.argv) > 1:

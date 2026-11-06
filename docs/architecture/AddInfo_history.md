@@ -434,3 +434,14 @@
   - **Rationale:**
         1. ゼロヘビーインストールと実機運用の完全両立: 数秒でビルド・実行可能な軽量性を維持しつつ、ROS 2 エコシステム（`/cmd_vel`, `/odom`）と 100% 相互運用可能とするため。
         2. DPPA/PPA 責務分離の堅持: ダッシュボードコアに特定ロボットの幾何寸法やパラメータをハードコードせず、`amr_manifest.json` を Single Source of Truth として動的取得することで、他車種やカスタムロボットへの高い拡張性を担保するため。
+
+- **2026-11-06: ADR #014 Linux標準Device Tree (DTS) の完全維持とGeneral Tree Registers (GTR) 仮想ハードウェア契約分離アーキテクチャの導入 (Decoupling of Upstream-Compliant Linux DTS and General Tree Registers (GTR) Virtual Contract Architecture)**
+  - **Decision:**
+        1. ハードウェア仕様定義を upstream Linux カーネル準拠の `config.dts` と、仮想ハードウェア・シミュレータ契約の `config.gtr` に完全分離。
+        2. `config.dts` からすべての `registers = ...;` 独自プロパティを排除し、実機ボード（Yocto/PetaLinux等）と完全同一のファイル共有を実現。
+        3. `config.gtr` において `/include/ "config.dts"` および `&label { registers = ...; };` 構文を採用し、Linux Device Tree の参照結合セマンティクスに完全準拠。
+        4. `scripts/vfpga/parser.py`、CLI（`bin/fbb`）、Webダッシュボード（`server.js`、React コンポーネント）、ビルドインフラ（`start_lab.sh`、`scenario_runner.sh`）を `config.gtr` 優先（`config.dts` 透過フォールバック）に対応。
+        5. F-BB コア（36 シナリオ）、`RetroCoreTracer-FBB`、`SpaceGuidance-FBB` の全エコシステムにおいて GTR 分離を一括適用。
+  - **Rationale:**
+        1. 初学者の教育的純度の保護: Linux デバイスツリーの標準規約に反する独自拡張（DTSへのレジスタ直書き等）を排除し、初学者が本物のLinuxカーネル開発に通用する正しい知識を身につけられるようにするため。
+        2. 実機への完全透過移行: `config.dts` を1行も修正することなくそのまま本番 Linux 環境へ投入・ビルド可能とするため。
