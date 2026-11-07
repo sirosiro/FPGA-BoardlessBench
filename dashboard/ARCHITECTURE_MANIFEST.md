@@ -212,6 +212,9 @@ DPPA（Dashboard Pane Plugin Architecture）における動的外部 ESM ペイ�
    - 各ペインが個別に `fetch('/api/file')` を呼ぶ HTTP ポーリングを完全に禁止・撤廃する。
 3. **最新テレメトリのインメモリ即時エコーバック**:
    - `server.js` は最新の `scenario:telemetry` ペイロードをメモリキャッシュし、新規クライアント接続時（`io.on('connection')`）や画面リロード時に即座にエコーバック配信する。
+4. **高頻度テレメトリとダッシュボード状態の Context レベル分離 (Telemetry Context Decoupling)**:
+   - 秒間 30〜50 回の頻度で到着する `scenario:telemetry` が `DashboardContext` 全体の再評価を引き起こし、関係のない `RegisterMonitor` や `RegisterTracer` に再レンダリングカスケードを伝播させるのを防止するため、`TelemetryProvider`（`TelemetryContext`）としてコンテキストを物理的に分離。
+   - `useScenarioTelemetry()` を購読するペインのみに再描画スコープを限定し、レジスタ表示やトレーサー側のメインスレッド負荷を最小化する。
 
 ## 3.10 ペインレジストリ・エイリアス対称性と対症療法禁止規約 (Pane Registry Alias Symmetry & Anti-Patch Protocol)
 

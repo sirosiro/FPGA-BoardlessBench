@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect } from 'react';
+import { useMemo, useState, useEffect, memo } from 'react';
 import {
   LineChart,
   Line,
@@ -205,12 +205,23 @@ const RegisterTracer = () => {
     return historyData.slice(start, end);
   }, [historyData, timebaseSpan, timeTravelState?.snapshot]);
 
-  // モードに応じたデータの正規化 (0-100%に変換)
+  // 波形プロット対象キー（選択グループ内 かつ 非非表示）
+  const plottedKeys = useMemo(() => {
+    return activeGroupItems.filter(({ key }) => {
+      if (hiddenKeys[key]) return false;
+      // 文字列バッファは初期状態で非表示扱い（未設定時）
+      if (hiddenKeys[key] === undefined && isStringBufferKey(key)) return false;
+      return true;
+    });
+  }, [activeGroupItems, hiddenKeys]);
+
+  // モードに応じたデータの正規化 (0-100%に変換) - 表示対象キー (plottedKeys) のみ計算して大幅に高速化
   const normalizedData = useMemo(() => {
-    if (!slicedHistoryData || slicedHistoryData.length === 0) return [];
+    if (!slicedHistoryData || slicedHistoryData.length === 0 || plottedKeys.length === 0) return [];
     
+    const targetKeys = plottedKeys.map(p => p.key);
     const stats = {};
-    registerKeys.forEach(key => {
+    targetKeys.forEach(key => {
       if (mode === 'unsigned') {
         const values = slicedHistoryData
           .map(d => (typeof d[key] === 'number' ? d[key] : (d[key] != null ? Number(d[key]) : NaN)))
@@ -238,9 +249,10 @@ const RegisterTracer = () => {
     });
 
     return slicedHistoryData.map(item => {
-      const normItem = { ...item };
-      registerKeys.forEach(key => {
+      const normItem = { index: item.index, time: item.time };
+      targetKeys.forEach(key => {
         const val = item[key];
+        normItem[key] = val; // Tooltip formatter requires raw value
         if (val == null) {
           normItem[`${key}_norm`] = null;
           return;
@@ -263,17 +275,7 @@ const RegisterTracer = () => {
       });
       return normItem;
     });
-  }, [slicedHistoryData, registerKeys, mode]);
-
-  // 波形プロット対象キー（選択グループ内 かつ 非非表示）
-  const plottedKeys = useMemo(() => {
-    return activeGroupItems.filter(({ key }) => {
-      if (hiddenKeys[key]) return false;
-      // 文字列バッファは初期状態で非表示扱い（未設定時）
-      if (hiddenKeys[key] === undefined && isStringBufferKey(key)) return false;
-      return true;
-    });
-  }, [activeGroupItems, hiddenKeys]);
+  }, [slicedHistoryData, plottedKeys, mode]);
 
   const getColor = (index) => TRACE_COLORS[index % TRACE_COLORS.length];
 
@@ -369,7 +371,7 @@ const RegisterTracer = () => {
                 }}
                 title="Return to LIVE real-time telemetry (Shortcut: ESC)"
               >
-                ● LIVEへ復帰 (ESC)
+                ● Return to LIVE (ESC)
               </button>
             </div>
           ) : (
@@ -782,4 +784,4 @@ const RegisterTracer = () => {
   );
 };
 
-export default RegisterTracer;
+export default memo(RegisterTracer);

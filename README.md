@@ -835,17 +835,17 @@ F-BBは、ハードウェア記述言語（RTL）から、低レイヤーのシ�
 
 ビルド成果物（`build`, `dist`）、外部パッケージ（`node_modules`）、および一時ファイルを除外したリポジトリ全体の静的ソースコードを `cloc` (Count Lines of Code v1.90) にて正確に計測した結果です。
 
-F-BB 独自のプロジェクトコードのみ（`--cleanall` 時）で**純プログラムステップ数（Pure Code） 50,960 行 (約 51.0k LOC)**、総行数 **64,317 行**（全 413 ファイル）で構成されています。また、シナリオ 10〜15 で動的ロードされる外部 RTOS カーネル（FreeRTOS, ThreadX, CMSIS_5）のソース群を含むフル状態では **約 104,700 行 (104.7k+ LOC)** / **全 186,200 行**（全 816 ファイル）の規模となります。
+F-BB 独自のプロジェクトコードのみ（`--cleanall` 時）で**純プログラムステップ数（Pure Code） 51,045 行 (約 51.0k LOC)**、総行数 **64,409 行**（全 413 ファイル）で構成されています。また、シナリオ 10〜15 で動的ロードされる外部 RTOS カーネル（FreeRTOS, ThreadX, CMSIS_5）のソース群を含むフル状態では **約 104,700 行 (104.7k+ LOC)** / **全 186,300 行**（全 816 ファイル）の規模となります。
 
 > **Project Scale Summary (`cloc` 計測値):**
-> - **Pure F-BB Code (F-BB独自コードのみ):** **50,960 Lines of Code** *(総行数 64,317行 / 413ファイル / コメント 4,186行 / 空行 9,171行)*
-> - **Full Environment (外部RTOSカーネル同梱時):** **約 104,700 Lines of Code** *(総行数 約 186,200行 / 816ファイル)*
-> - **主要言語構成:** *(Markdown/Doc: ~13.9k LOC, JSON: ~7.5k LOC, React/JSX/JS/CSS: ~9.6k LOC, C/C++: ~12.7k LOC (全シナリオFW/Shim/PPA), Python: ~3.8k LOC)*
+> - **Pure F-BB Code (F-BB独自コードのみ):** **51,045 Lines of Code** *(総行数 64,409行 / 413ファイル / コメント 4,189行 / 空行 9,175行)*
+> - **Full Environment (外部RTOSカーネル同梱時):** **約 104,700 Lines of Code** *(総行数 約 186,300行 / 816ファイル)*
+> - **主要言語構成:** *(Markdown/Doc: ~13.9k LOC, JSX: ~7.6k LOC, JSON: ~7.5k LOC, C/C++: ~12.7k LOC (全シナリオFW/Shim/PPA), Python: ~3.8k LOC)*
 
 | 言語分類 (cloc) | 拡張子 | ファイル数 | 空行 (Blank) | コメント (Comment) | 純コード (Pure LOC) | 総行数 (Total Lines) | 主な構成要素と役割 |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **Markdown** | `.md` | 133 | 5,061 | 0 | **13,859行** | **18,920行** | システム仕様書、ADR、初学者学習ロードマップ、全36シナリオREADME/ADVANCED仕様書、PPA 5.1 開発ガイド |
-| **JSX** | `.jsx` | 22 | 628 | 228 | **7,518行** | **8,374行** | Vite + React 19 UI（Dockview, DPPA `paneRegistry.jsx`, `PopoutWindow.jsx`, `DockHeaderActions.jsx`, Recharts, AMR 4特化型コックピットペイン, 各種診断ペイン） |
+| **Markdown** | `.md` | 133 | 5,061 | 0 | **13,862行** | **18,923行** | システム仕様書、ADR、初学者学習ロードマップ、全36シナリオREADME/ADVANCED仕様書、PPA 5.1 開発ガイド |
+| **JSX** | `.jsx` | 22 | 631 | 229 | **7,568行** | **8,428行** | Vite + React 19 UI（Dockview, DPPA `paneRegistry.jsx`, `PopoutWindow.jsx`, `DockHeaderActions.jsx`, Recharts, AMR 4特化型コックピットペイン, 各種診断ペイン） |
 | **JSON / Manifest** | `.json` | 35 | 0 | 0 | **7,510行** | **7,510行** | PPAペリフェラルマニフェスト (`fbb-plugin.json`)、ボード構造メタデータ、AMR ロボット定義 (`amr_manifest.json`)、全シナリオレイアウト契約 |
 | **C++** | `.cpp` | 25 | 978 | 986 | **6,146行** | **8,110行** | Verilator シミュレーションコア、PPA ペリフェラルプラグイン実装、Scenario 22 & P02 AMR ros2_control ハードウェア層・運動学エンジン |
 | **C** | `.c` | 35 | 835 | 700 | **5,391行** | **6,926行** | システムコール横取り Shim、エミュレータデーモン、カオス障害注入エンジン、全シナリオ FW |

@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import React, { useState, useMemo, memo } from 'react';
 import { 
   Cpu, 
   ChevronDown, 
@@ -36,19 +36,38 @@ function RegisterMonitor() {
   const expandedGroups = monitorState?.expandedGroups || {};
   const groupOrders = monitorState?.groupOrders || {};
 
-  // Group by deviceName
-  const groupedRegisters = useMemo(() => {
-    return registers.reduce((acc, reg) => {
+  // Pre-index registers by device and subgroup with cached ghost counts
+  const deviceData = useMemo(() => {
+    const map = {};
+    (registers || []).forEach(reg => {
       const dev = reg.deviceName || 'unknown';
-      if (!acc[dev]) {
-        acc[dev] = [];
+      if (!map[dev]) {
+        map[dev] = {
+          regs: [],
+          ghostRegs: [],
+          subGroups: {}
+        };
       }
-      acc[dev].push(reg);
-      return acc;
-    }, {});
+      map[dev].regs.push(reg);
+      if (reg.isUndeclared) {
+        map[dev].ghostRegs.push(reg);
+      }
+      const grp = reg.group || 'General';
+      if (!map[dev].subGroups[grp]) {
+        map[dev].subGroups[grp] = {
+          regs: [],
+          ghostCount: 0
+        };
+      }
+      map[dev].subGroups[grp].regs.push(reg);
+      if (reg.isUndeclared) {
+        map[dev].subGroups[grp].ghostCount++;
+      }
+    });
+    return map;
   }, [registers]);
 
-  const deviceNames = Object.keys(groupedRegisters);
+  const deviceNames = Object.keys(deviceData);
 
   const filterQuery = searchQuery.trim().toLowerCase();
 
@@ -95,11 +114,7 @@ function RegisterMonitor() {
     // Check if any group is currently collapsed
     let anyCollapsed = false;
     deviceNames.forEach(devName => {
-      const devRegs = groupedRegisters[devName] || [];
-      const subGroups = devRegs.reduce((acc, r) => {
-        acc[r.group || 'General'] = true;
-        return acc;
-      }, {});
+      const subGroups = deviceData[devName]?.subGroups || {};
       Object.keys(subGroups).forEach(grp => {
         if (expandedGroups[`${devName}_${grp}`] === false) {
           anyCollapsed = true;
@@ -110,11 +125,7 @@ function RegisterMonitor() {
     const targetState = anyCollapsed;
     const newExpanded = {};
     deviceNames.forEach(devName => {
-      const devRegs = groupedRegisters[devName] || [];
-      const subGroups = devRegs.reduce((acc, r) => {
-        acc[r.group || 'General'] = true;
-        return acc;
-      }, {});
+      const subGroups = deviceData[devName]?.subGroups || {};
       Object.keys(subGroups).forEach(grp => {
         newExpanded[`${devName}_${grp}`] = targetState;
       });
@@ -458,27 +469,23 @@ function RegisterMonitor() {
           </div>
         ) : (
           deviceNames.map((devName) => {
-            const devRegs = groupedRegisters[devName];
-            const ghostRegs = devRegs.filter(r => r.isUndeclared);
+            const devInfo = deviceData[devName];
+            const devRegs = devInfo?.regs || [];
+            const ghostRegs = devInfo?.ghostRegs || [];
             const expanded = isExpanded(devName);
-
-            // Group by register group property
-            const subGroups = devRegs.reduce((acc, r) => {
-              const grp = r.group || 'General';
-              if (!acc[grp]) acc[grp] = [];
-              acc[grp].push(r);
-              return acc;
-            }, {});
+            const subGroups = devInfo?.subGroups || {};
             const subGroupNames = Object.keys(subGroups);
             const hasMultipleGroups = subGroupNames.length > 1;
 
             const orderedSubGroupNames = getEffectiveGroupOrder(devName, subGroupNames);
 
             // When searching, find which groups have matching registers
-            const matchingSubGroups = orderedSubGroupNames.filter((grpName) => {
-              const grpRegs = subGroups[grpName];
-              return grpRegs.some(filterRegister);
-            });
+            const matchingSubGroups = filterQuery
+              ? orderedSubGroupNames.filter((grpName) => {
+                  const grpRegs = subGroups[grpName]?.regs || [];
+                  return grpRegs.some(filterRegister);
+                })
+              : orderedSubGroupNames;
 
             if (filterQuery && matchingSubGroups.length === 0) {
               return (
@@ -488,7 +495,7 @@ function RegisterMonitor() {
               );
             }
 
-            const activeGroups = filterQuery ? matchingSubGroups : orderedSubGroupNames;
+            const activeGroups = matchingSubGroups;
 
             return (
               <div key={devName} style={{ 
@@ -562,21 +569,28 @@ function RegisterMonitor() {
                       }}>
                         {activeGroups.map((grpName) => {
                           const groupKey = `${devName}_${grpName}`;
-                          const grpRegs = subGroups[grpName];
-                          const filteredGrpRegs = filterQuery ? grpRegs.filter(filterRegister) : grpRegs;
-                          const grpGhostRegs = grpRegs.filter(r => r.isUndeclared);
+                          const grpData = subGroups[grpName];
+                          const grpRegs = grpData?.regs || [];
                           const grpExpanded = isGroupExpanded(groupKey);
+
+                          // If subgroup is collapsed, skip register filtering and trace check loops completely
+                          const filteredGrpRegs = grpExpanded
+                            ? (filterQuery ? grpRegs.filter(filterRegister) : grpRegs)
+                            : [];
+                          const grpGhostCount = grpData?.ghostCount || 0;
                           const isDragging = draggedGroupKey === grpName;
                           const isDragOver = dragOverGroupKey === grpName;
 
-                          const allTraced = grpRegs.length > 0 && grpRegs.every(r => !hiddenTraceKeys[`${r.deviceName}_${r.name}`]);
+                          // Only compute allTraced when expanded to eliminate unnecessary checks on collapsed groups
+                          const allTraced = grpExpanded && grpRegs.length > 0 && grpRegs.every(r => !hiddenTraceKeys[`${r.deviceName}_${r.name}`]);
 
                           const toggleGroupTraces = (e) => {
                             e.stopPropagation();
                             if (setTraceKeysVisibility) {
+                              const isCurrentlyAllTraced = grpRegs.length > 0 && grpRegs.every(r => !hiddenTraceKeys[`${r.deviceName}_${r.name}`]);
                               const updates = {};
                               grpRegs.forEach(r => {
-                                updates[`${r.deviceName}_${r.name}`] = allTraced;
+                                updates[`${r.deviceName}_${r.name}`] = isCurrentlyAllTraced;
                               });
                               setTraceKeysVisibility(updates);
                             }
@@ -596,7 +610,7 @@ function RegisterMonitor() {
                                 flexDirection: 'column',
                                 width: '100%',
                                 marginBottom: '8px',
-                                border: grpGhostRegs.length > 0 
+                                border: grpGhostCount > 0 
                                   ? '1px solid #da3633' 
                                   : (isDragOver ? '2px solid #58a6ff' : '1px solid #21262d'),
                                 borderRadius: '5px',
@@ -616,7 +630,7 @@ function RegisterMonitor() {
                                   alignItems: 'center',
                                   justifyContent: 'space-between',
                                   padding: '5px 8px',
-                                  background: grpGhostRegs.length > 0 ? 'rgba(218, 54, 51, 0.16)' : '#1c2128',
+                                  background: grpGhostCount > 0 ? 'rgba(218, 54, 51, 0.16)' : '#1c2128',
                                   cursor: 'pointer',
                                   userSelect: 'none',
                                   borderBottom: grpExpanded ? '1px solid #21262d' : 'none'
@@ -641,16 +655,16 @@ function RegisterMonitor() {
                                   <span style={{ 
                                     fontSize: '0.72rem', 
                                     fontWeight: 600, 
-                                    color: grpGhostRegs.length > 0 ? '#ff7b72' : '#c9d1d9',
+                                    color: grpGhostCount > 0 ? '#ff7b72' : '#c9d1d9',
                                     whiteSpace: 'nowrap',
                                     overflow: 'hidden',
                                     textOverflow: 'ellipsis'
                                   }} title={grpName}>
                                     {grpName}
                                   </span>
-                                  {grpGhostRegs.length > 0 && (
+                                  {grpGhostCount > 0 && (
                                     <span style={{ fontSize: '0.6rem', color: '#ff7b72', flexShrink: 0 }}>
-                                      ⚠️ {grpGhostRegs.length}
+                                      ⚠️ {grpGhostCount}
                                     </span>
                                   )}
                                 </div>
@@ -703,4 +717,4 @@ function RegisterMonitor() {
   );
 }
 
-export default RegisterMonitor;
+export default memo(RegisterMonitor);

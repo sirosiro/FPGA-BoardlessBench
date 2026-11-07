@@ -2,16 +2,50 @@ import { createContext, useContext, useState, useEffect, useMemo } from 'react';
 import { io } from 'socket.io-client';
 
 const DashboardContext = createContext(null);
+const TelemetryContext = createContext(null);
 
 export const socket = io('http://' + window.location.hostname + ':8080', {
   transports: ['websocket']
 });
 
+export const TelemetryProvider = ({ children, isTimeTravelActive, timeTravelSnapshot }) => {
+  const [scenarioTelemetry, setScenarioTelemetry] = useState(null);
+
+  useEffect(() => {
+    const handleTelemetry = (data) => setScenarioTelemetry(data);
+    socket.on('scenario:telemetry', handleTelemetry);
+    return () => {
+      socket.off('scenario:telemetry', handleTelemetry);
+    };
+  }, []);
+
+  const effectiveTelemetry = useMemo(() => {
+    if (isTimeTravelActive && timeTravelSnapshot?.telemetry) {
+      return timeTravelSnapshot.telemetry;
+    }
+    return scenarioTelemetry;
+  }, [isTimeTravelActive, timeTravelSnapshot, scenarioTelemetry]);
+
+  // Dispatch custom event for external panes (e.g., 3D Orbit Viewer) only when time-travel is active
+  useEffect(() => {
+    if (typeof window !== 'undefined' && effectiveTelemetry && isTimeTravelActive) {
+      window.dispatchEvent(new CustomEvent('fbb:telemetry:effective', { 
+        detail: { ...effectiveTelemetry, isHistorical: true } 
+      }));
+    }
+  }, [effectiveTelemetry, isTimeTravelActive]);
+
+  return (
+    <TelemetryContext.Provider value={effectiveTelemetry}>
+      {children}
+    </TelemetryContext.Provider>
+  );
+};
+
 export const DashboardProvider = ({ children }) => {
   const [registers, setRegisters] = useState([]);
   const [connected, setConnected] = useState(false);
   const [manifest, setManifest] = useState(null);
-  const [scenarioTelemetry, setScenarioTelemetry] = useState(null);
   const [uartLogs, setUartLogs] = useState({});
   const [uartSettings, setUartSettings] = useState({});
   const [traceHistory, setTraceHistory] = useState([]);
@@ -40,7 +74,6 @@ export const DashboardProvider = ({ children }) => {
   useEffect(() => {
     socket.on('connect', () => setConnected(true));
     socket.on('disconnect', () => setConnected(false));
-    socket.on('scenario:telemetry', (data) => setScenarioTelemetry(data));
     socket.on('registers', (data) => {
       setRegisters(data);
     });
@@ -74,7 +107,6 @@ export const DashboardProvider = ({ children }) => {
     return () => {
       socket.off('connect');
       socket.off('disconnect');
-      socket.off('scenario:telemetry');
       socket.off('registers');
       socket.off('uart-data');
       socket.off('uart-init');
@@ -183,20 +215,6 @@ export const DashboardProvider = ({ children }) => {
     });
   }, [registers, isTimeTravelActive, timeTravelState.snapshot]);
 
-  const effectiveTelemetry = useMemo(() => {
-    if (isTimeTravelActive && timeTravelState.snapshot?.telemetry) {
-      return timeTravelState.snapshot.telemetry;
-    }
-    return scenarioTelemetry;
-  }, [isTimeTravelActive, timeTravelState.snapshot, scenarioTelemetry]);
-
-  // Dispatch custom event for external panes (e.g., 3D Orbit Viewer)
-  useEffect(() => {
-    if (typeof window !== 'undefined' && effectiveTelemetry) {
-      window.dispatchEvent(new CustomEvent('fbb:telemetry:effective', { detail: effectiveTelemetry }));
-    }
-  }, [effectiveTelemetry]);
-
   const handleSpiAdcInject = (channel, value) => {
     socket.emit('spi-adc-inject', { channel, value });
   };
@@ -292,48 +310,69 @@ export const DashboardProvider = ({ children }) => {
 
   const gpioDevices = manifest?.devices?.filter(isGpioDev) || [];
 
-  return (
-    <DashboardContext.Provider
-      value={{
-        socket,
-        registers,
-        effectiveRegisters,
-        connected,
-        manifest,
-        scenarioTelemetry,
-        effectiveTelemetry,
-        uartLogs,
-        uartSettings,
-        traceHistory,
-        timeTravelState,
-        isTimeTravelActive,
-        scrubTo,
-        returnToLive,
-        gpioDevices,
-        sendUart,
-        handleGpioToggle,
-        handleSpiAdcInject,
-        handleClearTrace,
-        hdmiFrame,
-        displayFrame,
-        display7SegFrame,
-        peripheralFrames,
-        hiddenTraceKeys,
-        setHiddenTraceKeys,
-        toggleTraceKey,
-        setTraceKeysVisibility,
-        tracerState,
-        setTracerState,
-        updateTracerState,
-        monitorState,
-        setMonitorState,
-        updateMonitorState,
-        memoryError,
-        setMemoryError,
-      }}
+  const contextValue = useMemo(() => ({
+    socket,
+    registers,
+    effectiveRegisters,
+    connected,
+    manifest,
+    uartLogs,
+    uartSettings,
+    traceHistory,
+    timeTravelState,
+    isTimeTravelActive,
+    scrubTo,
+    returnToLive,
+    gpioDevices,
+    sendUart,
+    handleGpioToggle,
+    handleSpiAdcInject,
+    handleClearTrace,
+    hdmiFrame,
+    displayFrame,
+    display7SegFrame,
+    peripheralFrames,
+    hiddenTraceKeys,
+    setHiddenTraceKeys,
+    toggleTraceKey,
+    setTraceKeysVisibility,
+    tracerState,
+    setTracerState,
+    updateTracerState,
+    monitorState,
+    setMonitorState,
+    updateMonitorState,
+    memoryError,
+    setMemoryError,
+  }), [
+    registers,
+    effectiveRegisters,
+    connected,
+    manifest,
+    uartLogs,
+    uartSettings,
+    traceHistory,
+    timeTravelState,
+    isTimeTravelActive,
+    gpioDevices,
+    hdmiFrame,
+    displayFrame,
+    display7SegFrame,
+    peripheralFrames,
+    hiddenTraceKeys,
+    tracerState,
+    monitorState,
+    memoryError
+  ]);
 
-    >
-      {children}
+  return (
+    <DashboardContext.Provider value={contextValue}>
+      <TelemetryProvider
+        isTimeTravelActive={isTimeTravelActive}
+        timeTravelSnapshot={timeTravelState.snapshot}
+      >
+        {children}
+      </TelemetryProvider>
     </DashboardContext.Provider>
   );
 };
@@ -347,6 +386,5 @@ export const useDashboard = () => {
 };
 
 export const useScenarioTelemetry = () => {
-  const { effectiveTelemetry } = useDashboard();
-  return effectiveTelemetry;
+  return useContext(TelemetryContext);
 };
