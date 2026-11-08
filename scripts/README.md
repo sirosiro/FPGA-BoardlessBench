@@ -80,16 +80,43 @@ graph TD
     end
 ```
 
-## 2. ユニットテスト
+## 2. v2gtr.py / fbb import (Hardware Importer & Reverse Engineering)
 
-生成エンジンの信頼性を担保するため、Python コード自体のユニットテストを用意しています。
+Verilog HDL (`.v`) ソースコードを静的解析し、Linux Device Tree (`config.dts`) および仮想ハードウェア契約 (`config.gtr`) を二層分離形式で一発自動生成するツールです。
 
+### 特徴
+- **交差解析によるアクセス権限自動判定**: 書込み回路（`w_en`, `w_data`）と読出し回路（`r_data`）の双方に現れるレジスタを `RW`、読出し側のみを `RO`、書込み側のみを `WO` と自動識別。
+- **ベースアドレスとオフセットのクラスタリング**: 4KB 境界でアドレス空間を自動クラスタリングし、複数ペリフェラルが存在する場合も個別の Device ノードとして分離。
+- **統合 CLI 連携**: `fbb import <file.v>` でワンコマンド実行可能（`v2gtr.py` スタンドアロン実行にも対応）。
+
+### 使用方法
 ```bash
-# ユニットテストの実行
-python3 scripts/test_gen_vfpga.py
+# レジスタ空間を解析しテーブル表示
+fbb import tests/scenarios/01_standard_uio/vfpga_top.v
+
+# 指定ディレクトリへ config.dts と config.gtr を一括生成
+fbb import my_rtl.v -o tests/scenarios/my_scenario/
+
+# 生成された DTS/GTR を標準出力へダンプ
+fbb import my_rtl.v --stdout
 ```
 
-## 3. uart_bridge.py (The Bridge)
+## 3. ユニットテスト
+
+生成エンジンおよびインポーターの信頼性を担保するため、Python コード自体のユニットテストを用意しています。
+
+```bash
+# ジェネレータ層のユニットテスト
+python3 scripts/test_gen_vfpga.py
+
+# DTS パーサー層のユニットテスト
+python3 -m unittest scripts/tests/test_dts_parser.py
+
+# Verilog インポーター・GTR エミッター層のユニットテスト
+python3 -m unittest scripts/tests/test_v2gtr.py
+```
+
+## 4. uart_bridge.py (The Bridge)
 
 UART（シリアル通信）のエミュレーションを担当するスタンドアロン・スクリプトです。
 

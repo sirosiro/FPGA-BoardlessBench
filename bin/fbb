@@ -610,6 +610,86 @@ def command_inspect(args):
     print("=" * 95)
 
 
+def command_import(args):
+    """
+    @intent:responsibility
+      外部ハードウェア仕様（Verilog HDL、将来の SVD / SystemRDL 等）から
+      Linux Device Tree (config.dts) および仮想契約 (config.gtr) を自動生成する。
+    """
+    from vfpga.importer_verilog import VerilogImporter
+    from vfpga.emitter_gtr import GtrEmitter
+
+    input_path = os.path.abspath(args.input_file)
+    if not os.path.exists(input_path):
+        print(f"❌ Error: Input file not found: {input_path}", file=sys.stderr)
+        sys.exit(1)
+
+    try:
+        base_addr_val = int(args.base_addr, 0)
+    except ValueError:
+        print(f"❌ Error: Invalid base address: {args.base_addr}", file=sys.stderr)
+        sys.exit(1)
+
+    ext = os.path.splitext(input_path)[1].lower()
+
+    if ext in [".v", ".sv", ".vh"]:
+        importer = VerilogImporter.from_file(
+            input_path,
+            default_base_addr=base_addr_val,
+            device_name_override=args.device_name
+        )
+        devices = importer.extract_devices()
+    elif ext in [".svd", ".xml"]:
+        print("❌ Error: CMSIS-SVD (.svd) importer will be supported in an upcoming update.", file=sys.stderr)
+        sys.exit(1)
+    elif ext in [".rdl"]:
+        print("❌ Error: SystemRDL (.rdl) importer will be supported in an upcoming update.", file=sys.stderr)
+        sys.exit(1)
+    else:
+        # Fallback to Verilog attempt
+        importer = VerilogImporter.from_file(
+            input_path,
+            default_base_addr=base_addr_val,
+            device_name_override=args.device_name
+        )
+        devices = importer.extract_devices()
+
+    if not devices:
+        print(f"⚠️  Warning: No memory-mapped register decode found in {input_path}", file=sys.stderr)
+        sys.exit(0)
+
+    total_regs = sum(len(d.registers) for d in devices)
+    print(f"✨ Discovered {len(devices)} device(s) and {total_regs} register(s) from {os.path.basename(input_path)}")
+
+    if args.table or (not args.output_dir and not args.stdout):
+        for dev in devices:
+            print(f"\n📦 Device [{dev.name}] @ {dev.base_reg}")
+            print(f"   {'OFFSET':<10} {'REGISTER NAME':<24} {'DIRECTION':<10}")
+            print(f"   {'-'*10} {'-'*24} {'-'*10}")
+            for reg in dev.registers:
+                print(f"   {reg.offset:<10} {reg.name:<24} {reg.direction:<10}")
+
+    # Output generation
+    if args.output_dir:
+        target_dir = args.output_dir
+        if not os.path.isabs(target_dir) and not os.path.exists(target_dir) and "/" not in target_dir and "\\" not in target_dir:
+            cand = os.path.join(PROJECT_ROOT, "tests/scenarios", target_dir)
+            target_dir = cand
+
+        dts_p, gtr_p = GtrEmitter.write_scenario_pair(devices, target_dir)
+        print(f"\n💾 Successfully generated:")
+        print(f"   - DTS: {dts_p}")
+        print(f"   - GTR: {gtr_p}")
+
+    if args.stdout:
+        print("\n" + "=" * 60)
+        print("--- config.dts ---")
+        print(GtrEmitter.emit_dts(devices))
+        print("--- config.gtr ---")
+        print(GtrEmitter.emit_gtr(devices))
+        print("=" * 60)
+
+
 DEBUG_SERVER_PID_FILE = "/tmp/fbb_debug_server.json"
 
 
@@ -2143,6 +2223,27 @@ def main():
     parser_debug.add_argument("-c", "--clean", action="store_true", help="Clean scenario build artifacts before starting")
     parser_debug.add_argument("--target-bin", type=str, default=None, help="Path to custom executable binary to debug")
 
+    # 8. import / convert
+    import_epilog = """Examples:
+  fbb import my_rtl.v                                 Parse Verilog and inspect registers table
+  fbb import my_rtl.v -o tests/scenarios/my_scenario  Generate config.dts & config.gtr in scenario directory
+  fbb import my_rtl.v --base-addr 0x43C00000          Override base address (default: 0x40000000)
+  fbb import my_rtl.v --stdout                        Dump generated DTS/GTR directly to terminal
+"""
+    parser_import = subparsers.add_parser(
+        "import",
+        aliases=["convert"],
+        help="Generate config.dts and config.gtr from hardware description (Verilog .v, etc.)",
+        epilog=import_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
+    parser_import.add_argument("input_file", help="Path to input hardware specification file (.v, .sv, etc.)")
+    parser_import.add_argument("-o", "--output-dir", default=None, help="Directory to write config.dts and config.gtr")
+    parser_import.add_argument("--base-addr", default="0x40000000", help="Default base address (default: 0x40000000)")
+    parser_import.add_argument("--device-name", default=None, help="Override device name / node label (e.g., vfpga_reg)")
+    parser_import.add_argument("--stdout", action="store_true", help="Print generated DTS and GTR to stdout")
+    parser_import.add_argument("--table", action="store_true", help="Display discovered registers summary table")
+
     args = parser.parse_args()
     ensure_workspace_plugins_link()
 
@@ -2156,6 +2257,8 @@ def main():
         command_clean(args)
     elif args.command == "inspect":
         command_inspect(args)
+    elif args.command in ("import", "convert"):
+        command_import(args)
     elif args.command == "debug":
         command_debug(args)
     elif args.command == "plugin":

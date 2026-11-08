@@ -113,7 +113,17 @@ GTR の採用は、SystemRDL や IP-XACT、ARM CMSIS-SVD などの既存規格�
 
 むしろ、既存の大規模な設計資産を活かしながら PC での超高速プロトタイピングを実現するため、**「既存の業界標準規格から `config.dts` および `config.gtr` を自動生成する軽量な変換スクリプト（トランスパイラ）」** を連携させるアーキテクチャを想定・計画しています。
 
-### (1) ARM CMSIS-SVD からの自動生成 (`svd2gtr`)
+### (1) Verilog HDL からの自動逆生成 (`fbb import <file.v>`) 【実装済み】
+既存の Verilog 回路（`vfpga_top.v` や Vivado AXI-Lite IP 等）の `case (addr)` によるアドレスデコード部、読出しマルチプレクサ、および書込みロジックを静的解析し、Upstream 準拠の `config.dts` と仮想契約 `config.gtr` を一括自動生成します：
+* アドレスクラスタリングによりベースアドレスとオフセットを自動計算。
+* 書込み系と読出し系の交差解析により、アクセス権限（`RW`, `RO`, `WO`）を自動判定。
+
+```bash
+# 既存の Verilog 回路から本番 DTS と仮想 GTR を一発自動生成
+fbb import my_ip.v -o tests/scenarios/my_scenario/
+```
+
+### (2) ARM CMSIS-SVD からの自動生成 (`svd2gtr`) 【将来拡張】
 マイコン（STM32、RP2040、ESP32等）や Cortex-M/A 搭載ヘテロジニアス SoC のレジスタ記述として業界デファクトとなっている ARM CMSIS-SVD (`.svd` / XML形式) は、GTR の二層構造と 1:1 に直結します：
 
 * **SVD の `<peripheral>` 情報** ➔ **`config.dts` の標準ノード**
@@ -123,18 +133,18 @@ GTR の採用は、SystemRDL や IP-XACT、ARM CMSIS-SVD などの既存規格�
 
 ```bash
 # 既存の SVD ファイルから本番 DTS と仮想 GTR を一括生成（構想）
-fbb import --svd stm32f4_rcc.svd -o tests/scenarios/my_mcu/
+fbb import stm32f4_rcc.svd -o tests/scenarios/my_mcu/
 ```
 これにより、マイコンや SoC ベンダーが公式配布している膨大な SVD 定義ファイルを、手入力の手間なく瞬時に F-BB の先行開発環境へインポートすることが可能になります。
 
-### (2) SystemRDL / IP-XACT からの自動生成 (`rdl2gtr`)
+### (3) SystemRDL / IP-XACT からの自動生成 (`rdl2gtr`) 【将来拡張】
 ASIC や大規模 FPGA の設計現場において、ハードウェア設計チームが SystemRDL や IP-XACT をレジスタ設計のマスター（SSOT）として運用している場合でも、GTR との連携は極めてシンプルです。
 
 * 上流の CI/CD パイプラインまたは開発用ホスト側で `rdl2gtr`（`systemrdl-compiler` ベースのエクスポートプラグイン）を実行。
 * 生成された `config.dts` と `config.gtr` をリポジトリにコミット、あるいは自動展開。
 * ファームウェア開発者は、重厚な EDA ツールチェーンを手元に一切導入することなく、軽量な F-BB 上で数秒でシミュレーションを起動。
 
-### (3) 「上流の重厚さ」と「下流の軽快さ」を両立するラストワンマイル
+### (4) 「上流の重厚さ」と「下流の軽快さ」を両立するラストワンマイル
 もし F-BB が SystemRDL のコンパイラや IP-XACT パーサーをランタイムコンテナ内に必須依存として組み込んでしまうと、Docker イメージは数倍に肥大化し、「`git clone` してすぐに動く」という F-BB の最大の美点が損なわれます。
 
 変換スクリプトを **「上流（EDA/Chip設計）から下流（FW先行開発）への片道アダプタ」** として位置づけることで：

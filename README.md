@@ -330,6 +330,12 @@ fbb debug 01_standard_uio               # Debugビルド＆シミュレータ＆
 fbb debug 01b --server-only             # IDEデバッグ用シミュレーションサーバーのみ起動
 fbb debug --stop-server                 # バックグラウンドデバッグサーバーの停止
 fbb debug --status                      # 起動中のデバッグサーバー状態・PID表示
+
+# 14. 外部ハードウェア仕様（Verilog等）から config.dts / config.gtr を一発自動逆生成
+fbb import my_rtl.v                                 # レジスタ空間を解析しテーブル表示
+fbb import my_rtl.v -o tests/scenarios/my_scenario  # シナリオフォルダに config.dts と config.gtr を一括生成
+fbb import my_rtl.v --base-addr 0x43C00000          # ベースアドレスを指定して逆生成
+fbb import my_rtl.v --stdout                        # 生成された DTS/GTR を標準出力へダンプ
 ```
 
 ---
