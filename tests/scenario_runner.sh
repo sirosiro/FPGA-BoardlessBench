@@ -60,6 +60,22 @@ while [[ $# -gt 0 ]]; do
             export FBB_CHAOS_TARGETS="${1#--chaos-targets=}"
             shift
             ;;
+        --stall-min=*)
+            export FBB_CHAOS_STALL_MIN="${1#--stall-min=}"
+            shift
+            ;;
+        --stall-min)
+            export FBB_CHAOS_STALL_MIN="$2"
+            shift 2
+            ;;
+        --stall-max=*)
+            export FBB_CHAOS_STALL_MAX="${1#--stall-max=}"
+            shift
+            ;;
+        --stall-max)
+            export FBB_CHAOS_STALL_MAX="$2"
+            shift 2
+            ;;
         *) 
             if [ -d "$1" ]; then 
                 SCENARIO_PATH="$1"

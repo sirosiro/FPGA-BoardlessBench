@@ -14,6 +14,10 @@ _fbb_completions() {
 
     case "${COMP_WORDS[1]}" in
         test|inspect)
+            if [[ "$cur" == -* ]]; then
+                COMPREPLY=( $(compgen -W "-b --build-only -s --skip-build -c --clean --chaos --seed --chaos-rate --chaos-targets --stall-min --stall-max" -- ${cur}) )
+                return 0
+            fi
             local scenarios_dir="${FBB_ROOT:-/workspaces/FPGA-BoardlessBench}/tests/scenarios"
             if [ ! -d "$scenarios_dir" ] && [ -d "./tests/scenarios" ]; then
                 scenarios_dir="./tests/scenarios"

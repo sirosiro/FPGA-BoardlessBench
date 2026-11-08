@@ -111,7 +111,9 @@ let currentChaosConfig = {
     mode: 'random', // 'off', 'random', 'fixed'
     seed: '',
     rate: 0.20,
-    targets: { i2c: true, spi: true, uio: true, can: true, cdma: true }
+    stall_min: 8,
+    stall_max: 32,
+    targets: { i2c: true, spi: true, uio: true, can: true, cdma: true, axi_stall: true }
 };
 
 let lastChaosLogSize = 0;
@@ -141,7 +143,7 @@ function checkChaosLogEvents() {
         } else {
             lastChaosLogSize = 0;
         }
-    } catch (e) {}
+    } catch (e) { }
 }
 setInterval(checkChaosLogEvents, 200);
 
@@ -171,10 +173,10 @@ function refreshAcoreStatus() {
                     cachedAcorePid = pid;
                     return;
                 } catch (e) {
-                    try { fs.unlinkSync('/tmp/fbb_app.pid'); } catch (_) {}
+                    try { fs.unlinkSync('/tmp/fbb_app.pid'); } catch (_) { }
                 }
             }
-        } catch (e) {}
+        } catch (e) { }
     }
     const { exec } = require('child_process');
     exec('pgrep -x "test_bin"', { encoding: 'utf8' }, (err, stdout) => {
@@ -224,7 +226,7 @@ function getDiscoveredCores() {
                 }
             }
         }
-    } catch (e) {}
+    } catch (e) { }
     return cores;
 }
 
@@ -234,7 +236,7 @@ function stopCores(targetCores) {
             try {
                 process.kill(-activeScenarioProcess.pid, 'SIGKILL');
             } catch (e) {
-                try { activeScenarioProcess.kill('SIGKILL'); } catch (e2) {}
+                try { activeScenarioProcess.kill('SIGKILL'); } catch (e2) { }
             }
             activeScenarioProcess = null;
         }
@@ -242,13 +244,13 @@ function stopCores(targetCores) {
             try {
                 const pid = parseInt(fs.readFileSync('/tmp/fbb_app.pid', 'utf8').trim(), 10);
                 if (pid) {
-                    try { process.kill(-pid, 'SIGKILL'); } catch (e) {}
-                    try { process.kill(pid, 'SIGKILL'); } catch (e) {}
+                    try { process.kill(-pid, 'SIGKILL'); } catch (e) { }
+                    try { process.kill(pid, 'SIGKILL'); } catch (e) { }
                 }
-            } catch (e) {}
-            try { fs.unlinkSync('/tmp/fbb_app.pid'); } catch (e) {}
+            } catch (e) { }
+            try { fs.unlinkSync('/tmp/fbb_app.pid'); } catch (e) { }
         }
-        try { execSync('pkill -9 -x test_bin', { stdio: 'ignore' }); } catch (e) {}
+        try { execSync('pkill -9 -x test_bin', { stdio: 'ignore' }); } catch (e) { }
     }
 
     const remoteprocBase = '/tmp/fbb/sys/class/remoteproc';
@@ -261,15 +263,15 @@ function stopCores(targetCores) {
                     if (fs.existsSync(pidFile)) {
                         const pid = fs.readFileSync(pidFile, 'utf8').trim();
                         if (pid) {
-                            try { process.kill(parseInt(pid, 10), 'SIGKILL'); } catch (e) {}
+                            try { process.kill(parseInt(pid, 10), 'SIGKILL'); } catch (e) { }
                         }
                     }
                 }
             }
-        } catch (e) {}
+        } catch (e) { }
     }
     if (!targetCores || Object.keys(targetCores).some(k => k.startsWith('remoteproc'))) {
-        try { execSync('pkill -9 -f "mcore_.*\\.elf"', { stdio: 'ignore' }); } catch (e) {}
+        try { execSync('pkill -9 -f "mcore_.*\\.elf"', { stdio: 'ignore' }); } catch (e) { }
     }
 }
 
@@ -299,11 +301,19 @@ function startScenario(options = {}) {
         if (activeTargets.length > 0) {
             env.FBB_CHAOS_TARGETS = activeTargets.join(',');
         }
+        if (chaos.stall_min !== undefined) {
+            env.FBB_CHAOS_STALL_MIN = chaos.stall_min.toString();
+        }
+        if (chaos.stall_max !== undefined) {
+            env.FBB_CHAOS_STALL_MAX = chaos.stall_max.toString();
+        }
     } else {
         delete env.FBB_CHAOS_MODE;
         delete env.FBB_CHAOS_SEED;
         delete env.FBB_CHAOS_RATE;
         delete env.FBB_CHAOS_TARGETS;
+        delete env.FBB_CHAOS_STALL_MIN;
+        delete env.FBB_CHAOS_STALL_MAX;
     }
 
     env.FBB_ACTIVE = '1';
@@ -324,7 +334,7 @@ function startScenario(options = {}) {
             detached: true,
             stdio: ['ignore', 'pipe', 'pipe']
         });
-        try { fs.writeFileSync('/tmp/fbb_app.pid', activeScenarioProcess.pid.toString()); } catch (e) {}
+        try { fs.writeFileSync('/tmp/fbb_app.pid', activeScenarioProcess.pid.toString()); } catch (e) { }
 
         io.emit('scenario:log', { type: 'info', text: `\n[Lifecycle] Started scenario PID ${activeScenarioProcess.pid} (Chaos: ${chaos.enabled ? chaos.mode : 'OFF'})\n` });
 
@@ -346,7 +356,7 @@ function startScenario(options = {}) {
         activeScenarioProcess.on('close', (code) => {
             io.emit('scenario:log', { type: 'info', text: `[Scenario Process Exited with code ${code}]\n` });
             activeScenarioProcess = null;
-            try { fs.unlinkSync('/tmp/fbb_app.pid'); } catch (e) {}
+            try { fs.unlinkSync('/tmp/fbb_app.pid'); } catch (e) { }
             broadcastScenarioStatus();
         });
 
@@ -478,7 +488,7 @@ function injectGpioPin(deviceName, bitIndex, value, dataRegName = 'DATA') {
         if (newVal !== currentVal) {
             regBuf.writeUInt32LE(newVal, 0);
             fs.writeSync(fd, regBuf, 0, 4, shmOffset);
-            try { fs.fdatasyncSync(fd); } catch (e) {}
+            try { fs.fdatasyncSync(fd); } catch (e) { }
             console.log(`[Backend] Injected GPIO: ${dev.name}.${targetReg.name} (offset 0x${shmOffset.toString(16)}) bit ${bit}=${value ? 1 : 0} (0x${currentVal.toString(16)} -> 0x${newVal.toString(16)})`);
         }
 
@@ -492,7 +502,7 @@ function injectGpioPin(deviceName, bitIndex, value, dataRegName = 'DATA') {
         return false;
     } finally {
         if (fd !== undefined) {
-            try { fs.closeSync(fd); } catch (e) {}
+            try { fs.closeSync(fd); } catch (e) { }
         }
     }
 }
@@ -516,15 +526,15 @@ function updateShm() {
 // レジスタ情報のブロードキャスト
 function broadcastRegisters(force = false) {
     if (!shmBuffer || !manifest.devices) return;
-    
+
     const uioGpioDevs = manifest.devices.filter(d => d.type === 'uio' || d.type === 'gpio' || d.type === 'dma');
     if (uioGpioDevs.length === 0) {
         return;
     }
     const shmBaseAddr = Math.min(...uioGpioDevs.map(d => d.base_addr || 0));
-    
+
     const regData = [];
-    const currentState = {}; 
+    const currentState = {};
 
     uioGpioDevs.forEach(dev => {
         const devBaseAddr = dev.base_addr || 0;
@@ -539,7 +549,7 @@ function broadcastRegisters(force = false) {
             if (shmOffset >= 0 && shmOffset + 4 <= shmBuffer.length) {
                 const value = shmBuffer.readUInt32LE(shmOffset);
                 const regKey = `${dev.name}_${reg.name}`;
-                
+
                 regData.push({
                     name: reg.name,
                     logical_name: reg.logical_name || reg.name,
@@ -550,7 +560,7 @@ function broadcastRegisters(force = false) {
                     deviceName: dev.name,
                     group: reg.group || 'General'
                 });
-                
+
                 currentState[regKey] = value;
             }
         });
@@ -634,8 +644,8 @@ function broadcastRegisters(force = false) {
 
 const net = require('net');
 const UART_MAP_PATH = path.join(__dirname, 'data/uart_map.json');
-let uartConnections = {}; 
-let uartLogs = {}; 
+let uartConnections = {};
+let uartLogs = {};
 
 let externalUartServers = {};
 let externalUartClients = {};
@@ -648,12 +658,12 @@ const UART_MACROS = [
 function cleanupExternalUart(name) {
     if (externalUartClients[name]) {
         externalUartClients[name].forEach(socket => {
-            try { socket.destroy(); } catch (e) {}
+            try { socket.destroy(); } catch (e) { }
         });
         delete externalUartClients[name];
     }
     if (externalUartServers[name]) {
-        try { externalUartServers[name].close(); } catch (e) {}
+        try { externalUartServers[name].close(); } catch (e) { }
         delete externalUartServers[name];
     }
 }
@@ -662,12 +672,12 @@ function syncUartConnections() {
     try {
         if (fs.existsSync(UART_MAP_PATH)) {
             const mapping = JSON.parse(fs.readFileSync(UART_MAP_PATH, 'utf8'));
-            
+
             // Cleanup mapping connections that are no longer active
             for (const name of Object.keys(uartConnections)) {
                 if (!mapping[name]) {
                     if (uartConnections[name] && uartConnections[name] !== 'connecting') {
-                        try { uartConnections[name].destroy(); } catch (e) {}
+                        try { uartConnections[name].destroy(); } catch (e) { }
                     }
                     delete uartConnections[name];
                     cleanupExternalUart(name);
@@ -684,13 +694,13 @@ function syncUartConnections() {
             // Cleanup everything if mapping file is removed
             for (const name of Object.keys(uartConnections)) {
                 if (uartConnections[name] && uartConnections[name] !== 'connecting') {
-                    try { uartConnections[name].destroy(); } catch (e) {}
+                    try { uartConnections[name].destroy(); } catch (e) { }
                 }
                 delete uartConnections[name];
                 cleanupExternalUart(name);
             }
         }
-    } catch (e) {}
+    } catch (e) { }
 }
 
 function getUartAliases(name) {
@@ -725,7 +735,7 @@ function connectToUart(name, port) {
             externalUartClients[name] = new Set();
             const server = net.createServer((socket) => {
                 externalUartClients[name].add(socket);
-                
+
                 // Immediately replay past logs for new external connections
                 if (uartLogs[name]) {
                     socket.write(uartLogs[name]);
@@ -734,7 +744,7 @@ function connectToUart(name, port) {
                 socket.on('data', (data) => {
                     // Pipe external client input to Python bridge
                     if (uartConnections[name] && uartConnections[name] !== 'connecting') {
-                        try { uartConnections[name].write(data); } catch (e) {}
+                        try { uartConnections[name].write(data); } catch (e) { }
                     }
                     // Mirror to dashboard
                     const text = data.toString('utf8');
@@ -774,7 +784,7 @@ function connectToUart(name, port) {
         // Forward python data to all connected external clients
         if (externalUartClients[name]) {
             externalUartClients[name].forEach(socket => {
-                try { socket.write(data); } catch (e) {}
+                try { socket.write(data); } catch (e) { }
             });
         }
 
@@ -789,12 +799,12 @@ function connectToUart(name, port) {
         });
     });
 
-    client.on('close', () => { 
-        delete uartConnections[name]; 
+    client.on('close', () => {
+        delete uartConnections[name];
         cleanupExternalUart(name);
     });
-    client.on('error', () => { 
-        delete uartConnections[name]; 
+    client.on('error', () => {
+        delete uartConnections[name];
         cleanupExternalUart(name);
     });
 }
@@ -864,7 +874,7 @@ io.on('connection', (socket) => {
                         socket.emit('amr:telemetry', telemetry);
                     }
                     break;
-                } catch (e) {}
+                } catch (e) { }
             }
         }
     }
@@ -888,11 +898,11 @@ io.on('connection', (socket) => {
             }
         }
         if (conn) {
-            try { conn.write(text); } catch (e) {}
+            try { conn.write(text); } catch (e) { }
         }
         if (externalUartClients[activeName]) {
             externalUartClients[activeName].forEach(socket => {
-                try { socket.write(text); } catch (e) {}
+                try { socket.write(text); } catch (e) { }
             });
         }
     });
@@ -910,11 +920,11 @@ io.on('connection', (socket) => {
 
     socket.on('peripheral:action', ({ pluginId, action, control, value, shm_file, shm_offset, format, min, max, raw_min, raw_max }) => {
         console.log(`[Backend] peripheral:action received: pluginId=${pluginId}, control=${control}, value=${value}, shm_file=${shm_file}`);
-        
+
         // Data-driven SHM injection for virtual analog/sensor controls
         const targetShmFile = shm_file || 'spi_adc';
         const targetPath = path.isAbsolute(targetShmFile) ? targetShmFile : path.join('/dev/shm', targetShmFile);
-        
+
         try {
             let numVal = typeof value === 'number' ? value : parseFloat(value);
             if (isNaN(numVal)) return;
@@ -958,41 +968,41 @@ io.on('connection', (socket) => {
         }
     });
 
-function pushCanFrameToRing(busId, canId, dlc, dataBytes) {
-    try {
-        const filePath = `/dev/shm/fbb_can_ring${busId}`;
-        if (!fs.existsSync(filePath)) return;
-        const buffer = fs.readFileSync(filePath);
-        if (buffer.length < 16) return;
-        const magic = buffer.readUInt32LE(0);
-        if (magic !== 0x43414E30) return;
+    function pushCanFrameToRing(busId, canId, dlc, dataBytes) {
+        try {
+            const filePath = `/dev/shm/fbb_can_ring${busId}`;
+            if (!fs.existsSync(filePath)) return;
+            const buffer = fs.readFileSync(filePath);
+            if (buffer.length < 16) return;
+            const magic = buffer.readUInt32LE(0);
+            if (magic !== 0x43414E30) return;
 
-        const head = buffer.readUInt32LE(4);
-        const CAPACITY = 256;
-        const ENTRY_SIZE = 24;
-        const offset = 16 + (head * ENTRY_SIZE);
-        if (offset + ENTRY_SIZE <= buffer.length) {
-            const nowUs = BigInt(Date.now()) * 1000n;
-            const ts_lo = Number(nowUs & 0xFFFFFFFFn);
-            const ts_hi = Number((nowUs >> 32n) & 0xFFFFFFFFn);
-            buffer.writeUInt32LE(ts_lo, offset);
-            buffer.writeUInt32LE(ts_hi, offset + 4);
-            buffer.writeUInt32LE(canId, offset + 8);
-            buffer.writeUInt8(dlc, offset + 12);
-            buffer.writeUInt8(0, offset + 13);
-            buffer.writeUInt8(busId, offset + 14);
-            buffer.writeUInt8(0, offset + 15);
-            for (let i = 0; i < 8; i++) {
-                buffer.writeUInt8(dataBytes[i] || 0, offset + 16 + i);
+            const head = buffer.readUInt32LE(4);
+            const CAPACITY = 256;
+            const ENTRY_SIZE = 24;
+            const offset = 16 + (head * ENTRY_SIZE);
+            if (offset + ENTRY_SIZE <= buffer.length) {
+                const nowUs = BigInt(Date.now()) * 1000n;
+                const ts_lo = Number(nowUs & 0xFFFFFFFFn);
+                const ts_hi = Number((nowUs >> 32n) & 0xFFFFFFFFn);
+                buffer.writeUInt32LE(ts_lo, offset);
+                buffer.writeUInt32LE(ts_hi, offset + 4);
+                buffer.writeUInt32LE(canId, offset + 8);
+                buffer.writeUInt8(dlc, offset + 12);
+                buffer.writeUInt8(0, offset + 13);
+                buffer.writeUInt8(busId, offset + 14);
+                buffer.writeUInt8(0, offset + 15);
+                for (let i = 0; i < 8; i++) {
+                    buffer.writeUInt8(dataBytes[i] || 0, offset + 16 + i);
+                }
+                const nextHead = (head + 1) % CAPACITY;
+                buffer.writeUInt32LE(nextHead, 4);
+                fs.writeFileSync(filePath, buffer);
             }
-            const nextHead = (head + 1) % CAPACITY;
-            buffer.writeUInt32LE(nextHead, 4);
-            fs.writeFileSync(filePath, buffer);
+        } catch (e) {
+            console.error('[Backend Error] pushCanFrameToRing failed:', e.message);
         }
-    } catch (e) {
-        console.error('[Backend Error] pushCanFrameToRing failed:', e.message);
     }
-}
 
     socket.on('can:send', (payload) => {
         try {
@@ -1020,12 +1030,12 @@ function pushCanFrameToRing(busId, canId, dlc, dataBytes) {
                 peers.forEach(peer => {
                     const peerPath = path.join(peersDir, peer);
                     try {
-                        client.send(frameBuf, 0, frameBuf.length, peerPath, () => {});
-                    } catch (e) {}
+                        client.send(frameBuf, 0, frameBuf.length, peerPath, () => { });
+                    } catch (e) { }
                 });
             }
             setTimeout(() => {
-                try { client.close(); } catch (e) {}
+                try { client.close(); } catch (e) { }
             }, 100);
         } catch (e) {
             console.error('[Backend Error] can:send failed:', e.message);
@@ -1078,7 +1088,7 @@ function pushCanFrameToRing(busId, canId, dlc, dataBytes) {
         try {
             let current = {};
             if (fs.existsSync('/tmp/fbb_amr_cmd.json')) {
-                try { current = JSON.parse(fs.readFileSync('/tmp/fbb_amr_cmd.json', 'utf8')); } catch (e) {}
+                try { current = JSON.parse(fs.readFileSync('/tmp/fbb_amr_cmd.json', 'utf8')); } catch (e) { }
             }
             const isEstop = typeof estop === 'object' ? !!estop.active : !!estop;
             current.estop = isEstop;
@@ -1118,9 +1128,9 @@ function updatePeripheralShm() {
                         io.emit('display-7seg-frame', buffer.toString('base64'));
                     }
                 }
-            } catch (e) {}
+            } catch (e) { }
         });
-    } catch (e) {}
+    } catch (e) { }
 }
 
 const lastCanTails = {};
@@ -1176,9 +1186,9 @@ function updateCanRingBuffers() {
                         frames: entries
                     });
                 }
-            } catch (e) {}
+            } catch (e) { }
         });
-    } catch (e) {}
+    } catch (e) { }
 }
 
 setInterval(() => {
@@ -1209,7 +1219,7 @@ function updateScenarioTelemetry() {
                         io.emit('amr:telemetry', telemetry);
                     }
                 }
-            } catch (e) {}
+            } catch (e) { }
         }
     }
 }
@@ -1294,7 +1304,7 @@ function discoverDynamicPanes() {
                     searchDirs.push(subPanesDir);
                 }
             }
-        } catch (e) {}
+        } catch (e) { }
     }
 
     const seenIds = new Set();
@@ -1308,7 +1318,7 @@ function discoverDynamicPanes() {
             if (fs.existsSync(dirPaneJson)) {
                 try {
                     dirPaneMeta = JSON.parse(fs.readFileSync(dirPaneJson, 'utf8'));
-                } catch (e) {}
+                } catch (e) { }
             }
 
             const entries = fs.readdirSync(sDir, { withFileTypes: true });
@@ -1320,7 +1330,7 @@ function discoverDynamicPanes() {
                     if (fs.existsSync(paneJsonPath)) {
                         try {
                             paneMeta = JSON.parse(fs.readFileSync(paneJsonPath, 'utf8'));
-                        } catch (e) {}
+                        } catch (e) { }
                     }
                     const jsFile = paneMeta?.entry || (fs.existsSync(path.join(subDir, 'index.js')) ? 'index.js' : null);
                     if (jsFile && fs.existsSync(path.join(subDir, jsFile))) {

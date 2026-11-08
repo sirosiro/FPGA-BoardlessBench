@@ -23,7 +23,7 @@
 
 ---
 
-## 2. 4大カオスカタログ (Core Injection Capabilities)
+## 2. 5大カオスカタログ (Core Injection Capabilities)
 
 ```mermaid
 mindmap
@@ -44,6 +44,10 @@ mindmap
       UIO 割り込みパルス消失
       WDT 監視タイマーリセット拒否
       クロックジッター / タイマースリップ
+    ⑤ AXI バス競合・メモリストール (Bus Contention & Memory Latency)
+      AXI Interconnect アービトレーション競合
+      PS側 DRAM アクセス遅延 (10〜30サイクル可変ストール)
+      0.5μs デッドライン違反・FIFOアンダーラン再現
 ```
 
 ---
@@ -60,12 +64,12 @@ flowchart TD
 
     subgraph SHIM["Track 1: C-Shim レイヤ (libfpgashim.c)"]
         MMIO_MAP["MMIO 仮想アドレス空間 (0x43C00000)"]
-        SHIM_CHAOS["【Shim カオス】<br/>shm[offset] ^= (1 << bit)<br/>・読み取り値のビット化け<br/>・FW側の EDAC / パリティ / ソフトウェア防御を検証"]
+        SHIM_CHAOS["【Shim カオス】<br/>shm[offset] ^= (1 << bit)<br/>・読み取り値のビット化け<br/>・FW側の EDAC / パリティ / ソフトウェア防御を検証<br/>・MMIO/DMA アクセス遅延ジッター"]
     end
 
     subgraph SIM["Track 2: Verilator レイヤ (sim_main.cpp)"]
         RTL_TOP["Vvfpga_top (C++ クラス)"]
-        RTL_CHAOS["【RTL カオス】<br/>top->...->reg_flipflop ^= (1 << bit)<br/>・内部フリップフロップの反転<br/>・回路側の TMR 多数決 / ハードウェアパリティツリーを検証"]
+        RTL_CHAOS["【RTL カオス】<br/>top->...->reg_flipflop ^= (1 << bit)<br/>・内部フリップフロップの反転<br/>・回路側の TMR 多数決 / ハードウェアパリティツリーを検証<br/>・【新設】AXI 可変遅延キュー (DRAM ストール注入)"]
     end
 
     APP <-->|ポインタ読書| MMIO_MAP
@@ -85,6 +89,12 @@ flowchart TD
   シミュレーションループ内で IPC ソケット（`/tmp/fbb_chaos_ipc.sock`）から障害指令を受け取り、Verilator トップインスタンス内のメンバ変数（フリップフロップ値）を直接反転。
 - **検証対象**:
   `safety_interlock.v` などの **真のハードウェアパリティ回路、TMR（3重化多数決）ロジック、割り込み（IRQ）発火機構**。
+
+### Track 3: AXI バス競合・可変メモリストール (`sim_main.cpp` & `libfpgashim.c`)
+- **メカニズム**:
+  Verilator シミュレーションメインループ内の AXI メモリアクセス・ハンドシェイク（`arvalid`, `rvalid`）に対し、PRNG に基づく可変遅延キュー（`AxiStallQueue`）を挿入。確率（例: 10%）で 8〜32 サイクルのストールを発生させ、キュー上限到達時は `arready=0` による AXI バックプレッシャーを再現。
+- **検証対象**:
+  高速オーディオ DMA（CGB 2倍速モード 0.5μs デッドライン等）や通信 FIFO の **アンダーラン・オーバーラン耐性、最悪レイテンシバッファ設計**。
 
 ---
 

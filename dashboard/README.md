@@ -8,7 +8,7 @@
 - **レジスタ履歴 (Tracer)**: レジスタの変化を時系列で記録し、正規化された波形として表示します。
 - **GPIO インジェクション**: ダッシュボード上のトグルスイッチを操作することで、シミュレーション中の GPIO 入力状態をリアルタイムに変更できます（他レジスタを巻き込まない 4 バイト局所アトミック書き込みによる非侵襲設計）。
 - **UART ブリッジ統合**: 複数の UART デバイス（PTY/TCP ブリッジ）を集約し、ブラウザ上のターミナルから操作可能にします。64KB 歴史バッファにより起動時の初期メニューやログの取りこぼしを防止します。
-- **カオス・障害注入 ＆ マルチコア・ライフサイクル制御**: 実行中コア（Aコア/Mコア）の個別選択再起動、シード指定（Off/Random/Fixed）による決定論的障害注入（I2C/SPI/UIO/CAN/CDMA）、および障害発生ログのリアルタイム通知を行います。
+- **カオス・障害注入 ＆ マルチコア・ライフサイクル制御**: 実行中コア（Aコア/Mコア）の個別選択再起動、シード指定（Off/Random/Fixed）による決定論的障害注入（I2C/SPI/UIO/CAN/CDMA/AXIバス競合）、可変レイテンシ・ストールサイクル範囲指定、および障害発生ログのリアルタイム通知を行います。
 - **自動化 (Macros)**: `login:` 等の特定の文字列を検知して自動的にレスポンスを返すマクロ機能を備えています。
 - **ハイブリッド・マルチスクリーン & ペイン切り離し (Pop-out)**: 各ペインのタブから別ウィンドウへのワンクリック切り離し（Pop-out）、およびサブモニタ用のスクリーン別レイアウト管理（`?screen=monitor2`）に対応。
 - **DPPA (Dashboard Pane Plugin Architecture)**: 宣言的ペインレジストリ（`paneRegistry.jsx`）により、ペインの実装・定義とウィンドウマネージャーを完全疎結合化。
@@ -26,7 +26,7 @@ F-BB が標準で提供する 15 種類のペイン（`paneRegistry.jsx`）の�
 | **Tracer**<br>(`registerTracer`) | レジスタ値の変化履歴（最大500件）を追跡する正規化波形アナライザ。 | ・**波形クリック / なぞりドラッグ**: 該当スナップショットへ時間跳躍（Time-Travel）。全計器・3D画面が過去へ同期。<br>・**`SPAN` ボタン**: `50pt` / `100pt` / `250pt` / `All` でカーソル中心にオシロスコープ拡大。<br>・**モード切替**: `Zero-Center`（中央50%基準）/ `Signed`（符号付き自動レンジ）/ `Unsigned`。<br>・**`◄` / `►` キー**: 1フレーム単位で過去/未来へコマ送り・コマ戻し（`Shift` 同時押しで 10フレームジャンプ）。<br>・**`Esc` キー / `Return to LIVE` ボタン**: リアルタイム最新波形へ一発復帰。 |
 | **CAN Bus Analyzer**<br>(`canAnalyzer`) | 仮想 SocketCAN（CANopen / J1939等）の全パケット送受信ログをリアルタイム表示。 | ・**送信フォーム**: ID・DLC・Data を入力して `Send` で CAN フレームを即時インジェクション。<br>・**フィルタ**: ID による特定メッセージの絞り込み。 |
 | **Transaction Logger**<br>(`transactionLogger`) | C-Shim アクセストラッカーによるミリ秒単位のアクセス履歴およびプロトコル違反を監視。 | ・**自動検知**: Read-Only レジスタへの不正書き込み（`[PROTOCOL_VIOLATION]`）時に赤色アラートを表示。<br>・**Clear ボタン**: ログバッファをクリア。 |
-| **Chaos & Fault Injection**<br>(`chaosEngine`) | 決定論的カオス障害（I2C/SPI通信化け、DMAタイムアウト等）の注入とマルチコア管理。 | ・**マルチコア制御**: Aコア / Mコアの稼働ステータス確認および個別再起動。<br>・**Seed 指定**: `Off` / `Random` / `Fixed`（シード値入力）による障害発生の 100% 再現。<br>・**スライダー**: 障害発生率（0〜100%）およびペリフェラル別有効化。 |
+| **Chaos & Fault Injection**<br>(`chaosEngine`) | 決定論的カオス障害（I2C/SPI通信化け、DMAタイムアウト、AXIバス競合・可変メモリストール等）のリアルタイム注入とマルチコア管理。 | ・**マルチコア制御**: Aコア / Mコアの稼働ステータス確認および個別再起動。<br>・**Seed 指定**: `Off` / `Random` / `Fixed`（シード値入力）による障害発生の 100% 再現。<br>・**スライダー & 数値入力**: 障害発生率（0〜100%）、ペリフェラル・インターフェース別有効化（I2C/SPI/UIO/CAN/CDMA/AXI）、および AXI 可変ストールサイクル範囲（Min〜Max サイクル）指定。<br>・**CLI 再現コマンドコピー**: UI 上で設定したシード・ターゲット・ストール範囲を反映した CLI 実行コマンドをワンクリックコピー。 |
 | **DTS Visualizer & AI**<br>(`dtsVisualizer`) | 32-bit物理アドレス空間全体を一括俯瞰する一体型メモリマップ。DTS 構文エラーの AI 診断。 | ・**ブロッククリック**: デバイスのアラインメント、レジスタ構成、未割り当て空き空間（Unmapped Gap）を直下展開。<br>・**AI Smart DTS Check**: Ollama LLM と連動し、DTS コンパイルエラーの自然言語解説と Fix Diff を提示。 |
 
 ### 2. シリアル端末系 (Serial Terminals)
@@ -140,6 +140,67 @@ graph TD
 
 ### 4. 画面間ゼロオーバーヘッド同期 (`BroadcastChannel`)
 - 複数画面を開いた際、サーバーへの通信負荷をかけずに、ブラウザ標準の `BroadcastChannel('fbb_dashboard_sync')` を介して UI 状態（Tracer で非表示にしたレジスタキー等）がリアルタイムに相互同期されます。
+
+## カオス ＆ 障害注入エンジン制御機能 (Chaos & Fault Injection Engine)
+
+ダッシュボードの **Chaos & Fault Injection ペイン (`chaosEngine`)** は、実機（Pynq-Z2等）でしか起きない突発的な通信障害、タイムアウト、および AXI バス帯域競合・DRAM 遅延ストールを、Web UI 上から決定論的シード（PRNG）に基づいて自在に注入・再現・検証できる対話型デバッグコンソールです。
+
+```mermaid
+flowchart TD
+    subgraph UI["Web ダッシュボード (Chaos & Fault Injection ペイン)"]
+        CORE_CTRL["マルチコア制御<br/>(Aコア test_bin / Mコア remoteproc)"]
+        SEED_CTRL["決定論的 PRNG シード設定<br/>(Off / Random / Fixed Seed)"]
+        RATE_CTRL["障害注入率スライダー (1〜100%)"]
+        TARGET_GRID["6大カオスターゲット選択<br/>(I2C / SPI / UIO / CAN / CDMA / AXI)"]
+        STALL_CTRL["AXI ストールサイクル範囲<br/>Min: 8 〜 Max: 32 cycles"]
+        CLI_BTN["[Copy Reproduction CLI Command]<br/>ワンクリック CLI 再現コマンドコピー"]
+    end
+
+    subgraph ENGINE["F-BB 実行基盤"]
+        C_SHIM["C-Shim (libfpgashim.so)<br/>・I2C NACK / SPI ビット反転<br/>・UIO 割込タイムアウト / CAN ドロップ<br/>・CDMA DecErr / メモリアクセス遅延ジッター"]
+        SIM_CORE["Verilator (sim_main.cpp)<br/>・AxiStallEngine 遅延キュー<br/>・DRAM 可変ストール (8〜32サイクル)<br/>・AXI スレーブ・バックプレッシャー (arready=0)"]
+    end
+
+    CORE_CTRL -->|プロセス制御| ENGINE
+    SEED_CTRL -->|シード配信| ENGINE
+    RATE_CTRL -->|確率閾値| ENGINE
+    TARGET_GRID -->|マスク有効化| ENGINE
+    STALL_CTRL -->|ストール幅| SIM_CORE
+```
+
+### 主な機能と操作方法
+
+1. **マルチコア・プロセスライフサイクル制御**:
+   - シナリオ内で稼働中の各コアプロセス（Aコア Linux アプリケーション `test_bin`、Mコア RTOS `remoteproc*` 等）の PID と稼働状態（`RUNNING` / `IDLE`）を一覧表示。
+   - チェックボックスによる対象コアの個別選択と、`[Start]` / `[Stop]` / `[Restart Scenario]` による安全なプロセス再起動。
+
+2. **決定論的シード（PRNG）再現モード**:
+   - **`Off`**: カオス注入を完全無効化（ゼロオーバーヘッド通常実行）。
+   - **`Random Seed`**: 実行ごとにランダムな 64-bit シードを自動採番して未知の障害シナリオを探索。
+   - **`Fixed Seed`**: 入力した特定のシード値に基づき `xorshift128+` / SplitMix64 により同一の乱数系列を決定論的に再現。サイコロアイコンをクリックで新しいランダムシードを即座に再ロール。
+
+3. **6大カオスターゲットと障害内容**:
+   - **I2C (NACK)**: センサー/EEPROM 通信時の NACK 応答および EIO/ENXIO エラー注入。
+   - **SPI (Bit-Flip)**: 全二重 SPI 転送データの任意ビット反転（パリティ・チェックサム検証用）。
+   - **UIO (Timeout)**: 割り込み待機（`read()` / `eventfd`）時の `ETIMEDOUT` タイムアウト注入。
+   - **CAN (Drop)**: SocketCAN ネットワークにおけるフレーム欠落（パケットドロップ）。
+   - **CDMA (DecErr)**: AXI CDMA 転送時のデコードエラー（`DMADecErr`）ステータス反転。
+   - **AXI (Stall/DRAM)**: AXI4 Read Channel (`arvalid`/`arready`/`rvalid`/`rready`) への可変遅延キュー挿入。PS側 DRAM の帯域競合によるストール、およびバッファ満杯時のスレーブ・バックプレッシャー（`arready=0`）を完全再現。
+
+4. **AXI ストールサイクル範囲（Min / Max cycles）の直感的調整**:
+   - `AXI (Stall/DRAM)` を有効化すると、直下にストールサイクル入力ボックス（`Min: 8` 〜 `Max: 32`）が自動展開。
+   - CGB 2倍速モード（0.5$\mu$s デッドライン）のオーディオ FIFO や DMA バッファに対し、ストール期間をリアルタイムに変更してアンダーラン限界値をグラフィカルに検証可能。
+
+5. **ワンクリック CLI 再現コマンドコピー**:
+   - **`[Copy Reproduction CLI Command]`** ボタンを押すと、画面上の設定（アクティブシナリオ名、シード値、選択中ターゲット、ストールサイクル範囲）を反映した完全なコマンドがクリップボードへコピーされます：
+     ```bash
+     bin/fbb test 01e_axi_contention_audio --chaos --seed=7080345091724213768 --chaos-targets=i2c,spi,uio,can,cdma,axi_stall --stall-min=8 --stall-max=32
+     ```
+   - CI/CD パイプラインやローカルターミナルへ即座にペーストして 100% 同一の障害を再現できます。
+
+6. **リアルタイム実行ログ ＆ 障害発生フィード**:
+   - ファームウェアの標準出力、および `/tmp/fbb_chaos_injection.log` からの障害発生通知（`[CHAOS_AXI_STALL]`、`[CHAOS_FAULT]` 等）をリアルタイムに集約表示。
+   - 注入された総障害数バッジのカウントアップと、ピンク／赤／緑のカラーハイライトにより、どのタイミングでどの障害が発生したかを一目で把握できます。
 
 ## 外部UART接続プロキシ機能 (TCP Proxy)
 

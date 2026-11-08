@@ -381,6 +381,10 @@ def command_test(args):
                 cmd.append(f"--chaos-rate={args.chaos_rate}")
             if getattr(args, "chaos_targets", None):
                 cmd.append(f"--chaos-targets={args.chaos_targets}")
+            if getattr(args, "stall_min", None) is not None:
+                cmd.append(f"--stall-min={args.stall_min}")
+            if getattr(args, "stall_max", None) is not None:
+                cmd.append(f"--stall-max={args.stall_max}")
 
             env = os.environ.copy()
             if getattr(args, "chaos", False):
@@ -391,6 +395,10 @@ def command_test(args):
                 env["FBB_CHAOS_RATE"] = str(args.chaos_rate)
             if getattr(args, "chaos_targets", None):
                 env["FBB_CHAOS_TARGETS"] = str(args.chaos_targets)
+            if getattr(args, "stall_min", None) is not None:
+                env["FBB_CHAOS_STALL_MIN"] = str(args.stall_min)
+            if getattr(args, "stall_max", None) is not None:
+                env["FBB_CHAOS_STALL_MAX"] = str(args.stall_max)
 
             action_desc = "Testing"
             if getattr(args, "build_only", False):
@@ -428,6 +436,10 @@ def command_test(args):
                     cmd.append(f"--chaos-rate={args.chaos_rate}")
                 if getattr(args, "chaos_targets", None):
                     cmd.append(f"--chaos-targets={args.chaos_targets}")
+                if getattr(args, "stall_min", None) is not None:
+                    cmd.append(f"--stall-min={args.stall_min}")
+                if getattr(args, "stall_max", None) is not None:
+                    cmd.append(f"--stall-max={args.stall_max}")
 
                 env = os.environ.copy()
                 if getattr(args, "chaos", False):
@@ -438,6 +450,10 @@ def command_test(args):
                     env["FBB_CHAOS_RATE"] = str(args.chaos_rate)
                 if getattr(args, "chaos_targets", None):
                     env["FBB_CHAOS_TARGETS"] = str(args.chaos_targets)
+                if getattr(args, "stall_min", None) is not None:
+                    env["FBB_CHAOS_STALL_MIN"] = str(args.stall_min)
+                if getattr(args, "stall_max", None) is not None:
+                    env["FBB_CHAOS_STALL_MAX"] = str(args.stall_max)
 
                 action_desc = "Testing"
                 if getattr(args, "build_only", False):
@@ -2053,6 +2069,7 @@ def main():
   fbb test 01d --chaos --seed=12345       Run scenario with deterministic chaos reproduction
   fbb test 01d --chaos --chaos-rate=0.30  Run scenario with 30% fault injection probability
   fbb test 01d --chaos --chaos-targets=i2c,spi Restrict chaos injection to specific interfaces
+  fbb test 01e --chaos --chaos-targets=axi_stall --stall-min=8 --stall-max=32 --seed=12345 Run with AXI bus contention
 """
     parser_test = subparsers.add_parser(
         "test",
@@ -2067,7 +2084,9 @@ def main():
     parser_test.add_argument("--chaos", action="store_true", help="Enable automated chaos & fault injection engine")
     parser_test.add_argument("--seed", type=str, default=None, help="Deterministic 64-bit seed for chaos injection")
     parser_test.add_argument("--chaos-rate", type=str, default=None, help="Fault injection probability (0.0 - 1.0 or percentage)")
-    parser_test.add_argument("--chaos-targets", type=str, default=None, help="Target interfaces (i2c, spi, uio, can, cdma, all)")
+    parser_test.add_argument("--chaos-targets", type=str, default=None, help="Target interfaces (i2c, spi, uio, can, cdma, axi_stall, all)")
+    parser_test.add_argument("--stall-min", type=int, default=None, help="Minimum AXI contention stall cycles (default: 8)")
+    parser_test.add_argument("--stall-max", type=int, default=None, help="Maximum AXI contention stall cycles (default: 32)")
 
     # 3. lab / start
     lab_epilog = """Examples:

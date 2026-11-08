@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
-import { 
-  Zap, Play, Square, RotateCcw, Copy, Check, Dices, 
-  Terminal, Cpu, AlertTriangle, Trash2 
+import {
+  Zap, Play, Square, RotateCcw, Copy, Check, Dices,
+  Terminal, Cpu, AlertTriangle, Trash2
 } from 'lucide-react';
 import { useDashboard } from './DashboardContext';
 
@@ -18,12 +18,15 @@ const ChaosPanel = () => {
   const [chaosMode, setChaosMode] = useState('random'); // 'off', 'random', 'fixed'
   const [seed, setSeed] = useState('');
   const [rate, setRate] = useState(20); // 20%
+  const [stallMin, setStallMin] = useState(8);
+  const [stallMax, setStallMax] = useState(32);
   const [targets, setTargets] = useState({
     i2c: true,
     spi: true,
     uio: true,
     can: true,
-    cdma: true
+    cdma: true,
+    axi_stall: true
   });
 
   // Logs & Injected faults
@@ -58,11 +61,13 @@ const ChaosPanel = () => {
             setChaosMode(data.chaos.mode || (data.chaos.enabled ? 'random' : 'off'));
             setSeed(data.chaos.seed || '');
             if (data.chaos.rate !== undefined) setRate(Math.round(data.chaos.rate * 100));
+            if (data.chaos.stall_min !== undefined) setStallMin(data.chaos.stall_min);
+            if (data.chaos.stall_max !== undefined) setStallMax(data.chaos.stall_max);
             if (data.chaos.targets) setTargets(data.chaos.targets);
           }
         }
       })
-      .catch(() => {});
+      .catch(() => { });
 
     // Socket listeners
     const handleStatus = (data) => {
@@ -81,6 +86,10 @@ const ChaosPanel = () => {
       if (data.chaos) {
         setChaosMode(data.chaos.mode || (data.chaos.enabled ? 'random' : 'off'));
         if (data.chaos.seed) setSeed(data.chaos.seed);
+        if (data.chaos.rate !== undefined) setRate(Math.round(data.chaos.rate * 100));
+        if (data.chaos.stall_min !== undefined) setStallMin(data.chaos.stall_min);
+        if (data.chaos.stall_max !== undefined) setStallMax(data.chaos.stall_max);
+        if (data.chaos.targets) setTargets(data.chaos.targets);
       }
     };
 
@@ -111,6 +120,8 @@ const ChaosPanel = () => {
         mode: chaosMode,
         seed: seed || Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(),
         rate: rate / 100.0,
+        stall_min: stallMin,
+        stall_max: stallMax,
         targets
       }
     };
@@ -122,8 +133,8 @@ const ChaosPanel = () => {
   };
 
   const handleRestart = () => {
-    const activeSeed = chaosMode === 'fixed' && seed 
-      ? seed 
+    const activeSeed = chaosMode === 'fixed' && seed
+      ? seed
       : Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString();
     if (chaosMode !== 'fixed') setSeed(activeSeed);
 
@@ -134,6 +145,8 @@ const ChaosPanel = () => {
         mode: chaosMode,
         seed: activeSeed,
         rate: rate / 100.0,
+        stall_min: stallMin,
+        stall_max: stallMax,
         targets
       }
     };
@@ -148,7 +161,12 @@ const ChaosPanel = () => {
   const handleCopyReproduction = () => {
     const activeSeed = seed || '12345';
     const scn = scenarioName || 'active_scenario';
-    const cmd = `./run.sh --chaos --seed=${activeSeed} # or: bin/fbb test ${scn} --chaos --seed=${activeSeed}`;
+    const activeTargets = Object.entries(targets).filter(([, v]) => v).map(([k]) => k).join(',');
+    let cmd = `bin/fbb test ${scn} --chaos --seed=${activeSeed}`;
+    if (activeTargets) cmd += ` --chaos-targets=${activeTargets}`;
+    if (targets.axi_stall) {
+      cmd += ` --stall-min=${stallMin} --stall-max=${stallMax}`;
+    }
     navigator.clipboard.writeText(cmd);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
@@ -380,7 +398,7 @@ const ChaosPanel = () => {
             <div style={{ fontWeight: '600', color: '#cbd5e1', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
               <Zap size={15} color="#c084fc" /> Fault Injection Mode:
             </div>
-            
+
             {/* Mode Tabs */}
             <div style={{ display: 'flex', gap: '4px', marginBottom: '12px', backgroundColor: '#111827', padding: '3px', borderRadius: '6px' }}>
               {[
@@ -521,7 +539,8 @@ const ChaosPanel = () => {
                   { key: 'spi', label: 'SPI (Bit-Flip)' },
                   { key: 'uio', label: 'UIO (Timeout)' },
                   { key: 'can', label: 'CAN (Drop)' },
-                  { key: 'cdma', label: 'CDMA (DecErr)' }
+                  { key: 'cdma', label: 'CDMA (DecErr)' },
+                  { key: 'axi_stall', label: 'AXI (Stall/DRAM)' }
                 ].map(t => (
                   <label key={t.key} style={{
                     display: 'flex',
@@ -541,6 +560,70 @@ const ChaosPanel = () => {
                   </label>
                 ))}
               </div>
+
+              {/* AXI Contention Stall Range Controls */}
+              {targets.axi_stall && (
+                <div style={{
+                  marginTop: '10px',
+                  padding: '8px 10px',
+                  backgroundColor: '#111827',
+                  borderRadius: '6px',
+                  border: '1px solid #374151'
+                }}>
+                  <div style={{ fontSize: '11px', fontWeight: '600', color: '#c084fc', marginBottom: '6px', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                    <span>AXI Contention Stall Duration:</span>
+                    <span style={{ color: '#e2e8f0', fontFamily: 'monospace' }}>{stallMin} ~ {stallMax} cycles</span>
+                  </div>
+                  <div style={{ display: 'flex', gap: '8px', alignItems: 'center' }}>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '10px', color: '#94a3b8', marginBottom: '2px' }}>Min (cycles):</div>
+                      <input
+                        type="number"
+                        min="1"
+                        max={stallMax}
+                        value={stallMin}
+                        onChange={(e) => {
+                          const v = parseInt(e.target.value, 10) || 1;
+                          setStallMin(Math.min(v, stallMax));
+                        }}
+                        style={{
+                          width: '100%',
+                          backgroundColor: '#1f2937',
+                          border: '1px solid #4b5563',
+                          borderRadius: '4px',
+                          padding: '4px 6px',
+                          color: '#f8fafc',
+                          fontFamily: 'monospace',
+                          fontSize: '11px'
+                        }}
+                      />
+                    </div>
+                    <div style={{ flex: 1 }}>
+                      <div style={{ fontSize: '10px', color: '#94a3b8', marginBottom: '2px' }}>Max (cycles):</div>
+                      <input
+                        type="number"
+                        min={stallMin}
+                        max="256"
+                        value={stallMax}
+                        onChange={(e) => {
+                          const v = parseInt(e.target.value, 10) || stallMin;
+                          setStallMax(Math.max(v, stallMin));
+                        }}
+                        style={{
+                          width: '100%',
+                          backgroundColor: '#1f2937',
+                          border: '1px solid #4b5563',
+                          borderRadius: '4px',
+                          padding: '4px 6px',
+                          color: '#f8fafc',
+                          fontFamily: 'monospace',
+                          fontSize: '11px'
+                        }}
+                      />
+                    </div>
+                  </div>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -617,7 +700,7 @@ const ChaosPanel = () => {
             )}
 
             {logs.map((item) => {
-              const isChaos = item.text.includes('[F-BB CHAOS]');
+              const isChaos = item.text.includes('[F-BB CHAOS]') || item.text.includes('CHAOS_') || item.text.includes('AXI_STALL');
               const isError = item.text.includes('FAIL') || item.text.includes('Error') || item.type === 'stderr';
               const isSuccess = item.text.includes('SUCCESS') || item.text.includes('PASSED');
 

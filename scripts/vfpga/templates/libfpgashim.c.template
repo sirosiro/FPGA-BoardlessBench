@@ -120,6 +120,7 @@ static int num_reg_perms = %d;
 #define FBB_CHAOS_TARGET_UIO  (1U << 2)
 #define FBB_CHAOS_TARGET_CAN  (1U << 3)
 #define FBB_CHAOS_TARGET_CDMA (1U << 4)
+#define FBB_CHAOS_TARGET_AXI_STALL (1U << 5)
 #define FBB_CHAOS_TARGET_ALL  0xFFFFFFFFU
 
 static uint64_t fbb_chaos_s[2] = { 0x123456789ABCDEF0ULL, 0x0FEDCBA987654321ULL };
@@ -227,6 +228,7 @@ static void init_fbb_chaos(void) {
         if (strcasestr(targets_env, "uio")) t |= FBB_CHAOS_TARGET_UIO;
         if (strcasestr(targets_env, "can")) t |= FBB_CHAOS_TARGET_CAN;
         if (strcasestr(targets_env, "cdma")) t |= FBB_CHAOS_TARGET_CDMA;
+        if (strcasestr(targets_env, "axi_stall") || strcasestr(targets_env, "stall")) t |= FBB_CHAOS_TARGET_AXI_STALL;
         if (strcasestr(targets_env, "all")) t = FBB_CHAOS_TARGET_ALL;
         if (t != 0) fbb_chaos_targets = t;
     }
@@ -357,6 +359,14 @@ __attribute__((visibility("default"))) uint32_t fbb_read_reg(void *base_addr, un
             fprintf(stderr, "\033[1;31m[F-BB CHAOS] Injected CDMA DecErr status (0x%%08X -> 0x%%08X) (seed: %%llu)\033[0m\n",
                     val, val | (1U << 6), (unsigned long long)fbb_chaos_seed);
             val |= (1U << 6); // DMADecErr
+        }
+        if (fbb_chaos_should_inject(FBB_CHAOS_TARGET_AXI_STALL)) {
+            uint64_t jitter_ns = 500 + (fbb_chaos_xorshift128plus() %% 2500); // 0.5us - 3.0us latency jitter
+            struct timespec ts;
+            ts.tv_sec = 0;
+            ts.tv_nsec = (long)jitter_ns;
+            nanosleep(&ts, NULL);
+            fbb_chaos_log_event("AXI_STALL", "addr=0x%%lX offset=0x%%lX jitter_ns=%%llu", abs_addr, offset, (unsigned long long)jitter_ns);
         }
     }
     return val;

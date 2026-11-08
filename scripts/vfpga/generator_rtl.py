@@ -129,6 +129,10 @@ class SimulatorGenerator(BaseGenerator):
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <errno.h>
+#include <deque>
+#include <stdlib.h>
+#include <time.h>
+#include <sys/time.h>
 
 double sc_time_stamp() { return 0; }
 
@@ -270,6 +274,165 @@ public:
     }
 };
 
+#define SHM_BASE_ADDR 0x%08xU
+
+struct AxiReadTx {
+    uint32_t addr;
+    uint32_t data;
+    uint64_t respond_at_cycle;
+};
+
+class AxiStallEngine {
+private:
+    std::deque<AxiReadTx> pipeline;
+    const size_t MAX_OUTSTANDING = 8;
+    int enabled = 0;
+    uint64_t seed = 0;
+    uint64_t s[2] = { 0x123456789ABCDEF0ULL, 0x0FEDCBA987654321ULL };
+    double rate = 0.10;
+    uint64_t stall_min = 8;
+    uint64_t stall_max = 32;
+    uint64_t total_stalls = 0;
+    uint64_t total_stall_cycles = 0;
+    uint64_t last_log_cycle = 0;
+
+    static inline uint64_t splitmix64(uint64_t *state) {
+        uint64_t z = (*state += 0x9e3779b97f4a7c15ULL);
+        z = (z ^ (z >> 30)) * 0xbf58476d1ce4e5b9ULL;
+        z = (z ^ (z >> 27)) * 0x94d049bb133111ebULL;
+        return z ^ (z >> 31);
+    }
+
+    inline uint64_t xorshift128plus() {
+        uint64_t x = s[0];
+        uint64_t const y = s[1];
+        s[0] = y;
+        x ^= x << 23;
+        s[1] = x ^ y ^ (x >> 17) ^ (y >> 26);
+        return s[1] + y;
+    }
+
+public:
+    void init() {
+        const char* mode_env = getenv("FBB_CHAOS_MODE");
+        if (!mode_env || (strcmp(mode_env, "1") != 0 && strcasecmp(mode_env, "true") != 0 && strcasecmp(mode_env, "on") != 0)) {
+            enabled = 0;
+            return;
+        }
+
+        const char* targets_env = getenv("FBB_CHAOS_TARGETS");
+        if (targets_env && strlen(targets_env) > 0) {
+            if (!strcasestr(targets_env, "all") && !strcasestr(targets_env, "axi_stall") && !strcasestr(targets_env, "stall")) {
+                enabled = 0;
+                return;
+            }
+        }
+
+        enabled = 1;
+
+        const char* seed_env = getenv("FBB_CHAOS_SEED");
+        if (seed_env && strlen(seed_env) > 0) {
+            seed = (uint64_t)strtoull(seed_env, NULL, 0);
+        } else {
+            seed = (uint64_t)time(NULL) ^ ((uint64_t)getpid() << 16);
+        }
+
+        uint64_t sm = seed;
+        s[0] = splitmix64(&sm);
+        s[1] = splitmix64(&sm);
+        if (s[0] == 0 && s[1] == 0) {
+            s[0] = 0x12345678ULL;
+            s[1] = 0x87654321ULL;
+        }
+
+        const char* rate_env = getenv("FBB_CHAOS_RATE");
+        if (rate_env && strlen(rate_env) > 0) {
+            double r = atof(rate_env);
+            if (r > 1.0) r /= 100.0;
+            if (r > 0.0 && r <= 1.0) rate = r;
+        }
+
+        const char* s_min = getenv("FBB_CHAOS_STALL_MIN");
+        if (s_min && strlen(s_min) > 0) {
+            stall_min = strtoull(s_min, NULL, 0);
+            if (stall_min < 1) stall_min = 1;
+        }
+
+        const char* s_max = getenv("FBB_CHAOS_STALL_MAX");
+        if (s_max && strlen(s_max) > 0) {
+            stall_max = strtoull(s_max, NULL, 0);
+            if (stall_max < stall_min) stall_max = stall_min;
+        }
+
+        printf("[F-BB CHAOS] AxiStallEngine initialized: Seed=%%llu, Rate=%%.1f%%%%, Stall=[%%llu, %%llu] cycles\\n",
+               (unsigned long long)seed, rate * 100.0, (unsigned long long)stall_min, (unsigned long long)stall_max);
+        fflush(stdout);
+    }
+
+    template <typename T>
+    inline void pre_clock(T* top, uint64_t current_cycle) {
+        if constexpr (has_m_axi_arready<T>::value && has_m_axi_rvalid<T>::value && has_m_axi_rdata<T>::value) {
+            top->m_axi_arready = (pipeline.size() < MAX_OUTSTANDING) ? 1 : 0;
+            if (!pipeline.empty() && current_cycle >= pipeline.front().respond_at_cycle) {
+                top->m_axi_rvalid = 1;
+                top->m_axi_rdata  = pipeline.front().data;
+            } else {
+                top->m_axi_rvalid = 0;
+            }
+        }
+    }
+
+    template <typename T>
+    inline void post_clock(T* top, volatile uint32_t* shm, uint32_t shm_size, uint64_t current_cycle) {
+        if constexpr (has_m_axi_arvalid<T>::value && has_m_axi_arready<T>::value &&
+                      has_m_axi_rvalid<T>::value && has_m_axi_rready<T>::value &&
+                      has_m_axi_araddr<T>::value && has_m_axi_rdata<T>::value) {
+            // Handshake 1: Read address accepted
+            if (top->m_axi_arvalid && top->m_axi_arready) {
+                uint64_t delay = 1;
+                if (__builtin_expect(enabled, 0)) {
+                    uint64_t r = xorshift128plus();
+                    uint64_t threshold = (uint64_t)(rate * (double)0xFFFFFFFFFFFFFFFFULL);
+                    if (r < threshold) {
+                        uint64_t span = (stall_max >= stall_min) ? (stall_max - stall_min + 1) : 1;
+                        delay = stall_min + (xorshift128plus() %% span);
+                        total_stalls++;
+                        total_stall_cycles += delay;
+                        if (current_cycle - last_log_cycle > 100) {
+                            last_log_cycle = current_cycle;
+                            FILE* lf = fopen("/tmp/fbb_chaos_injection.log", "a");
+                            if (lf) {
+                                fprintf(lf, "[ts_cycle=%%llu] [CHAOS_AXI_STALL] seed=%%llu stall_cycles=%%llu addr=0x%%08X\\n",
+                                        (unsigned long long)current_cycle, (unsigned long long)seed,
+                                        (unsigned long long)delay, (uint32_t)top->m_axi_araddr);
+                                fclose(lf);
+                            }
+                        }
+                    }
+                }
+                uint32_t addr = top->m_axi_araddr;
+                uint32_t off = 0;
+                if (addr >= SHM_BASE_ADDR && addr < SHM_BASE_ADDR + shm_size) {
+                    off = (addr - SHM_BASE_ADDR) / 4;
+                } else if (addr < shm_size) {
+                    off = addr / 4;
+                } else {
+                    off = (addr / 4) %% (shm_size / 4);
+                }
+                uint32_t rdata = shm[off];
+                pipeline.push_back({ addr, rdata, current_cycle + delay });
+            }
+
+            // Handshake 2: Read data accepted by master
+            if (top->m_axi_rvalid && top->m_axi_rready) {
+                if (!pipeline.empty() && current_cycle >= pipeline.front().respond_at_cycle) {
+                    pipeline.pop_front();
+                }
+            }
+        }
+    }
+};
+
 VerilatedVcdC* volatile_trace = nullptr;
 
 void handle_sigterm(int sig) {
@@ -279,17 +442,20 @@ void handle_sigterm(int sig) {
     _exit(sig);
 }
 
-#define SHM_BASE_ADDR 0x%08xU
-
 struct RegMeta { const char* name; uint32_t addr; };
 static RegMeta registers[] = { %s };
 
 template <typename T>
 void run_sim_loop(T* top, volatile uint32_t* shm, uint32_t* old_shm, VerilatedVcdC* m_trace, uint64_t& vtime) {
     PlSpiBridge bridge(PL_SPI_SOCKET);
+    AxiStallEngine axi_engine;
+    axi_engine.init();
+
     // Initial Reset Sequence
     if constexpr (has_rst_n<T>::value) top->rst_n = 1;
     if constexpr (has_clk<T>::value) top->clk = 0;
+    if constexpr (has_m_axi_arready<T>::value) top->m_axi_arready = 1;
+    if constexpr (has_m_axi_rvalid<T>::value) top->m_axi_rvalid = 0;
     top->eval(); m_trace->dump(vtime++);
     
     if constexpr (has_rst_n<T>::value) top->rst_n = 0;
@@ -302,7 +468,10 @@ void run_sim_loop(T* top, volatile uint32_t* shm, uint32_t* old_shm, VerilatedVc
 
     printf("[Sim] Simulator Started (SHM: %%s)\\n", SHM_FILE); fflush(stdout);
         int loop_count = 0;
+        uint64_t sim_cycle = 0;
         while (!Verilated::gotFinish()) {
+            sim_cycle++;
+            axi_engine.pre_clock(top, sim_cycle);
             if (loop_count++ %% 10000 == 0) {
                 printf("[Sim Debug] ");
                 int max_debug = (SHM_SIZE / 4 < 16) ? (SHM_SIZE / 4) : 16;
@@ -368,7 +537,13 @@ void run_sim_loop(T* top, volatile uint32_t* shm, uint32_t* old_shm, VerilatedVc
                 }
             }
             top->eval(); 
-            if constexpr (has_clk<T>::value) { top->clk = 1; top->eval(); top->clk = 0; top->eval(); }
+            if constexpr (has_clk<T>::value) {
+                top->clk = 1;
+                top->eval();
+                axi_engine.post_clock(top, shm, SHM_SIZE, sim_cycle);
+                top->clk = 0;
+                top->eval();
+            }
             if constexpr (has_irq_out<T>::value) {
                 static int last_irq = 0;
                 if (top->irq_out && !last_irq) {

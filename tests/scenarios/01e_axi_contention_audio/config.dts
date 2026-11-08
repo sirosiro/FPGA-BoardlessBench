@@ -1,0 +1,13 @@
+/dts-v1/;
+
+/ {
+    model = "FBB-AudioDmaContentionModel";
+    compatible = "fbb,audio-dma-contention";
+
+    vfpga_audio: vfpga_audio@40000000 {
+        compatible = "generic-uio";
+        reg = <0x40000000 0x1000>;
+        label = "/dev/uio0";
+        status = "okay";
+    };
+};
