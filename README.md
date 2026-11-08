@@ -160,6 +160,7 @@ my_timer: timer@40001000 {
 ```
 
 * **初学者を守る設計思想**: 初学者は `.gtr` という独立した契約ファイルを用いてアジャイルな仮想ハードウェア開発を行いながら、`.dts` は本物のLinuxカーネルの作法そのままに学ぶことができます。実機移行時にも、`config.dts` を1行も修正することなく本番環境へシームレスに引き渡せます。
+  *(※なぜ独自拡張DTSをやめ、SystemRDL等ではなくGTRを採用したのかの詳細は、解説ドキュメント **[なぜ F-BB は GTR を採用したのか (AddInfo_WhyGTR.md)](./docs/architecture/AddInfo_WhyGTR.md)** を参照してください)*
 
 #### ☕ コラム：技術史のエアポケット──Device Tree（DTS）という「不憫な救世主」への供養
 
@@ -562,13 +563,13 @@ F-BB のテストシナリオは、将来の拡張性と責務分離（SoC/ベ�
 
 新しい機能をテストしたい場合は、`tests/scenarios/` 内に新しいディレクトリを作成し、`config.dts` と `main.c`（必要に応じて `vfpga_top.v`）を配置してください。`./tests/run_tests.sh` を実行すると、新しいシナリオが自動的に検出・実行されます。
 
-## F-BBにおけるデバイスツリー（.dts）の立ち位置と仕様
+## F-BBにおけるデバイスツリー（config.dts）とGTR（config.gtr）の立ち位置と仕様
 
-### Linux/YoctoのDTSとの違い（エミュレーション独自サブセット）
-F-BBが使用する `.dts` は、**FWをシミュレータ上で論理デバッグするために構築するエミュレータ専用の定義ファイル**です。
-- **Linux標準の `.dts` を置き換えるものではありません。**
-- F-BB上でレジスタ単位のシミュレーションとエミュレーション（自動コード生成やアドレスルーティング）を実現するため、標準のデバイスツリー定義には存在しない `registers` 属性（例：`registers = "CTRL @ 0x00 : RW", "STATUS @ 0x04 : RO"` 等のアクセス権限属性オプショナル指定）などの独自拡張を取り入れた「DTSの新しいファミリー（独自サブセット）」という位置づけになります。
-- 実機 Yocto/PetaLinux 等で本番 DTS が作成された際は、ベースアドレスや割込番号などのアドレスマップ情報を F-BB 側の `config.dts` に反映するだけで、同一ファームウェアのままシームレスに最終疎通テストが完了します。
+### Linux標準DTSの完全維持と仮想レジスタ契約GTRの分離
+F-BBでは、ハードウェアトポロジーを定義する `config.dts` と、仮想ハードウェア・シミュレータ契約を定義する `config.gtr` を明確に二層分離（ADR #015）しています。
+- **`config.dts` は本物の Linux カーネル標準に 100% 準拠**: 独自拡張プロパティを一切含まず、実機（Yocto / PetaLinux / Vivado）へ無改造でそのまま投入・共有できます。
+- **`config.gtr` でシミュレータに必要な仮想レジスタ契約を定義**: `/include/ "config.dts"` およびノード参照構文（`&label { registers = ...; };`）を用いて、DTS と同一の文法（Overlay セマンティクス）のままレジスタマップ仕様を結合します。
+- 独自DTSをやめてGTRを採用したアーキテクチャ上の必然性や、SystemRDL等の既存業界標準規格とのドメイン比較・トレードオフの詳細については、**[なぜ F-BB は GTR を採用したのか (AddInfo_WhyGTR.md)](./docs/architecture/AddInfo_WhyGTR.md)** を参照してください。
 
 ## デバッグ支援・GUI・拡張機能コンポーネント
 
@@ -913,6 +914,7 @@ F-BB 独自のプロジェクトコードのみ（`--cleanall` 時）で**純プ
 - **[技術仕様書 (spec.md)](spec.md)**: 各コンポーネントの機能詳細とインターフェース定義。
 - **[アーキテクチャ・マニフェスト](ARCHITECTURE_MANIFEST.md)**: プロジェクトの設計原則、主要な決定事項（ADR）、および構造的トレードオフ・非対象スコープ（Wall-clock time拘束、ARMメモリバリア規約、カーネル空間の除外等）の公式記録。
 - **[なぜ Zynq をリファレンスアーキテクチャに選んだのか](./docs/architecture/AddInfo_WhyZynq.md)**: 認知的アンカーとしての Zynq 選定理由と、NXP 等の他社 SoC・オリジナル仮想 SoC への汎用性解説。
+- **[なぜ F-BB は GTR を採用したのか](./docs/architecture/AddInfo_WhyGTR.md)**: 独自DTSの廃止理由、SystemRDL等の既存業界標準規格とのドメイン比較、およびDTS文法準拠による教育的純度・プロトタイピング速度のトレードオフ解説。
 - **[組み込み・FPGA技術研修ソリューション提案書](./docs/architecture/AddInfo_Technical_Training_Proposal.md)**: 実機基板なしで製品レベルの組み込みLinux・RTOS・FPGA協調設計技術を修得できる技術研修提案ソリューション。
 - **[F-BBにおけるGDBデバッグ活用ガイド](./docs/architecture/AddInfo_GDB.md)**: 物理JTAG機器なしでAコアLinux・MコアRTOS・VerilatorシミュレーションをGDB/VS Codeでデバッグする活用ガイド。
 
