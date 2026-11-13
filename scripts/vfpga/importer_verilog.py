@@ -178,6 +178,79 @@ class VerilogImporter:
                     if inline_hint_name and addr_val not in comment_hints:
                         comment_hints[addr_val] = {'name': inline_hint_name, 'direction': None}
 
+        # 4b. if 文 (アドレス比較) による書込みデコードの走査
+        # 例: if (addr == 32'h40000000) reg_ctrl <= w_data;
+        # 例: if (w_en && addr == 32'h40000008 && w_data == 32'h1) reg_status[0] <= 1'b0; // ACK
+        if_write_matches = re.finditer(
+            r'\bif\s*\([^)]*?(?:(?:addr|s_axi_awaddr|s_axi_araddr)\s*==\s*([0-9a-zA-Z_\'h]+)|([0-9a-zA-Z_\'h]+)\s*==\s*(?:addr|s_axi_awaddr|s_axi_araddr))[^)]*\)\s*(?:begin\s*)?([^\n;]+;[^\n]*)',
+            self.raw_content
+        )
+        for iw in if_write_matches:
+            addr_str = iw.group(1) or iw.group(2)
+            stmt = iw.group(3).strip()
+
+            inline_hint_name = None
+            if '//' in stmt:
+                words = [w for w in re.findall(r'\b[A-Z][A-Z0-9_]{1,16}\b', stmt.split('//', 1)[1]) if w not in ['DUMMY', 'GPIO', 'AXI', 'UIO', 'REG', 'REGISTER', 'OUTPUT', 'INPUT', 'ALL']]
+                if words:
+                    inline_hint_name = words[0]
+
+            addr_val = None
+            if addr_str in param_map:
+                addr_val = param_map[addr_str]
+            else:
+                try:
+                    addr_val = self.parse_number(addr_str)
+                except Exception:
+                    continue
+
+            if addr_val is None:
+                continue
+
+            assign_match = re.search(r'([a-zA-Z0-9_]+)(?:\[[^\]]+\])?\s*<=', stmt)
+            if assign_match:
+                sig_name = assign_match.group(1).strip()
+                if addr_val not in write_entries:
+                    write_entries[addr_val] = sig_name
+                if inline_hint_name and addr_val not in comment_hints:
+                    comment_hints[addr_val] = {'name': inline_hint_name, 'direction': None}
+
+        # 4c. assign による三項演算子読出し (Ternary Read Multiplexer) の走査
+        # 例: assign r_data = (addr == 32'h40000004) ? sub_out : reg0;
+        assign_read_matches = re.finditer(
+            r'\bassign\s+(?:r_data|s_axi_rdata)\s*=\s*([^;]+);',
+            self.raw_content,
+            re.IGNORECASE
+        )
+        for ar in assign_read_matches:
+            expr = ar.group(1)
+            ternary_matches = re.finditer(
+                r'(?:\((?:[^\)]*?\b)?(?:addr|s_axi_araddr)\s*==\s*([0-9a-zA-Z_\'h]+)[^)]*\)|(?:addr|s_axi_araddr)\s*==\s*([0-9a-zA-Z_\'h]+))\s*\?\s*([a-zA-Z0-9_]+)',
+                expr
+            )
+            for tm in ternary_matches:
+                addr_str = tm.group(1) or tm.group(2)
+                sig = tm.group(3).strip()
+                addr_val = None
+                if addr_str in param_map:
+                    addr_val = param_map[addr_str]
+                else:
+                    try:
+                        addr_val = self.parse_number(addr_str)
+                    except Exception:
+                        continue
+                if addr_val is not None:
+                    read_entries[addr_val] = sig
+
+            # Check default / fallback signal in the ternary chain (e.g. ": reg0")
+            colons = expr.split(':')
+            if len(colons) > 1:
+                for fbt in re.findall(r'\b[a-zA-Z_][a-zA-Z0-9_]*\b', colons[-1].strip()):
+                    if fbt.lower() not in ('h0', 'd0', 'deadbeef', 'default', '32'):
+                        for w_addr, w_sig in write_entries.items():
+                            if w_sig == fbt:
+                                read_entries[w_addr] = w_sig
+
         all_addrs = sorted(set(list(write_entries.keys()) + list(read_entries.keys()) + list(comment_hints.keys())))
         if not all_addrs:
             return []

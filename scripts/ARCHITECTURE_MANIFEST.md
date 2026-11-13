@@ -43,9 +43,14 @@ DTS の論理構造を抽象化したデータモデル。
 - **DeviceConfigGenerator**: シナリオ固有のデバイス定義ヘッダー (`vfpga_device_config.h`) を生成。`FBB_DEV_PATH_<NAME>` に加え、互換マクロ `FBB_DEV_PATH_<NAME>_0` を自動出力して既存ファームウェアとの後方互換性を保証する。
 - **ShimGenerator**: Shimライブラリ (`libfpgashim.c`) を生成。通常の UIO/GPIO/UART のラップ、非対称マルチコア（AMP）開発用の **VirtIO/RPMsg 仮想デバイススタック**、および `xorshift128+` / SplitMix64 による**決定論的カオス障害注入エンジン**（I2C, SPI, UIO, CAN, CDMA への確率的障害注入と無効時ゼロオーバーヘッド動作）を自動生成する。
 - **RTLGenerator**: Verilog トップモジュール (`vfpga_top.v`) を生成
-- **SimulatorGenerator**: Verilator 用 C++ ラッパー (`sim_main.cpp`) を生成。共有メモリとRTLレジスタ間の同期を行うとともに、仮想IPI（`TRIG`）レジスタへの書き込み検知時にAコアへシグナル（`SIGUSR2`）を自動中継。また 118 ピン標準インターフェース（`l_pins_i` [117:0]）向けに C++17 SFINAE トレイト `has_l_pins_i<T>` を介した型安全な 4 ワード一括代入を生成する。
+- **SimulatorGenerator**: Verilator 用 C++ ラッパー (`sim_main.cpp`) を生成。共有メモリとRTLレジスタ間の同期を行うとともに、仮想IPI（`TRIG`）レジスタへの書き込み検知時にAコアへシグナル（`SIGUSR2`）を自動中継。また 118 ピン標準インターフェース（`l_pins_i` [117:0]）向けに C++17 SFINAE トレイト `has_l_pins_i<T>` を介した型安全な 4 ワード一括代入を生成する。さらに AXI Master ポート（`m_axi_*`）を検知した場合、`AxiStallEngine` と C++17 SFINAE トレイト（`sim_traits.h`）を連携させ、サイクル精度でのバス競合・ランダムストール注入（Chaos Engine）をゼロオーバーヘッド・バイパス付きで自動生成する。
 - **ManifestGenerator**: Webダッシュボード用メタデータ (`board_manifest.json`) を生成
 - **GdbExtensionGenerator**: GDB / LLDB 用 Python デバッガ拡張スクリプト (`fbb_gdb.py` および `.gdbinit`) を生成。DTS 由来のレジスタ名、オフセット、アクセス属性、仮想デバイス情報を埋め込み、デバッグコンソールから直感的なレジスタ監視・書き込み（`fbb-regs`, `fbb-write`, `fbb-fds`, `fbb-info`）を可能にする。
+
+### 3.4 逆アセンブル・仕様インポーター層 (`v2gtr` / `fbb import`)
+外部の既存 Verilog HDL ソースコードや IP コアから、F-BB 標準の `config.dts` および `config.gtr` を自動生成する逆変換パイプライン。
+- **VerilogImporter (`scripts/vfpga/importer_verilog.py`)**: Verilog ソースを静的構文解析し、`case (addr)` や `if (addr == ...)` によるアドレスデコード、`assign r_data = ... ? ... : ...` による三項演算子読出しマルチプレクサ、パラメータ定数、およびインラインコメント注記からレジスタ名・オフセット・アクセス属性（RW/RO/WO）を抽出して `Device` / `Register` 抽象モデルを構築する。
+- **GtrEmitter (`scripts/vfpga/emitter_gtr.py`)**: 抽出されたモデルから Linux upstream カーネル完全準拠の純粋な `config.dts` と、ノード参照結合（`&node { registers = ...; };`）形式の仮想契約 `config.gtr` を対として出力する。
 
 ## 4. クラス構造概略 (Class Diagram)
 
@@ -118,8 +123,8 @@ classDiagram
 1. **仕様変更**: 最初に `spec.md` または本マニフェストを更新し、設計を明確にする。
 2. **モデル更新**: 変更がデータ構造に関わる場合、`BoardModel` 階層を修正する。
 3. **ユニットテストの更新・実行**:
-    - 変更内容をカバーするテストケースを `scripts/test_gen_vfpga.py` に追加する。
-    - **義務**: `python3 scripts/test_gen_vfpga.py` を実行し、全てのテストがパスすることを確認しなければならない。
+    - 変更内容をカバーするテストケースを `scripts/tests/` 配下のユニットテスト（`test_axi_chaos.py`, `test_v2gtr.py`, `test_dts_parser.py` 等）に追加する。
+    - **義務**: `python3 -m unittest discover -s scripts/tests -v` を実行し、全てのテストがパスすることを確認しなければならない。
 4. **ロジック更新**: 対象の `Generator` クラスを修正する。
 5. **統合検証**: `run_tests.sh` を実行し、全シナリオ（01-07）の通過を確認する。
 

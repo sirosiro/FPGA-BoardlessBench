@@ -173,6 +173,54 @@ class TestV2Gtr(unittest.TestCase):
             parsed_reg_names = [r.name for r in uio_dev.registers]
             self.assertEqual(parsed_reg_names, ["RST", "EN", "CNT"])
 
+    def test_if_write_and_ternary_read_decode(self):
+        """
+        @intent:responsibility
+            case 文ではなく if (addr == ...) による書込みデコードおよび
+            assign r_data = (addr == ...) ? ... : ... による三項演算子読出しマルチプレクサを
+            正確に抽出できることを検証する。
+        """
+        code = """
+        module vfpga_custom (
+            input wire clk,
+            input wire rst_n,
+            input wire [31:0] addr,
+            input wire [31:0] w_data,
+            input wire w_en,
+            output wire [31:0] r_data
+        );
+            reg [31:0] reg_ctrl;
+            reg [31:0] reg_status;
+            wire [31:0] sub_out = 32'h1234;
+
+            always @(posedge clk or negedge rst_n) begin
+                if (!rst_n) begin
+                    reg_ctrl   <= 32'h0;
+                    reg_status <= 32'h0;
+                end else if (w_en) begin
+                    if (addr == 32'h40000000) reg_ctrl <= w_data;
+                    if (addr == 32'h40000008 && w_data == 32'h1) reg_status[0] <= 1'b0; // ACK
+                end
+            end
+
+            assign r_data = (addr == 32'h40000004) ? sub_out : reg_ctrl;
+        endmodule
+        """
+        importer = VerilogImporter(code)
+        devices = importer.extract_devices()
+
+        self.assertEqual(len(devices), 1)
+        dev = devices[0]
+        self.assertEqual(len(dev.registers), 3)
+
+        offsets = [r.offset for r in dev.registers]
+        self.assertEqual(offsets, ["0x00", "0x04", "0x08"])
+
+        reg_map = {r.offset: (r.name, r.direction) for r in dev.registers}
+        self.assertEqual(reg_map["0x00"], ("CTRL", "RW"))
+        self.assertEqual(reg_map["0x04"], ("SUB_OUT", "RO"))
+        self.assertEqual(reg_map["0x08"], ("ACK", "WO"))
+
 
 if __name__ == "__main__":
     unittest.main()
