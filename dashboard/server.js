@@ -507,6 +507,63 @@ function injectGpioPin(deviceName, bitIndex, value, dataRegName = 'DATA') {
     }
 }
 
+// =============================================================================
+// [FBB Logic Distillation] Generic MMIO Register Injection
+// =============================================================================
+function writeMmioRegisters(deviceName, registers) {
+    if (!manifest || !manifest.devices || !manifest.shm_path || !registers) {
+        return false;
+    }
+    if (!fs.existsSync(manifest.shm_path)) {
+        return false;
+    }
+
+    const uioGpioDevs = manifest.devices.filter(d => d.type === 'uio' || d.type === 'gpio' || d.type === 'dma');
+    if (uioGpioDevs.length === 0) return false;
+    const shmBaseAddr = Math.min(...uioGpioDevs.map(d => d.base_addr || 0));
+
+    const dev = manifest.devices.find(d => d.name === deviceName || d.name.startsWith(deviceName) || d.name.includes(deviceName) || d.type === deviceName);
+    if (!dev || !dev.registers || dev.registers.length === 0) return false;
+
+    let fd;
+    try {
+        const stats = fs.statSync(manifest.shm_path);
+        fd = fs.openSync(manifest.shm_path, 'r+');
+
+        const regBuf = Buffer.alloc(4);
+        for (const reg of dev.registers) {
+            const regName = reg.name;
+            const lName = reg.logical_name || reg.name;
+            const val = registers[regName] !== undefined ? registers[regName] : registers[lName];
+            if (val === undefined) continue;
+
+            const regOffset = typeof reg.offset === 'string' ? parseInt(reg.offset, 16) : (reg.offset || 0);
+            if (isNaN(regOffset)) continue;
+
+            const physAddr = (dev.base_addr || 0) + regOffset;
+            const shmOffset = physAddr - shmBaseAddr;
+            if (shmOffset < 0 || shmOffset + 4 > stats.size) continue;
+
+            const uintVal = (Number(val) >>> 0);
+            regBuf.writeUInt32LE(uintVal, 0);
+            fs.writeSync(fd, regBuf, 0, 4, shmOffset);
+
+            if (shmBuffer && shmOffset + 4 <= shmBuffer.length) {
+                shmBuffer.writeUInt32LE(uintVal, shmOffset);
+            }
+        }
+        try { fs.fdatasyncSync(fd); } catch (e) { }
+        return true;
+    } catch (e) {
+        console.error(`[Backend Error] Failed to write MMIO registers into ${manifest.shm_path}: ${e.message}`);
+        return false;
+    } finally {
+        if (fd !== undefined) {
+            try { fs.closeSync(fd); } catch (e) { }
+        }
+    }
+}
+
 // 共有メモリの読み取り (Pure Read-Only: 非侵襲的な観測)
 function updateShm() {
     if (!manifest.shm_path) return;
@@ -915,6 +972,16 @@ io.on('connection', (socket) => {
             broadcastRegisters(true);
         } catch (e) {
             console.error(`[Backend Error] Safe caught gpio-inject exception: ${e.message}`);
+        }
+    });
+
+    socket.on('mmio:write', ({ deviceName, registers }) => {
+        try {
+            if (writeMmioRegisters(deviceName, registers)) {
+                broadcastRegisters(true);
+            }
+        } catch (e) {
+            console.error(`[Backend Error] Safe caught mmio:write exception: ${e.message}`);
         }
     });
 

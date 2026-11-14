@@ -219,8 +219,8 @@ function RegisterMonitor() {
     return false;
   };
 
-  const renderRegisterTable = (regs, maxHeight = '420px') => (
-    <div style={{ maxHeight: maxHeight, overflowY: 'auto' }}>
+  const renderRegisterTable = (regs, maxHeight = null) => (
+    <div style={{ maxHeight: maxHeight || undefined, overflowY: maxHeight ? 'auto' : undefined }}>
       <table className="register-table" style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
         <thead style={{ position: 'sticky', top: 0, background: '#1c2128', zIndex: 2, boxShadow: '0 1px 0 #30363d' }}>
           <tr>
