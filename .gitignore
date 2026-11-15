@@ -34,6 +34,10 @@ tests/scenarios/*/fbb_gdb.py
 spi_flash.bin
 
 
+# Shared host-container drop directory
+shared/*
+!shared/README.md
+
 # CIP
 DESIGN_PHILOSOPHY.md
 

@@ -24,6 +24,7 @@ import json
 import glob
 import time
 import re
+import signal
 
 # Ensure scripts directory is in sys.path (using realpath to resolve symlinks)
 SCRIPT_REAL_PATH = os.path.realpath(__file__)
@@ -504,6 +505,64 @@ def command_test(args):
         sys.exit(130)
 
 
+def stop_lab_processes(verbose=True):
+    """
+    @intent:responsibility
+      稼働中の F-BB インタラクティブ・ラボ（Webダッシュボード、シミュレータ、コントローラ、ファームウェア）を
+      安全かつ完全に一括停止し、ランタイム一時状態をクリーンアップする。
+    """
+    targets = [
+        (r"dashboard/server\.js", "Web Dashboard Server"),
+        (r"vlogic_controller\.py", "Virtual Logic Controller"),
+        (r"vfpga_sim", "Hardware Simulator"),
+        (r"test_bin", "Scenario Firmware"),
+        (r"fbb_gdb\.py", "GDB Scenario Bridge"),
+    ]
+    stopped = []
+    for pattern, label in targets:
+        res = subprocess.run(["pkill", "-9", "-f", pattern], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+        if res.returncode == 0:
+            stopped.append(label)
+
+    # Clean up recorded scenario app PGID
+    pid_file = "/tmp/fbb_app.pid"
+    if os.path.exists(pid_file):
+        try:
+            with open(pid_file, "r") as f:
+                saved_pid = int(f.read().strip())
+            os.killpg(os.getpgid(saved_pid), signal.SIGTERM)
+        except Exception:
+            pass
+        try:
+            os.remove(pid_file)
+        except OSError:
+            pass
+
+    # Clean up shared memory & temporary files
+    for shm in glob.glob("/tmp/vfpga_*") + glob.glob("/tmp/fbb_*"):
+        try:
+            if os.path.isdir(shm):
+                shutil.rmtree(shm)
+            else:
+                os.remove(shm)
+        except OSError:
+            pass
+
+    if verbose:
+        if stopped:
+            print(f"🛑 Stopped running F-BB Lab processes: {', '.join(stopped)}")
+        else:
+            print("🛑 No active F-BB Lab processes were running.")
+
+
+def command_stop(args):
+    """
+    @intent:responsibility
+      稼働中の F-BB ラボ環境・シミュレータ・ダッシュボードプロセスを一括停止する。
+    """
+    stop_lab_processes(verbose=True)
+
+
 def command_lab(args):
     """
     @intent:responsibility
@@ -511,6 +570,10 @@ def command_lab(args):
       個別シナリオやプラグインが受け取る任意の追加引数（例: .hex プログラムファイルやオプション）を
       透過的に start_lab.sh へ転送する。
     """
+    if getattr(args, "stop", False):
+        stop_lab_processes(verbose=True)
+        return
+
     scenario_input = args.scenario or "01_standard_uio"
     s_dir = resolve_scenario_name_or_path(scenario_input)
     if not s_dir:
@@ -530,9 +593,7 @@ def command_lab(args):
         sys.exit(res.returncode)
     except KeyboardInterrupt:
         print("\n🛑 Stopping F-BB Interactive Lab...")
-        subprocess.run(["pkill", "-9", "-f", "vlogic_controller"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-        subprocess.run(["pkill", "-9", "-f", "vfpga_sim"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
-        subprocess.run(["pkill", "-9", "-f", "dashboard/server.js"], stderr=subprocess.DEVNULL, stdout=subprocess.DEVNULL)
+        stop_lab_processes(verbose=False)
         sys.exit(130)
 
 
@@ -2102,6 +2163,7 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser_lab.add_argument("scenario", nargs="?", default="01_standard_uio", help="Scenario name, fuzzy prefix, or directory path (default: 01_standard_uio)")
+    parser_lab.add_argument("--stop", action="store_true", help="Stop running lab and simulation processes and exit")
     parser_lab.add_argument("extra_args", nargs=argparse.REMAINDER, help="Additional arguments or file paths forwarded directly to scenario runner")
 
     parser_start = subparsers.add_parser(
@@ -2111,7 +2173,20 @@ def main():
         formatter_class=argparse.RawDescriptionHelpFormatter
     )
     parser_start.add_argument("scenario", nargs="?", default="01_standard_uio", help="Scenario name, fuzzy prefix, or directory path (default: 01_standard_uio)")
+    parser_start.add_argument("--stop", action="store_true", help="Stop running lab and simulation processes and exit")
     parser_start.add_argument("extra_args", nargs=argparse.REMAINDER, help="Additional arguments or file paths forwarded directly to scenario runner")
+
+    # stop
+    stop_epilog = """Examples:
+  fbb stop                                Stop all active lab, dashboard, and simulation processes
+  fbb lab --stop                          Alias for 'fbb stop'
+"""
+    parser_stop = subparsers.add_parser(
+        "stop",
+        help="Stop all running interactive lab, dashboard server, and simulation processes",
+        epilog=stop_epilog,
+        formatter_class=argparse.RawDescriptionHelpFormatter
+    )
 
     # 4. clean
     clean_epilog = """Examples:
@@ -2272,6 +2347,8 @@ def main():
         command_test(args)
     elif args.command in ("lab", "start"):
         command_lab(args)
+    elif args.command == "stop":
+        command_stop(args)
     elif args.command == "clean":
         command_clean(args)
     elif args.command == "inspect":
