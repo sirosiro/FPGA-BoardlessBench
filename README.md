@@ -1,5 +1,7 @@
 # FPGA-BoardlessBench (F-BB)
 
+🌐 [English (Google Translate)](https://translate.google.com/translate?sl=ja&tl=en&u=https://github.com/sirosiro/FPGA-BoardlessBench)
+
 **Software-only FPGA Firmware Testing & System Co-Simulation / 物理ボード不要のFPGA×組み込みFW協調開発・テスト環境**
 
 FPGA-BoardlessBench (F-BB)は、FPGAを搭載した実機や評価ボードが無い環境でも、FPGA上に実装された周辺回路（IPデバイス）を操作する**ファームウェア（C/C++、Linux UIO/ドライバ、RTOS、制御アプリ）を先行開発・自動テストするためのソフトウェア完結型テスト環境**（Software-only FPGA testing environment）です。Linuxのシステムコールをインターセプトし、エミュレートしたFPGAのデバイスへリダイレクトすることで、あたかも物理的なFPGAを操作しているかのような開発体験ができます。標準プロダクション・リファレンスアーキテクチャとして Zynq 7000 / UltraScale+ (AXI CDMA, XPS GPIO, RemoteProc AMP 等) をフルサポートしており、DTS駆動の汎用32/64bit SoCエミュレーション環境として100%実機透過なファームウェアテストを提供します。
