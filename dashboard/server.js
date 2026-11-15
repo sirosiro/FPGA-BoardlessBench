@@ -985,6 +985,47 @@ io.on('connection', (socket) => {
         }
     });
 
+    socket.on('mmio:write_batch', ({ deviceName, batch }) => {
+        try {
+            if (!Array.isArray(batch) || batch.length === 0) return;
+            const dev = manifest && manifest.devices && manifest.devices.find(d => d.name === deviceName || d.name.startsWith(deviceName) || d.type === deviceName);
+            if (!dev) return;
+
+            // Write the latest registers from the batch to SHM
+            const latest = batch[batch.length - 1];
+            writeMmioRegisters(deviceName, latest);
+
+            const prefix = `${dev.name}_`;
+            const now = new Date();
+            const baseTime = now.toLocaleTimeString('ja-JP', { hour12: false });
+
+            // Push each historical step from the batch into traceHistory
+            batch.forEach((item, idx) => {
+                const ms = String((now.getMilliseconds() + idx) % 1000).padStart(3, '0');
+                const snapshot = {
+                    index: traceIndex++,
+                    time: `${baseTime}.${ms}`,
+                    telemetry: cachedScenarioTelemetry ? { ...cachedScenarioTelemetry } : null
+                };
+                for (const reg of dev.registers) {
+                    const regName = reg.name;
+                    const val = item[regName] !== undefined ? item[regName] : (item[reg.logical_name] !== undefined ? item[reg.logical_name] : 0);
+                    snapshot[`${prefix}${regName}`] = (Number(val) >>> 0);
+                }
+                traceHistory.push(snapshot);
+                if (traceHistory.length > MAX_TRACE_HISTORY) {
+                    traceHistory.shift();
+                }
+                lastRegState = { ...snapshot };
+            });
+
+            io.emit('trace-history-init', traceHistory);
+            broadcastRegisters(false);
+        } catch (e) {
+            console.error(`[Backend Error] Safe caught mmio:write_batch exception: ${e.message}`);
+        }
+    });
+
     socket.on('peripheral:action', ({ pluginId, action, control, value, shm_file, shm_offset, format, min, max, raw_min, raw_max }) => {
         console.log(`[Backend] peripheral:action received: pluginId=${pluginId}, control=${control}, value=${value}, shm_file=${shm_file}`);
 

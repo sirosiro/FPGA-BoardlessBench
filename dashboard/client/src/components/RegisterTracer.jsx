@@ -98,7 +98,7 @@ const RegisterTracer = () => {
   // 初期グループ選択: グループが複数ある場合は先頭のグループ（制御系）をデフォルト選択（未保存時）
   useEffect(() => {
     if (groupNames.length > 0 && !selectedGroup) {
-      const defaultGroup = groupNames.length > 1 ? groupNames[0] : 'ALL';
+      const defaultGroup = groupNames.includes('Main Registers') ? 'Main Registers' : (groupNames.length > 1 ? groupNames[0] : 'ALL');
       if (updateTracerState) {
         updateTracerState({ selectedGroup: defaultGroup });
       }
