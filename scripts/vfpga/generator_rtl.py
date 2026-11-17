@@ -671,6 +671,7 @@ class ManifestGenerator(BaseGenerator):
                 "type": dev.type,
                 "path": dev.path,
                 "base_addr": dev.base_addr,
+                "size": getattr(dev, "size", 0),
                 "base_reg": dev.base_reg,
                 "registers": [
                     {

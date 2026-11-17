@@ -429,7 +429,7 @@ class DTSParser:
         pos = 0
         while True:
             # Match top-level nodes (e.g. node@1000 or label: node@1000)
-            match = re.search(r"([a-zA-Z0-9_@:-]+)\s*\{", content[pos:])
+            match = re.search(r"((?:[a-zA-Z0-9_-]+\s*:\s*)?[a-zA-Z0-9_@:-]+)\s*\{", content[pos:])
             if not match:
                 break
             match_start = pos + match.start()
@@ -466,10 +466,14 @@ class DTSParser:
                 clean_body = clean_body[:sub_start] + clean_body[sub_brace_end:]
 
             props = {}
-            prop_matches = re.finditer(r"([a-zA-Z0-9_,-]+)\s*=\s*([^;]+);", clean_body)
+            prop_matches = re.finditer(r"([a-zA-Z0-9_,-]+)(?:\s*=\s*([^;]+))?;", clean_body)
             for p_match in prop_matches:
                 k = p_match.group(1).strip()
-                v = p_match.group(2).strip()
+                raw_v = p_match.group(2)
+                if raw_v is None:
+                    props[k] = True
+                    continue
+                v = raw_v.strip()
                 if "{" in v or "}" in v:
                     continue
                 if v.startswith("<") and v.endswith(">"):
@@ -478,11 +482,15 @@ class DTSParser:
                     v = v[1:-1].strip()
                 props[k] = v
 
-            if "compatible" in props:
+            if "compatible" in props or props.get("device_type") == "memory":
                 compatible = props.get("compatible", "")
                 label = props.get("label", "/dev/%s" % name)
                 dev_type = "unknown"
-                if "generic-uio" in compatible:
+                if any(c in compatible for c in ["rom", "mtd-rom"]):
+                    dev_type = "rom"
+                elif any(c in compatible for c in ["ram", "mmio-sram"]) or props.get("device_type") == "memory":
+                    dev_type = "ram"
+                elif "generic-uio" in compatible:
                     dev_type = "uio"
                 elif "i2c" in compatible or "cdns,i2c" in compatible:
                     dev_type = "i2c"
@@ -503,6 +511,8 @@ class DTSParser:
 
                 reg_val = props.get("reg", "0x0 0x0")
                 device = Device(name, label, dev_type, reg_val)
+                if dev_type == "rom" or "read-only" in props:
+                    device.extra_props["read-only"] = True
                 for k, v in props.items():
                     if k not in ["label", "reg", "registers"]:
                         device.extra_props[k] = v
