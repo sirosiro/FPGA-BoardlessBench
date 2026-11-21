@@ -421,7 +421,7 @@ function injectGpioPin(deviceName, bitIndex, value, dataRegName = 'DATA') {
         return false;
     }
 
-    const uioGpioDevs = manifest.devices.filter(d => d.type === 'uio' || d.type === 'gpio');
+    const uioGpioDevs = manifest.devices.filter(d => d.type === 'uio' || d.type === 'gpio' || d.type === 'dma');
     if (uioGpioDevs.length === 0) return false;
     const shmBaseAddr = Math.min(...uioGpioDevs.map(d => d.base_addr || 0));
 
@@ -625,6 +625,13 @@ function broadcastRegisters(force = false) {
         // -------------------------------------------------------------
         // [FBB Logic Distillation] Ghost / Undeclared Register Detection
         // -------------------------------------------------------------
+        // Skip ghost register detection for memory buffer devices (DRAM/SRAM data buffers are not register blocks)
+        const isMemoryDev = dev.node_name === 'memory' || dev.type === 'ram' || dev.type === 'rom' || (dev.name && dev.name.endsWith('_mem'));
+        if (isMemoryDev) {
+            delete detectedGhostOffsets[dev.name];
+            return;
+        }
+
         if (!detectedGhostOffsets[dev.name]) {
             detectedGhostOffsets[dev.name] = new Set();
         }

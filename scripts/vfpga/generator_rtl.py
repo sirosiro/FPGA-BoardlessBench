@@ -668,6 +668,8 @@ class ManifestGenerator(BaseGenerator):
         for dev in model.devices:
             dev_info = {
                 "name": dev.name,
+                "node_name": getattr(dev, "node_name", dev.name.split("_")[0]),
+                "label": getattr(dev, "label", None),
                 "type": dev.type,
                 "path": dev.path,
                 "base_addr": dev.base_addr,
@@ -685,16 +687,15 @@ class ManifestGenerator(BaseGenerator):
                 ],
                 "extra": dev.extra_props,
             }
-            compat_str = (
-                (
-                    dev.extra_props.get("compatible")
-                    if hasattr(dev, "extra_props") and isinstance(dev.extra_props, dict)
-                    else getattr(dev, "compatible", None)
-                )
-                or "generic,hub75-matrix"
-                if "matrix" in dev.name
-                else None
-            )
+            compat_str = None
+            if hasattr(dev, "extra_props") and isinstance(dev.extra_props, dict):
+                compat_str = dev.extra_props.get("compatible")
+            if not compat_str and hasattr(dev, "compatible"):
+                compat_str = getattr(dev, "compatible", None)
+            if not compat_str:
+                node_name = getattr(dev, "node_name", "") or ""
+                if "matrix" in dev.name or "matrix" in node_name:
+                    compat_str = "generic,hub75-matrix"
             if compat_str:
                 plugin_info = find_plugin_for_compat(compat_str)
                 if plugin_info:

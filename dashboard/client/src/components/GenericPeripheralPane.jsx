@@ -309,7 +309,7 @@ function normalizeControlSpec(ctrl) {
 }
 
 function GenericPeripheralPane(props) {
-  const { pluginId, params, manifest: propManifest } = props;
+  const { pluginId, params, manifest: propManifest, id: propId } = props;
   const { socket, manifest: globalManifest, peripheralFrames, display7SegFrame, displayFrame } = useDashboard();
 
   const topDevices = globalManifest?.devices?.filter(d => d.ui_widget || d.compatible) || [];
@@ -319,12 +319,18 @@ function GenericPeripheralPane(props) {
 
   const pId = params?.pluginId || pluginId;
   const pName = params?.manifest?.name;
+  const pType = params?.type;
+  const panelId = propId || params?._componentName || props?.id;
 
   const matchedSlave = allSlaves.find(s => 
-    (pName && s.name === pName) ||
+    (pName && (s.name === pName || s.node_name === pName || s.label === pName)) ||
     (pId && s.compatible?.includes(pId)) ||
     (pId && typeof pId === 'string' && s.compatible && pId.includes(s.compatible)) ||
-    (s.name && pId && pId.includes(s.name))
+    (s.name && pId && pId.includes(s.name)) ||
+    ((pType === 'oled' || panelId === 'oledDisplay') && s.compatible?.includes('ssd1306')) ||
+    ((pType === 'seg7' || panelId === 'seg7Display') && (s.compatible?.includes('ht16k33') || s.name?.includes('7seg'))) ||
+    ((pType === 'spiAdc' || panelId === 'spiAdcPanel') && (s.compatible?.includes('mcp3208') || s.compatible?.includes('adc') || s.name?.includes('adc'))) ||
+    ((pType === 'matrix' || panelId?.includes('matrix')) && (s.compatible?.includes('hub75') || s.compatible?.includes('matrix') || s.name?.includes('matrix')))
   ) || allSlaves.find(s => s.ui_widget?.controls?.length > 0) || allSlaves[0];
 
   const slaveData = matchedSlave ? {
@@ -626,8 +632,8 @@ function GenericPeripheralPane(props) {
           );
         })()}
 
-        {/* Screen View Mode (Direct Full Display) */}
-        {viewMode === 'display' && displayCtrls.length > 0 && (() => {
+        {/* Screen View Mode (Direct Full Display) or Fallback when no PCB Board SVG is provided */}
+        {((viewMode === 'display' && displayCtrls.length > 0) || (viewMode === 'board' && !slaveData?.ui_widget?.board_svg_content && displayCtrls.length > 0)) && (() => {
           const mainDisplay = displayCtrls[0];
           const targetShmFile = mainDisplay.shm_file || slaveData?.shm_name || 'fbb_hub75_0';
           const frameData = peripheralFrames[targetShmFile] || peripheralFrames['/dev/shm/' + targetShmFile] || displayFrame || peripheralFrames['fbb_oled_0'];
