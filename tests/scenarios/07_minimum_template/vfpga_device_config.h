@@ -9,4 +9,7 @@
 #ifndef FBB_DEV_PATH_MINIMUM_TEMPLATE_0
 #define FBB_DEV_PATH_MINIMUM_TEMPLATE_0 FBB_DEV_PATH_MINIMUM_TEMPLATE
 #endif
+#ifndef FBB_DEV_PATH_VFPGA_0
+#define FBB_DEV_PATH_VFPGA_0 "minimum_template"
+#endif
 #endif

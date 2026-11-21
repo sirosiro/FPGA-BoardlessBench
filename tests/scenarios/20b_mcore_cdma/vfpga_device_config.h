@@ -39,4 +39,40 @@
 #ifndef FBB_DEV_PATH_REMOTEPROC_0
 #define FBB_DEV_PATH_REMOTEPROC_0 FBB_DEV_PATH_REMOTEPROC
 #endif
+#ifndef FBB_DEV_PATH_SRC_MEM
+#define FBB_DEV_PATH_SRC_MEM "/dev/uio2"
+#endif
+#ifndef FBB_DEV_PATH_SRC_MEM_0
+#define FBB_DEV_PATH_SRC_MEM_0 FBB_DEV_PATH_SRC_MEM
+#endif
+#ifndef FBB_DEV_PATH_GPIO0
+#define FBB_DEV_PATH_GPIO0 "/dev/uio1"
+#endif
+#ifndef FBB_DEV_PATH_GPIO0_0
+#define FBB_DEV_PATH_GPIO0_0 FBB_DEV_PATH_GPIO0
+#endif
+#ifndef FBB_DEV_PATH_CDMA0
+#define FBB_DEV_PATH_CDMA0 "/dev/uio0"
+#endif
+#ifndef FBB_DEV_PATH_CDMA0_0
+#define FBB_DEV_PATH_CDMA0_0 FBB_DEV_PATH_CDMA0
+#endif
+#ifndef FBB_DEV_PATH_DST_MEM
+#define FBB_DEV_PATH_DST_MEM "/dev/uio3"
+#endif
+#ifndef FBB_DEV_PATH_DST_MEM_0
+#define FBB_DEV_PATH_DST_MEM_0 FBB_DEV_PATH_DST_MEM
+#endif
+#ifndef FBB_DEV_PATH_UART0
+#define FBB_DEV_PATH_UART0 "/dev/ttyPS0"
+#endif
+#ifndef FBB_DEV_PATH_UART0_0
+#define FBB_DEV_PATH_UART0_0 FBB_DEV_PATH_UART0
+#endif
+#ifndef FBB_DEV_PATH_REMOTEPROC0
+#define FBB_DEV_PATH_REMOTEPROC0 "/dev/uio4"
+#endif
+#ifndef FBB_DEV_PATH_REMOTEPROC0_0
+#define FBB_DEV_PATH_REMOTEPROC0_0 FBB_DEV_PATH_REMOTEPROC0
+#endif
 #endif

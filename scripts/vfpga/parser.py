@@ -451,7 +451,8 @@ class DTSParser:
                 label_prefix = parts[0].strip()
                 node_name = parts[-1].strip()
 
-            name = label_prefix if label_prefix else node_name.split("@")[0]
+            generic_node_name = node_name.split("@")[0]
+            name = label_prefix if label_prefix else generic_node_name
 
             # Clean body by removing nested sub-node blocks to prevent property overriding
             clean_body = body
@@ -510,7 +511,7 @@ class DTSParser:
                     dev_type = "uio"
 
                 reg_val = props.get("reg", "0x0 0x0")
-                device = Device(name, label, dev_type, reg_val)
+                device = Device(name, label, dev_type, reg_val, node_name=generic_node_name, label=label_prefix)
                 if dev_type == "rom" or "read-only" in props:
                     device.extra_props["read-only"] = True
                 for k, v in props.items():

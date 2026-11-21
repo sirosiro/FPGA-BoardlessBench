@@ -28,11 +28,13 @@ class SPISlave:
         self.init_val = init_val
 
 class Device:
-    def __init__(self, name, path, dev_type, base_reg):
+    def __init__(self, name, path, dev_type, base_reg, node_name=None, label=None):
         self.name = name
         self.path = path
         self.type = dev_type
         self.base_reg = base_reg
+        self.node_name = node_name or name.split("_")[0]
+        self.label = label
         self.registers = []
         self.extra_props = {}
         self.i2c_slaves = []

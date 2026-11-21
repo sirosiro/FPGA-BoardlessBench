@@ -4,7 +4,7 @@ version = "0.1.0"
 edition = "2021"
 
 [dependencies]
-embassy-executor = { git = "https://github.com/embassy-rs/embassy.git", features = ["platform-std", "executor-thread"] }
+embassy-executor = { git = "https://github.com/embassy-rs/embassy.git", rev = "47016d9267fc18a1ae8ffaae1a9ad78d0c93c76a", features = ["platform-std", "executor-thread"] }
 libc = "0.2"
 
 [[bin]]

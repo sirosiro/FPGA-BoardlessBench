@@ -101,26 +101,50 @@ class DeviceConfigGenerator(BaseGenerator):
         """
         @intent:responsibility
             重複を排除した論理デバイスパスマクロ（FBB_DEV_PATH_*）群を生成する。
+            SoC/ベンダー非依存の汎用クラス名マクロ（FBB_DEV_PATH_SERIAL, FBB_DEV_PATH_I2C 等）に加え、
+            ノードラベル固有のマクロ（FBB_DEV_PATH_UART0, FBB_DEV_PATH_I2C0 等）もエイリアスとして出力し、
+            既存ファームウェアとの 100% の後方互換性を保証する。
         """
-        # 各デバイスのパス用マクロ生成
         dev_path_macros = []
-        name_counts = {}
-        for dev in model.devices:
-            clean_name = "".join(c if c.isalnum() else "_" for c in dev.name).upper()
-            name_counts[clean_name] = name_counts.get(clean_name, 0) + 1
+        defined_macro_names = set()
 
-        current_indices = {}
+        def add_macro(macro_name, path_val, add_zero_alias=False):
+            if not macro_name or macro_name in defined_macro_names:
+                return
+            defined_macro_names.add(macro_name)
+            dev_path_macros.append(f'#ifndef {macro_name}\n#define {macro_name} "{path_val}"\n#endif')
+            if add_zero_alias and not macro_name.endswith("_0"):
+                zero_alias = f"{macro_name}_0"
+                if zero_alias not in defined_macro_names:
+                    defined_macro_names.add(zero_alias)
+                    dev_path_macros.append(f"#ifndef {zero_alias}\n#define {zero_alias} {macro_name}\n#endif")
+
+        # 1. 汎用ノード名（node_name）に基づく標準マクロ生成（後方互換性・標準API）
+        # 同一ノード名が複数ある場合は name, name_1, name_2 ... としてナンバリング
+        generic_names = []
+        counts = {}
         for dev in model.devices:
-            clean_name = "".join(c if c.isalnum() else "_" for c in dev.name).upper()
-            if name_counts[clean_name] > 1:
-                idx = current_indices.get(clean_name, 0)
-                current_indices[clean_name] = idx + 1
-                macro_name = f"FBB_DEV_PATH_{clean_name}_{idx}"
+            base_g = (getattr(dev, "node_name", None) or dev.name.split("_")[0]).lower()
+            if base_g in counts:
+                g_numbered = f"{base_g}_{counts[base_g]}"
+                counts[base_g] += 1
             else:
-                macro_name = f"FBB_DEV_PATH_{clean_name}"
-            dev_path_macros.append(f'#ifndef {macro_name}\n#define {macro_name} "{dev.path}"\n#endif')
-            if not macro_name.endswith("_0") and name_counts[clean_name] == 1:
-                dev_path_macros.append(f"#ifndef {macro_name}_0\n#define {macro_name}_0 {macro_name}\n#endif")
+                g_numbered = base_g
+                counts[base_g] = 1
+            generic_names.append(g_numbered)
+
+        for dev, g_name in zip(model.devices, generic_names):
+            clean_name = "".join(c if c.isalnum() else "_" for c in g_name).upper()
+            add_macro(f"FBB_DEV_PATH_{clean_name}", dev.path, add_zero_alias=True)
+
+        # 2. デバイス固有名 / ラベル（dev.name / dev.label）に基づく個別マクロ・エイリアス生成
+        for dev in model.devices:
+            for name_candidate in [dev.name, getattr(dev, "label", None)]:
+                if not name_candidate:
+                    continue
+                clean_name = "".join(c if c.isalnum() else "_" for c in name_candidate).upper()
+                add_macro(f"FBB_DEV_PATH_{clean_name}", dev.path, add_zero_alias=True)
+
         dev_path_macros_str = "\n".join(dev_path_macros)
 
         return """/* Auto-generated Device Config from DTS */

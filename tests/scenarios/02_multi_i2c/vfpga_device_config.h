@@ -15,4 +15,16 @@
 #ifndef FBB_DEV_PATH_I2C_1_0
 #define FBB_DEV_PATH_I2C_1_0 FBB_DEV_PATH_I2C_1
 #endif
+#ifndef FBB_DEV_PATH_I2C0
+#define FBB_DEV_PATH_I2C0 "/dev/i2c-0"
+#endif
+#ifndef FBB_DEV_PATH_I2C0_0
+#define FBB_DEV_PATH_I2C0_0 FBB_DEV_PATH_I2C0
+#endif
+#ifndef FBB_DEV_PATH_I2C2
+#define FBB_DEV_PATH_I2C2 "/dev/i2c-1"
+#endif
+#ifndef FBB_DEV_PATH_I2C2_0
+#define FBB_DEV_PATH_I2C2_0 FBB_DEV_PATH_I2C2
+#endif
 #endif

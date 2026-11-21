@@ -21,4 +21,22 @@
 #ifndef FBB_DEV_PATH_UIO_0
 #define FBB_DEV_PATH_UIO_0 FBB_DEV_PATH_UIO
 #endif
+#ifndef FBB_DEV_PATH_SPI0
+#define FBB_DEV_PATH_SPI0 "/dev/spidev0"
+#endif
+#ifndef FBB_DEV_PATH_SPI0_0
+#define FBB_DEV_PATH_SPI0_0 FBB_DEV_PATH_SPI0
+#endif
+#ifndef FBB_DEV_PATH_UART2
+#define FBB_DEV_PATH_UART2 "/dev/ttyPS1"
+#endif
+#ifndef FBB_DEV_PATH_UART2_0
+#define FBB_DEV_PATH_UART2_0 FBB_DEV_PATH_UART2
+#endif
+#ifndef FBB_DEV_PATH_ADC_REGS
+#define FBB_DEV_PATH_ADC_REGS "/dev/uio0"
+#endif
+#ifndef FBB_DEV_PATH_ADC_REGS_0
+#define FBB_DEV_PATH_ADC_REGS_0 FBB_DEV_PATH_ADC_REGS
+#endif
 #endif
