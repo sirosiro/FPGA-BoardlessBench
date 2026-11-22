@@ -2018,6 +2018,212 @@ Provide your response in JSON format using clear, technical English:
     }
 });
 
+// =============================================================================
+// Generic Local AI Bridge API (Ollama Proxy — 100% Plugin-Isolated)
+// =============================================================================
+function parseOllamaTarget() {
+    const raw = (process.env.OLLAMA_HOST || 'host.docker.internal:11434').trim();
+    const cleaned = raw.replace(/^https?:\/\//i, '').replace(/\/+$/, '');
+    const colonIdx = cleaned.lastIndexOf(':');
+    if (colonIdx > 0) {
+        const hostname = cleaned.slice(0, colonIdx);
+        const port = parseInt(cleaned.slice(colonIdx + 1), 10) || 11434;
+        return { hostname, port, raw: `${hostname}:${port}` };
+    }
+    const hostname = cleaned || 'host.docker.internal';
+    return { hostname, port: 11434, raw: `${hostname}:11434` };
+}
+
+app.get('/api/ai/status', (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    const http = require('http');
+    const target = parseOllamaTarget();
+    let responded = false;
+
+    const finish = (payload) => {
+        if (responded) return;
+        responded = true;
+        res.json(payload);
+    };
+
+    try {
+        const reqOllama = http.request({
+            hostname: target.hostname,
+            port: target.port,
+            path: '/api/tags',
+            method: 'GET',
+            timeout: 1500
+        }, (resOllama) => {
+            let body = '';
+            resOllama.on('data', (chunk) => { body += chunk; });
+            resOllama.on('end', () => {
+                if (resOllama.statusCode !== 200) {
+                    return finish({ available: false, host: target.raw, models: [] });
+                }
+                try {
+                    const parsed = JSON.parse(body);
+                    const rawModels = Array.isArray(parsed.models) ? parsed.models : [];
+                    const names = rawModels
+                        .map(m => m && m.name)
+                        .filter(Boolean);
+                    // Prefer coding / strong reasoning models first for developer UX
+                    const scoreModel = (name) => {
+                        const low = name.toLowerCase();
+                        if (low.includes('qwen3')) return 0;
+                        if (low.includes('coder')) return 1;
+                        if (low.includes('gemma4')) return 2;
+                        if (low.includes('deepseek')) return 3;
+                        return 4;
+                    };
+                    names.sort((a, b) => scoreModel(a) - scoreModel(b) || a.localeCompare(b));
+                    finish({ available: names.length > 0, host: target.raw, models: names });
+                } catch {
+                    finish({ available: false, host: target.raw, models: [] });
+                }
+            });
+        });
+
+        reqOllama.on('timeout', () => {
+            reqOllama.destroy();
+            finish({ available: false, host: target.raw, models: [] });
+        });
+        reqOllama.on('error', () => {
+            finish({ available: false, host: target.raw, models: [] });
+        });
+        reqOllama.end();
+    } catch {
+        finish({ available: false, host: target.raw, models: [] });
+    }
+});
+
+app.post('/api/ai/chat', (req, res) => {
+    try {
+        const { model, messages, stream = true, options } = req.body || {};
+        if (!model || typeof model !== 'string') {
+            return res.status(400).json({ error: 'Valid model name is required' });
+        }
+        if (!Array.isArray(messages) || messages.length === 0 || messages.length > 50) {
+            return res.status(400).json({ error: 'messages must be a non-empty array (max 50 turns)' });
+        }
+
+        const sanitizedMessages = messages.map(m => ({
+            role: ['system', 'user', 'assistant'].includes(m?.role) ? m.role : 'user',
+            content: typeof m?.content === 'string' ? m.content : String(m?.content || '')
+        }));
+
+        const postData = JSON.stringify({
+            model: model.trim(),
+            messages: sanitizedMessages,
+            stream: Boolean(stream),
+            ...(options && typeof options === 'object' ? { options } : {})
+        });
+
+        if (Buffer.byteLength(postData) > 512 * 1024) {
+            return res.status(413).json({ error: 'Prompt payload exceeds 512KB limit' });
+        }
+
+        const http = require('http');
+        const target = parseOllamaTarget();
+        const isStreaming = Boolean(stream);
+        let clientAborted = false;
+
+        const reqOllama = http.request({
+            hostname: target.hostname,
+            port: target.port,
+            path: '/api/chat',
+            method: 'POST',
+            headers: {
+                'Content-Type': 'application/json',
+                'Content-Length': Buffer.byteLength(postData)
+            },
+            timeout: 120000
+        }, (resOllama) => {
+            if (clientAborted) {
+                resOllama.resume();
+                return;
+            }
+
+            if (resOllama.statusCode && resOllama.statusCode >= 400) {
+                let errBody = '';
+                resOllama.on('data', (c) => { errBody += c; });
+                resOllama.on('end', () => {
+                    if (!res.headersSent) {
+                        res.status(resOllama.statusCode).json({ error: errBody || `Ollama returned HTTP ${resOllama.statusCode}` });
+                    }
+                });
+                return;
+            }
+
+            if (isStreaming) {
+                res.setHeader('Content-Type', 'application/x-ndjson; charset=utf-8');
+                res.setHeader('Cache-Control', 'no-cache, no-transform');
+                res.setHeader('Connection', 'keep-alive');
+                if (typeof res.flushHeaders === 'function') res.flushHeaders();
+
+                resOllama.on('data', (chunk) => {
+                    if (!clientAborted && !res.writableEnded) {
+                        res.write(chunk);
+                    }
+                });
+                resOllama.on('end', () => {
+                    if (!res.writableEnded) res.end();
+                });
+                resOllama.on('error', (err) => {
+                    if (!res.writableEnded) {
+                        res.write(JSON.stringify({ error: err.message, done: true }) + '\n');
+                        res.end();
+                    }
+                });
+            } else {
+                let body = '';
+                resOllama.on('data', (chunk) => { body += chunk; });
+                resOllama.on('end', () => {
+                    try {
+                        const parsed = JSON.parse(body);
+                        res.json({ success: true, ...parsed });
+                    } catch (e) {
+                        res.status(502).json({ error: 'Invalid JSON response from Ollama' });
+                    }
+                });
+            }
+        });
+
+        res.on('close', () => {
+            if (!res.writableEnded) {
+                clientAborted = true;
+                reqOllama.destroy();
+            }
+        });
+
+        reqOllama.on('timeout', () => {
+            reqOllama.destroy();
+            if (!res.headersSent) {
+                res.status(504).json({ error: 'Local AI request timed out (120s)' });
+            } else if (!res.writableEnded) {
+                res.write(JSON.stringify({ error: 'Local AI request timed out', done: true }) + '\n');
+                res.end();
+            }
+        });
+
+        reqOllama.on('error', (err) => {
+            if (clientAborted) return;
+            if (!res.headersSent) {
+                res.status(503).json({ error: `Local AI service unavailable (${target.raw}): ${err.message}` });
+            } else if (!res.writableEnded) {
+                res.write(JSON.stringify({ error: err.message, done: true }) + '\n');
+                res.end();
+            }
+        });
+
+        reqOllama.write(postData);
+        reqOllama.end();
+    } catch (e) {
+        if (!res.headersSent) {
+            res.status(500).json({ error: e.message });
+        }
+    }
+});
+
 app.use(express.static(path.join(__dirname, 'client/dist')));
 
 // UART configuration settings cache
