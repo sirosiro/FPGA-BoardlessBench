@@ -22,7 +22,7 @@
 - **責務**: 
     - マニフェストの管理（動的リロード）。
     - SHM の定期監視と WebSocket (Socket.io) へのブロードキャスト（UIO, GPIO, DMA デバイス）。
-    - **Register State Tracer**: UIO/GPIO/DMA レジスタ値の変化を検知し、最大500件のスナップショットを履歴として保持・配信。
+    - **Register State Tracer**: UIO/GPIO/DMA レジスタ値の変化を検知し、最大500件のスナップショットを履歴として保持・配信。さらに AI 解析向けの汎用トレースエクスポート API (`POST /api/trace-export` → F-BB ルート直下の `fbb_trace.{md,json,csv}`) を提供。
     - フロントエンドからの **GPIO インジェクション**（トグル操作）のリクエストを、対象オフセットへの 4 バイト局所アトミック書き込み（`pwrite`）により SHM へ非侵襲的に反映（他レジスタへの競合・破壊を防止）。
     - **UART ブリッジ統合**: PTY <-> TCP (Port 2000~) の中継、外部ポート (Port 3000~) プロキシ、64KB リングバッファによる初期ブート/メニュー出力消失防止、および子プロセスへの `VFPGA_INTERACTIVE=1` 環境変数透過伝播。
     - **マルチコア・シナリオ・ライフサイクル管理 API**: 実行中のプロセス（Aコア/Mコア等）の自動検知 (`GET /api/scenario/cores`)、個別コアまたは全体の停止 (`POST /api/scenario/stop`)、およびカオス障害注入設定を反映した動的再起動 (`POST /api/scenario/restart`) を提供。
@@ -299,7 +299,7 @@ F-BB は、世界中のサードパーティ製ハードウェア・ゲーム・
 
 ## 4. 既知の未解決課題 (Known Open Issues)
 - **多重接続時の競合**: 同一の UART に対して複数のブラウザタブから入力を試みた際の排他制御。
-- **波形エクスポート**: トレーサーで記録したデータの CSV/JSON 形式でのダウンロード機能。
+- **波形エクスポート**: トレーサーで記録したデータの AI Markdown / JSON / CSV 形式での F-BB ルート保存（`POST /api/trace-export` → `fbb_trace.*`）およびダウンロード・コピー機能。[解決済]
 - **シナリオ別UIレイアウトの保存と復元（マルチスクリーン対応）**: 各シナリオフォルダ内の `fbb_layout.json` / `fbb_layout_${screen}.json` を通じたペインレイアウトの永続化。[NEW - マルチスクリーン対応完了]
 
 

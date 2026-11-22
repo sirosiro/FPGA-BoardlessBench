@@ -1,4 +1,4 @@
-import { useMemo, useState, useEffect, memo } from 'react';
+import { useMemo, useState, useEffect, useRef, memo } from 'react';
 import {
   LineChart,
   Line,
@@ -9,16 +9,9 @@ import {
   ResponsiveContainer,
   ReferenceLine
 } from 'recharts';
-import { Layers, Eye, EyeOff, CheckSquare, Square } from 'lucide-react';
+import { Layers, CheckSquare, Square, Download, Save, Copy, Check, X, FileText } from 'lucide-react';
 import { useDashboard } from './DashboardContext';
-
-// 32-bit 符号なし整数 (uint32) を 2の補数符号付き整数 (int32) に変換
-const toInt32 = (val) => {
-  if (val == null) return 0;
-  const n = typeof val === 'number' ? val : Number(val);
-  if (isNaN(n)) return 0;
-  return (n & 0x80000000) ? n - 0x100000000 : n;
-};
+import { toInt32, buildTraceExportPayload } from '../utils/traceExport';
 
 // オシロスコープ用パレット（見やすくコントラストの高い24色）
 const TRACE_COLORS = [
@@ -36,6 +29,7 @@ const RegisterTracer = () => {
     toggleTraceKey,
     setTraceKeysVisibility,
     effectiveRegisters,
+    manifest,
     timeTravelState,
     isTimeTravelActive,
     scrubTo,
@@ -44,6 +38,16 @@ const RegisterTracer = () => {
     updateTracerState
   } = useDashboard();
   
+  const rootRef = useRef(null);
+  const [exportOpen, setExportOpen] = useState(false);
+  const [exportFormat, setExportFormat] = useState('md');
+  const [exportSignalsScope, setExportSignalsScope] = useState('visible');
+  const [exportRangeScope, setExportRangeScope] = useState('span');
+  const [exportValueFormat, setExportValueFormat] = useState('both');
+  const [exportStatus, setExportStatus] = useState(null);
+  const [exportBusy, setExportBusy] = useState(false);
+  const [copiedPath, setCopiedPath] = useState(false);
+
   // 表示モード: 'zero_center' (ゼロ中央固定) | 'signed' (符号付き自動レンジ) | 'unsigned' (従来の非負)
   const mode = tracerState?.mode || 'zero_center';
   const setMode = (m) => updateTracerState && updateTracerState({ mode: m });
@@ -136,9 +140,15 @@ const RegisterTracer = () => {
       }
 
       if (e.key === 'Escape') {
+        if (exportOpen) {
+          setExportOpen(false);
+          return;
+        }
         returnToLive();
         return;
       }
+
+      if (exportOpen) return;
 
       if (!historyData || historyData.length === 0) return;
 
@@ -177,7 +187,7 @@ const RegisterTracer = () => {
     };
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [historyData, timeTravelState, scrubTo, returnToLive]);
+  }, [historyData, timeTravelState, scrubTo, returnToLive, exportOpen]);
 
   // オシロスコープ・スパンによるデータ切り出し
   const slicedHistoryData = useMemo(() => {
@@ -316,13 +326,154 @@ const RegisterTracer = () => {
     return null;
   }, [timeTravelState, historyData]);
 
+  // All register items (for Export All Registers option)
+  const allRegisterItems = useMemo(() => {
+    return registerKeys.map((key, idx) => ({
+      key,
+      originalIndex: idx,
+      name: regMetaMap[key]?.name || key.replace(/^[^_]+_/, ''),
+      group: regMetaMap[key]?.group || 'General',
+      offset: regMetaMap[key]?.offset || ''
+    }));
+  }, [registerKeys, regMetaMap]);
+
+  const exportPayload = useMemo(() => {
+    if (!exportOpen) return null;
+    const targetSamples = exportRangeScope === 'span' ? slicedHistoryData : (historyData || []);
+    const targetSignals = exportSignalsScope === 'visible' ? plottedKeys : allRegisterItems;
+    return buildTraceExportPayload({
+      format: exportFormat,
+      samples: targetSamples,
+      totalBufferedCount: historyData?.length || 0,
+      signals: targetSignals,
+      regMetaMap,
+      manifest,
+      timeTravelState,
+      valueFormat: exportValueFormat,
+      scopeSignals: exportSignalsScope,
+      scopeRange: exportRangeScope,
+      selectedGroup: selectedGroup || 'ALL',
+      tracerMode: mode,
+      timebaseSpan
+    });
+  }, [
+    exportOpen,
+    exportFormat,
+    exportSignalsScope,
+    exportRangeScope,
+    exportValueFormat,
+    slicedHistoryData,
+    historyData,
+    plottedKeys,
+    allRegisterItems,
+    regMetaMap,
+    manifest,
+    timeTravelState,
+    selectedGroup,
+    mode,
+    timebaseSpan
+  ]);
+
+  const openExportModal = () => {
+    setExportValueFormat(mode === 'unsigned' ? 'hex' : 'both');
+    setExportStatus(null);
+    setCopiedPath(false);
+    setExportOpen(true);
+  };
+
+  const copyTextSafe = async (text) => {
+    const doc = rootRef.current?.ownerDocument || document;
+    const win = doc?.defaultView || window;
+    try {
+      if (win?.navigator?.clipboard?.writeText) {
+        await win.navigator.clipboard.writeText(text);
+        return true;
+      }
+    } catch {
+      // Fallback below for non-HTTPS or pop-out contexts
+    }
+    try {
+      const ta = doc.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      doc.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      const ok = doc.execCommand('copy');
+      doc.body.removeChild(ta);
+      return ok;
+    } catch {
+      return false;
+    }
+  };
+
+  const handleSaveToWorkspace = async () => {
+    if (!exportPayload || exportBusy) return;
+    setExportBusy(true);
+    setExportStatus(null);
+    setCopiedPath(false);
+    try {
+      const res = await fetch('/api/trace-export', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ format: exportPayload.format, content: exportPayload.content })
+      });
+      const data = await res.json();
+      if (!res.ok || !data.success) {
+        throw new Error(data.error || `HTTP ${res.status}`);
+      }
+      setExportStatus({
+        type: 'success',
+        message: `Saved ${(data.bytesWritten / 1024).toFixed(1)} KB to workspace root:`,
+        path: data.path
+      });
+    } catch (err) {
+      setExportStatus({ type: 'error', message: `Save failed: ${err.message}` });
+    } finally {
+      setExportBusy(false);
+    }
+  };
+
+  const handleDownloadExport = () => {
+    if (!exportPayload) return;
+    const doc = rootRef.current?.ownerDocument || document;
+    const win = doc?.defaultView || window;
+    const mime = exportPayload.format === 'json'
+      ? 'application/json;charset=utf-8'
+      : exportPayload.format === 'csv'
+        ? 'text/csv;charset=utf-8'
+        : 'text/markdown;charset=utf-8';
+    const blob = new win.Blob([exportPayload.content], { type: mime });
+    const url = win.URL.createObjectURL(blob);
+    const a = doc.createElement('a');
+    a.href = url;
+    a.download = exportPayload.fileName;
+    doc.body.appendChild(a);
+    a.click();
+    doc.body.removeChild(a);
+    setTimeout(() => win.URL.revokeObjectURL(url), 1000);
+    setExportStatus({ type: 'success', message: `Downloaded ${exportPayload.fileName}` });
+  };
+
+  const handleCopyExport = async () => {
+    if (!exportPayload) return;
+    const ok = await copyTextSafe(exportPayload.content);
+    setExportStatus(
+      ok
+        ? { type: 'success', message: `Copied ${exportPayload.rowCount} frames (${exportPayload.format.toUpperCase()}) to clipboard.` }
+        : { type: 'error', message: 'Clipboard copy failed in this browser context.' }
+    );
+  };
+
   return (
-    <div style={{ 
+    <div ref={rootRef} style={{ 
       padding: '12px', 
       display: 'flex',
       flexDirection: 'column',
       height: '100%',
-      boxSizing: 'border-box'
+      boxSizing: 'border-box',
+      position: 'relative'
     }}>
       {/* Top Header Bar */}
       <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '8px', flexWrap: 'wrap', gap: '8px' }}>
@@ -479,6 +630,27 @@ const RegisterTracer = () => {
               Unsigned
             </button>
           </div>
+          <button
+            onClick={openExportModal}
+            disabled={!historyData || historyData.length === 0}
+            title="Export trace samples to workspace root (fbb_trace.*), download, or clipboard for AI analysis"
+            style={{
+              backgroundColor: (!historyData || historyData.length === 0) ? '#161b22' : '#1f6feb',
+              color: (!historyData || historyData.length === 0) ? '#484f58' : '#ffffff',
+              border: '1px solid #30363d',
+              padding: '4px 10px',
+              fontSize: '0.7rem',
+              borderRadius: '4px',
+              cursor: (!historyData || historyData.length === 0) ? 'not-allowed' : 'pointer',
+              fontWeight: '600',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '4px'
+            }}
+          >
+            <Download size={12} />
+            <span>Export</span>
+          </button>
           <button 
             onClick={onClear}
             style={{
@@ -780,6 +952,345 @@ const RegisterTracer = () => {
           </strong>
         </span>
       </div>
+
+      {/* Inline AI-Ready Trace Export Modal (Portal Pop-out Safe) */}
+      {exportOpen && (
+        <div
+          onClick={() => setExportOpen(false)}
+          style={{
+            position: 'absolute',
+            inset: 0,
+            backgroundColor: 'rgba(1, 4, 9, 0.78)',
+            display: 'flex',
+            alignItems: 'center',
+            justifyContent: 'center',
+            zIndex: 50,
+            padding: '16px'
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              width: '100%',
+              maxWidth: '580px',
+              maxHeight: '92%',
+              display: 'flex',
+              flexDirection: 'column',
+              backgroundColor: '#161b22',
+              border: '1px solid #30363d',
+              borderRadius: '8px',
+              boxShadow: '0 12px 32px rgba(0, 0, 0, 0.65)',
+              color: '#e6edf3',
+              overflow: 'hidden'
+            }}
+          >
+            {/* Modal Header */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'space-between',
+              alignItems: 'center',
+              padding: '10px 14px',
+              borderBottom: '1px solid #30363d',
+              backgroundColor: '#0d1117'
+            }}>
+              <div style={{ display: 'flex', alignItems: 'center', gap: '8px', fontSize: '0.82rem', fontWeight: 600 }}>
+                <FileText size={15} color="#58a6ff" />
+                <span>Export Hardware Trace (AI-Ready)</span>
+              </div>
+              <button
+                onClick={() => setExportOpen(false)}
+                title="Close (ESC)"
+                style={{
+                  background: 'transparent',
+                  border: 'none',
+                  color: '#8b949e',
+                  cursor: 'pointer',
+                  padding: '2px',
+                  display: 'flex'
+                }}
+              >
+                <X size={16} />
+              </button>
+            </div>
+
+            {/* Modal Options Body */}
+            <div style={{ padding: '12px 14px', overflowY: 'auto', display: 'flex', flexDirection: 'column', gap: '10px', fontSize: '0.73rem' }}>
+              {/* Format */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ color: '#8b949e', fontWeight: 600 }}>Format</span>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  {[
+                    { id: 'md', label: 'AI Markdown (.md)' },
+                    { id: 'json', label: 'JSON (.json)' },
+                    { id: 'csv', label: 'CSV (.csv)' }
+                  ].map((opt) => (
+                    <button
+                      key={opt.id}
+                      onClick={() => { setExportFormat(opt.id); setExportStatus(null); }}
+                      style={{
+                        backgroundColor: exportFormat === opt.id ? '#1f6feb' : '#21262d',
+                        color: exportFormat === opt.id ? '#ffffff' : '#c9d1d9',
+                        border: exportFormat === opt.id ? '1px solid #388bfd' : '1px solid #30363d',
+                        padding: '4px 9px',
+                        borderRadius: '4px',
+                        cursor: 'pointer',
+                        fontSize: '0.7rem',
+                        fontWeight: exportFormat === opt.id ? 600 : 400
+                      }}
+                    >
+                      {opt.label}
+                    </button>
+                  ))}
+                </div>
+              </div>
+
+              {/* Signals */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ color: '#8b949e', fontWeight: 600 }}>Signals</span>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  <button
+                    onClick={() => { setExportSignalsScope('visible'); setExportStatus(null); }}
+                    style={{
+                      backgroundColor: exportSignalsScope === 'visible' ? '#238636' : '#21262d',
+                      color: '#ffffff',
+                      border: '1px solid #30363d',
+                      padding: '4px 9px',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '0.7rem'
+                    }}
+                  >
+                    Visible Only ({plottedKeys.length})
+                  </button>
+                  <button
+                    onClick={() => { setExportSignalsScope('all'); setExportStatus(null); }}
+                    style={{
+                      backgroundColor: exportSignalsScope === 'all' ? '#238636' : '#21262d',
+                      color: '#ffffff',
+                      border: '1px solid #30363d',
+                      padding: '4px 9px',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '0.7rem'
+                    }}
+                  >
+                    All Registers ({allRegisterItems.length})
+                  </button>
+                </div>
+              </div>
+
+              {/* Range */}
+              <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                <span style={{ color: '#8b949e', fontWeight: 600 }}>Range</span>
+                <div style={{ display: 'flex', gap: '4px' }}>
+                  <button
+                    onClick={() => { setExportRangeScope('span'); setExportStatus(null); }}
+                    style={{
+                      backgroundColor: exportRangeScope === 'span' ? '#388bfd' : '#21262d',
+                      color: '#ffffff',
+                      border: '1px solid #30363d',
+                      padding: '4px 9px',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '0.7rem'
+                    }}
+                  >
+                    Current Span ({slicedHistoryData.length} pts{isTimeTravelActive ? ` @ #${timeTravelState.snapshot?.index}` : ''})
+                  </button>
+                  <button
+                    onClick={() => { setExportRangeScope('all'); setExportStatus(null); }}
+                    style={{
+                      backgroundColor: exportRangeScope === 'all' ? '#388bfd' : '#21262d',
+                      color: '#ffffff',
+                      border: '1px solid #30363d',
+                      padding: '4px 9px',
+                      borderRadius: '4px',
+                      cursor: 'pointer',
+                      fontSize: '0.7rem'
+                    }}
+                  >
+                    All Buffered ({historyData?.length || 0} pts)
+                  </button>
+                </div>
+              </div>
+
+              {/* Value Encoding */}
+              {exportFormat !== 'json' && (
+                <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px', flexWrap: 'wrap' }}>
+                  <span style={{ color: '#8b949e', fontWeight: 600 }}>Values</span>
+                  <div style={{ display: 'flex', gap: '4px' }}>
+                    {[
+                      { id: 'hex', label: 'Hex (0x...)' },
+                      { id: 'signed', label: 'Signed' },
+                      { id: 'both', label: 'Hex + Signed' }
+                    ].map((opt) => (
+                      <button
+                        key={opt.id}
+                        onClick={() => { setExportValueFormat(opt.id); setExportStatus(null); }}
+                        style={{
+                          backgroundColor: exportValueFormat === opt.id ? '#30363d' : '#21262d',
+                          color: exportValueFormat === opt.id ? '#ffffff' : '#8b949e',
+                          border: exportValueFormat === opt.id ? '1px solid #58a6ff' : '1px solid #30363d',
+                          padding: '4px 9px',
+                          borderRadius: '4px',
+                          cursor: 'pointer',
+                          fontSize: '0.7rem'
+                        }}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Preview Box */}
+              {exportPayload && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: '4px' }}>
+                  <div style={{ display: 'flex', justifyContent: 'space-between', color: '#8b949e', fontSize: '0.67rem' }}>
+                    <span>Preview ({exportPayload.fileName})</span>
+                    <span>
+                      {exportPayload.rowCount} rows × {exportPayload.colCount} signals (~{(exportPayload.content.length / 1024).toFixed(1)} KB)
+                    </span>
+                  </div>
+                  <pre style={{
+                    margin: 0,
+                    padding: '8px',
+                    backgroundColor: '#0d1117',
+                    border: '1px solid #30363d',
+                    borderRadius: '6px',
+                    fontSize: '0.66rem',
+                    fontFamily: 'monospace',
+                    color: '#c9d1d9',
+                    maxHeight: '150px',
+                    overflow: 'auto',
+                    whiteSpace: 'pre'
+                  }}>
+                    {exportPayload.content.split('\n').slice(0, 18).join('\n')}
+                    {exportPayload.content.split('\n').length > 18 ? '\n...' : ''}
+                  </pre>
+                </div>
+              )}
+
+              {/* Status Banner */}
+              {exportStatus && (
+                <div style={{
+                  padding: '8px 10px',
+                  borderRadius: '6px',
+                  backgroundColor: exportStatus.type === 'error' ? 'rgba(248, 81, 73, 0.12)' : 'rgba(63, 185, 80, 0.12)',
+                  border: `1px solid ${exportStatus.type === 'error' ? '#f85149' : '#238636'}`,
+                  color: exportStatus.type === 'error' ? '#f85149' : '#3fb950',
+                  fontSize: '0.71rem',
+                  display: 'flex',
+                  flexDirection: 'column',
+                  gap: '4px'
+                }}>
+                  <span>{exportStatus.message}</span>
+                  {exportStatus.path && (
+                    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '8px' }}>
+                      <code style={{ color: '#e6edf3', fontSize: '0.68rem', wordBreak: 'break-all' }}>{exportStatus.path}</code>
+                      <button
+                        onClick={async () => {
+                          if (await copyTextSafe(exportStatus.path)) setCopiedPath(true);
+                        }}
+                        style={{
+                          backgroundColor: '#21262d',
+                          color: copiedPath ? '#3fb950' : '#c9d1d9',
+                          border: '1px solid #30363d',
+                          borderRadius: '4px',
+                          padding: '2px 7px',
+                          fontSize: '0.66rem',
+                          cursor: 'pointer',
+                          flexShrink: 0,
+                          display: 'flex',
+                          alignItems: 'center',
+                          gap: '3px'
+                        }}
+                      >
+                        {copiedPath ? <Check size={11} /> : <Copy size={11} />}
+                        <span>{copiedPath ? 'Copied Path' : 'Copy Path'}</span>
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
+            {/* Modal Action Footer */}
+            <div style={{
+              display: 'flex',
+              justifyContent: 'flex-end',
+              alignItems: 'center',
+              gap: '8px',
+              padding: '10px 14px',
+              borderTop: '1px solid #30363d',
+              backgroundColor: '#0d1117',
+              flexWrap: 'wrap'
+            }}>
+              <button
+                onClick={handleCopyExport}
+                disabled={!exportPayload || exportPayload.colCount === 0}
+                style={{
+                  backgroundColor: '#21262d',
+                  color: '#c9d1d9',
+                  border: '1px solid #30363d',
+                  padding: '5px 11px',
+                  borderRadius: '5px',
+                  fontSize: '0.72rem',
+                  cursor: (!exportPayload || exportPayload.colCount === 0) ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  fontWeight: 600
+                }}
+              >
+                <Copy size={13} />
+                <span>Copy</span>
+              </button>
+              <button
+                onClick={handleDownloadExport}
+                disabled={!exportPayload || exportPayload.colCount === 0}
+                style={{
+                  backgroundColor: '#21262d',
+                  color: '#58a6ff',
+                  border: '1px solid #30363d',
+                  padding: '5px 11px',
+                  borderRadius: '5px',
+                  fontSize: '0.72rem',
+                  cursor: (!exportPayload || exportPayload.colCount === 0) ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  fontWeight: 600
+                }}
+              >
+                <Download size={13} />
+                <span>Download</span>
+              </button>
+              <button
+                onClick={handleSaveToWorkspace}
+                disabled={exportBusy || !exportPayload || exportPayload.colCount === 0}
+                style={{
+                  backgroundColor: (exportBusy || !exportPayload || exportPayload.colCount === 0) ? '#30363d' : '#238636',
+                  color: '#ffffff',
+                  border: 'none',
+                  padding: '5px 12px',
+                  borderRadius: '5px',
+                  fontSize: '0.72rem',
+                  cursor: (exportBusy || !exportPayload || exportPayload.colCount === 0) ? 'not-allowed' : 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '5px',
+                  fontWeight: 600
+                }}
+              >
+                <Save size={13} />
+                <span>{exportBusy ? 'Saving...' : `Save to F-BB Root (${exportPayload?.fileName || 'fbb_trace.md'})`}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

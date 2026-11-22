@@ -23,7 +23,7 @@ const { spawn, execSync, execFileSync } = require('child_process');
 
 const app = express();
 app.use(cors());
-app.use(express.json()); // @intent:rationale フロントエンドから送信されるレイアウト用のJSONデータを受信・解析するためにBody Parserを有効化します。
+app.use(express.json({ limit: '2mb' })); // @intent:rationale フロントエンドから送信されるレイアウトやトレースエクスポート用のJSONデータを受信・解析するためにBody Parserを有効化します。
 const server = http.createServer(app);
 const io = new Server(server, {
     cors: { origin: "*" }
@@ -676,8 +676,8 @@ function broadcastRegisters(force = false) {
         }
     });
 
-    // 変化検知と履歴への記録
-    let hasChanged = force || !lastRegState;
+    // 変化検知と履歴への記録（値が実際に変化した時のみ完全スナップショットを追記し、UI強制再送による重複記録を防止）
+    let hasChanged = !lastRegState;
     if (!hasChanged && lastRegState) {
         for (const key in currentState) {
             if (currentState[key] !== lastRegState[key]) {
@@ -2024,6 +2024,48 @@ Provide your response in JSON format using clear, technical English:
 app.get('/api/trace-history', (req, res) => {
     res.setHeader('Cache-Control', 'no-store');
     res.json(traceHistory);
+});
+
+// =============================================================================
+// Generic Trace Export API (Saves AI-Ready Trace Artifacts Alongside vfpga.vcd)
+// =============================================================================
+const ALLOWED_TRACE_EXPORT_FORMATS = {
+    md: 'fbb_trace.md',
+    json: 'fbb_trace.json',
+    csv: 'fbb_trace.csv'
+};
+
+app.post('/api/trace-export', (req, res) => {
+    try {
+        const { format = 'md', content } = req.body || {};
+        const fmt = String(format).toLowerCase();
+        const fileName = ALLOWED_TRACE_EXPORT_FORMATS[fmt];
+        if (!fileName) {
+            return res.status(400).json({ error: 'Unsupported format. Expected md, json, or csv.' });
+        }
+        if (typeof content !== 'string' || content.length === 0) {
+            return res.status(400).json({ error: 'Non-empty string content is required.' });
+        }
+
+        const fbbRoot = manifest.project_root
+            ? path.resolve(manifest.project_root)
+            : path.resolve(__dirname, '..');
+        const outPath = path.join(fbbRoot, fileName);
+        fs.writeFileSync(outPath, content, 'utf8');
+        const stat = fs.statSync(outPath);
+
+        console.log(`[Backend] Trace exported to workspace: ${outPath} (${stat.size} bytes)`);
+        return res.json({
+            success: true,
+            format: fmt,
+            fileName,
+            path: outPath,
+            bytesWritten: stat.size
+        });
+    } catch (e) {
+        console.error(`[Backend] Failed to export trace: ${e.message}`);
+        return res.status(500).json({ error: e.message });
+    }
 });
 
 // =============================================================================

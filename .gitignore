@@ -58,6 +58,7 @@ board_manifest.json
 .cache/
 compile_commands.json
 *.vcd
+fbb_trace.*
 
 # Scratch/Temporary scripts
 scratch/
