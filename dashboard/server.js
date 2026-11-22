@@ -2019,6 +2019,14 @@ Provide your response in JSON format using clear, technical English:
 });
 
 // =============================================================================
+// Generic Trace History Snapshot API (100% Plugin-Isolated, Read-Only)
+// =============================================================================
+app.get('/api/trace-history', (req, res) => {
+    res.setHeader('Cache-Control', 'no-store');
+    res.json(traceHistory);
+});
+
+// =============================================================================
 // Generic Local AI Bridge API (Ollama Proxy — 100% Plugin-Isolated)
 // =============================================================================
 function parseOllamaTarget() {
