@@ -76,4 +76,4 @@ flowchart LR
 ---
 
 ## さらに詳しく知りたい方へ
-Embassy arch-std POSIX実行基盤やメモリスタック削減の仕組みは、**[ADVANCED.md](ADVANCED.md)** を参照してください。
+Embassy arch-std POSIX実行基盤やスタックメモリ削減の仕組みは、**[ADVANCED.md](ADVANCED.md)** を参照してください。

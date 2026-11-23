@@ -49,7 +49,7 @@
 #### シナリオ命名規則と分類体系 (Scenario Taxonomy & Naming Convention)
 F-BB のテストシナリオは、将来の拡張性と責務分離（SoC/ベンダー非依存、学習の純粋性）を維持するため、以下の規約に基づいて厳格に分類・命名されます：
 - **アルファベットなし連番 (`01`, `02`, ..., `21`, `22`...)**: **基盤技術の最小セット検証 (Minimal Baseline Verification)**  
-  単機能・最小構成のハードウェア/ドライバ/同期インターフェースのみを分離検証する軽量シナリオ。上位の重厚なスタックを持たず、接合メカニズムそのものの疎通と決定論的挙動をテストする。
+  単機能・最小構成のハードウェア/ドライバ/同期インターフェースのみを分離検証する軽量シナリオ。上位の重厚なスタックを持たず、接続インターフェースそのものの疎通と決定論的挙動をテストします。
 - **`P` プレフィックス (`P01`, `P02`...)**: **本格的な実践プロジェクト構成 (Practical Project Integration)**  
   実製品相当の複合スタック（例: `P01_frdmIMX` = 車載4カメラ/Mesa OpenGL ES、`P02_robot_amr_ros2` = 自律移動ロボット/ROS 2/URDF/DiffDrive）を統合し、実務で直面する高度なハードウェア/ソフトウェア協調デバッグを検証する。
 - **`S` プレフィックス (`S01`, `S02`...)**: **統合機能展示ショーケース (Showcase & Interactive Demo)**  
@@ -64,7 +64,7 @@ F-BB のテストシナリオは、将来の拡張性と責務分離（SoC/ベ�
   - **役割**: 標準UIOを介した基本的なレジスタR/Wとシミュレータ同期の検証。
 * **`01b_uio_irq_interrupt`**
   - **意図**: UIOドライバの非同期割り込み（IRQ）駆動動作の学習。
-  - **役割**: FW側の `read()` / `poll()` ブロック待機、`uio_unmask` 割り込み許可、および RTL/eventfd からの割込解凍シーケンスの実務透過検証。
+  - **役割**: FW側の `read()` / `poll()` ブロック待機、`uio_unmask` 割り込み許可、および RTL/eventfd からの割り込み待機解除（Wakeup）シーケンスの実機透過検証。
 * **`01c_protocol_assertion`**
   - **意図**: レジスタアクセス属性（RO/WO/RW）違反のリアルタイム検知とプロトコル・アサーションの検証。
   - **役割**: C-Shim トラッカーによる Read-Only レジスタへの誤書き込み捕捉、および `/tmp/fbb_protocol_violations.log` への自動記録と Transaction Logger 連動検証。
@@ -73,7 +73,7 @@ F-BB のテストシナリオは、将来の拡張性と責務分離（SoC/ベ�
   - **役割**: I2C（NACK・タイムアウト）、SPI（ビット反転）、UIO（タイムアウト）、SocketCAN（パケットドロップ）、CDMA（デコードエラー）に対するシード値駆動の再現可能なカオス障害注入および Web ダッシュボード / CLI 連動の検証。
 * **`01e_axi_contention_audio`**
   - **意図**: 実機（Pynq-Z2等）特有の AXI バス帯域競合および PS側 DRAM 可変レイテンシによるオーディオ FIFO アンダーラン（0.5μs デッドライン違反）の決定論的再現と検証。
-  - **役割**: 理想 Verilator 環境における遅延ゼロのマスキングバグ（FIFO 枯渇ゼロ）に対し、`AxiStallEngine` による突発的 AXI バスストール（8〜32サイクル）をシード値ベースで決定論的に注入し、ハードウェア FIFO アンダーランと音歪み・音飛びを PC 上で完全再現・検証。
+  - **役割**: 理想 Verilator 環境（遅延ゼロ）によって隠蔽されるタイミングバグ（FIFO 枯渇ゼロ）に対し、`AxiStallEngine` による突発的 AXI バスストール（8〜32サイクル）をシード値ベースで決定論的に注入し、ハードウェア FIFO アンダーランと音歪み・音飛びを PC 上で完全再現・検証。
 * **`02_multi_i2c`**
   - **意図**: I2Cペリフェラルアクセスの検証。
   - **役割**: 複数I2Cバスへのアクセスと個別デバイスの識別（`ioctl`エミュレーション）。
@@ -133,7 +133,7 @@ F-BB のテストシナリオは、将来の拡張性と責務分離（SoC/ベ�
   - **役割**: コプロセッサファームウェアを一切変更せず、背後のRTOSをCMSIS-RTOS2経由でThreadXに切り替えて行う協調検証。
 * **`14_amp_mcore_OpenAMP_baremetal`**
   - **意図**: ベアメタル環境でのOpenAMPを用いた非対称マルチコア（AMP）間メッセージ通信の検証。
-  - **役割**: ホスト依存コードのないMコアFWと、Aコア（Linux）の間でRPMsgチャネルを確立し、エコーメッセージ通信を確立する検証。
+  - **役割**: ホスト依存コードのないMコアFWと、Aコア（Linux）の間でRPMsgチャネルを確立し、エコーバック通信を行う検証。
 * **`15_amp_mcore_OpenAMP_freertos`**
   - **意図**: RTOS環境でのOpenAMPを用いたAMP間メッセージ通信の検証。
   - **役割**: Mコア側でFreeRTOSタスクとしてOpenAMPメッセージポーリングを行い、Aコア（Linux）との間でRPMsgによる双方向通信を行う協調検証。
@@ -154,7 +154,7 @@ F-BB のテストシナリオは、将来の拡張性と責務分離（SoC/ベ�
   - **役割**: ホスト PC のメモリ帯域を活用した同期 `memcpy` 転送、アライメントエラー（`DMADecErr`）、バッファアンダーラン（Stale Data 残留）、オーバーラン（データ切捨て）の100%実機透過エミュレーション、および Web ダッシュボード（`GpioPanel` / `Register Monitor` / `UartConsole`）での対話テストと一括バッチ回帰テストの両立検証。
 * **`21_can_socketcan_ecu`**
   - **意図**: 車載 ECU ゲートウェイおよび Linux 標準 SocketCAN (`AF_CAN`) API の完全透過エミュレーションと OBD-II / UDS 診断応答の検証。
-  - **役割**: C-Shim における `socket(AF_CAN, SOCK_RAW, CAN_RAW)`, `bind()`, `setsockopt(CAN_RAW_FILTER)`, `ioctl(SIOCGIFINDEX)` のインターセプト、サーバレス・マルチキャスト通信、ロックフリー共有メモリリングバッファ、Web ダッシュボード CAN Bus Analyzer ペイン連携、および対話型 UART コンソールメニューと自動回帰テストの両立検証。
+  - **役割**: C-Shim における `socket(AF_CAN, SOCK_RAW, CAN_RAW)`, `bind()`, `setsockopt(CAN_RAW_FILTER)`, `ioctl(SIOCGIFINDEX)` のインターセプト、仲介デーモン不要のマルチキャスト通信、ロックフリー共有メモリリングバッファ、Web ダッシュボード CAN Bus Analyzer ペイン連携、および対話型 UART コンソールメニューと自動回帰テストの両立検証。
 * **`22_ros2_control_minimal`**
   - **意図**: ロボット制御フレームワーク `ros2_control` の UIO ハードウェア境界および決定論的制御ループの最小セット検証。
   - **役割**: 上位 ROS 2 スタックを要求しないゼロインストール C++17 互換レイヤーによる `hardware_interface::SystemInterface` 実装、UIO MMIO 経由の 1kHz リアルタイムジッター計測、差動二輪（左右輪）閉ループ速度・位置制御、ハードウェア E-STOP 即時遮断、プロトコル・アサーション検知、および 32-bit カウンタ折り返し（Wrap-around）耐性の網羅的検証。
@@ -171,10 +171,10 @@ F-BB のテストシナリオは、将来の拡張性と責務分離（SoC/ベ�
 ### 4. 主要なアーキテクチャ決定の記録 (Key Architectural Decisions)
 - **2026-06-14: `libfpgashim.c` へのディレクトリ自動生成 (`mkdir`) の統合**
   - **Decision**: 仮想 Sysfs および `/tmp/fbb/...` の作成ロジックをテストシナリオのスクリプト（`run.sh`）から完全に排除し、自動生成される `libfpgashim.c` の初期化プロセス（コンストラクタ）に統合した。
-  - **Rationale**: テストシナリオフォルダ（`tests/scenarios`）にF-BBのインフラ依存コード（ディレクトリ作成等）が混入して原則が破壊されるのを防ぎ、シナリオの「ピュアさ」を維持するため。
+  - **Rationale**: テストシナリオフォルダ（`tests/scenarios`）にF-BBのインフラ依存コード（ディレクトリ作成等）が混入して原則が破壊されるのを防ぎ、シナリオのシンプルさ（本質的なコードのみの構成）を維持するため。
 - **2026-06-14: FreeRTOS POSIX Simulator Portのクローン運用の切り分け**
   - **Decision**: MコアRTOSファームウェアで使用する FreeRTOS-Kernel ソースコードはリポジトリ内に直接保持せず、ビルド時に自動クローンする。通常ビルド用 `clean` と外部コード除去用の `distclean` ターゲットを切り分け、`.gitignore` で無視する。
-  - **Rationale**: リポジトリのクリーン性を保ちつつ、ファイルシステムI/Oオーバーロードを防ぐため。
+  - **Rationale**: リポジトリのクリーン性を保ちつつ、不要なファイルI/O負荷やリポジトリの肥大化を防ぐため。
 - **2026-06-16: CMSIS-RTOS2 Mコアの64bitホストビルド用CMakeコンパイルオプションの導入**
   - **Decision**: 64bitホスト環境（Linux/WSL2）への適応において、上流公式コードを変更せず、CMakeのコンパイルオプション（`-Wno-pointer-to-int-cast` など）で解決する。
   - **Rationale**: 透過性を最優先し、公式RTOSカーネルコードの改変を排除するため。
@@ -190,33 +190,33 @@ F-BB のテストシナリオは、将来の拡張性と責務分離（SoC/ベ�
 
 - **2026-07-19: 全シナリオ網羅自動回帰テストランナーの導入 (Unified Full-Scenario Regression Test Runner)**
   - **Decision**: `tests/regression_test.py` を正式にリポジトリへ導入。`tests/scenarios` 配下を動的にスキャンし、すべての実行可能なシナリオを順次自動ビルド・検証するスクリプトを公式テストインフラとして採用した。
-  - **Rationale**: `run_tests.sh` がカバーする一部のAMP統合テストシナリオのみでは、SDカード（`19_acore_sd`）や画像処理（`P01_frdmIMX`）などの特殊な機能におけるデグレーション（後退バグ）の検知漏れが生じるため、異なるAIエージェントや他の開発者が改修した際にも、全ての機能を均一に安全にチェックできる回帰テスト基盤を保証するため。
+  - **Rationale**: `run_tests.sh` がカバーする一部のAMP統合テストシナリオのみでは、SDカード（`19_acore_sd`）や画像処理（`P01_frdmIMX`）などの特殊な機能におけるリグレッション（機能退行）の検知漏れが生じるため、異なるAIエージェントや他の開発者が改修した際にも、全ての機能を均一に安全にチェックできる回帰テスト基盤を保証するため。
 - **2026-07-20: `04b_dev_mem_violation_legacy` シナリオへの対話型UARTメニュー追加とダッシュボード英語警告統合**
   - **Decision**: `04b` シナリオに `/dev/ttyPS1` を介した対話型UARTメニューを導入し、ガードページによる `SIGSEGV` テストと ASan によるヒープオーバーフローテスト（要ビルドオプション）を選択可能にした。また、ダッシュボードの警告ダイアログのラベル・内容を英語へ統一した。
   - **Rationale**: レガシーなコードを実装するエンジニアが興味を持ちやすいよう対話性を向上させ、かつ多国籍な開発チームの利用を想定して視覚的なフィードバックを英語に標準化したため。
 - **2026-07-20: クリーンアップおよび起動フェーズにおけるゾンビプロセスの自動強制終了の統合**
   - **Decision**: `tests/run_tests.sh` の `--clean` ターゲットおよび `start_lab.sh` のスタートアップ処理の最初に、`build/bin/` または `/tmp/fbb_build/bin/` で動作中のすべてのゾンビ周辺エミュレータプロセス（`fbb_*`）、`test_bin`、`vlogic_controller` などを `ps` および `pkill` により自動で強制終了（`kill -9`）する処理を統合した。
-  - **Rationale**: ユーザーがテストを途中終了したり回帰テストを実行した際にバックグラウンドプロセスがゾンビ化してポートや共有メモリ資源が衝突し、再実行時に不正メモリアクセス誤検知などの異常な挙動を引き起こすリスクを未然に排除するため。
+  - **Rationale**: ユーザーがテストを途中終了したり回帰テストを実行した際にバックグラウンドプロセスがゾンビ化してポートや共有メモリ資源が衝突し、再実行時に不正なメモリアクセスの誤検知などの異常な挙動を引き起こすリスクを未然に排除するため。
 - **2026-08-22: ADR #008 UIO 非同期割り込み（IRQ）エミュレーションと `eventfd` 透過ブロッキング機構の導入**
   - **Decision**: C-Shim において `/dev/uio*` に対する `read()` システムコールを横取りし、Linux ネイティブの `eventfd` を用いて割込発生まで FW プロセスを安全にブロック待機させる `FbbDeviceContext` 拡張機能を導入した。また `01_standard_uio` の直系派生シナリオとして `01b_uio_irq_interrupt` を新設した。
-  - **Rationale**: 実機ファームウェアのコードに条件分岐（`#ifdef`）を一切書き込まず、製品開発で採用されている実務標準の UIO 割り込み駆動ドライバ（`mmap` ➔ `uio_unmask` ➔ `read` 待機 ➔ INT ACK）を 100% 透過的に走行させるため。
+  - **Rationale**: 実機ファームウェアのコードに条件分岐（`#ifdef`）を一切書き込まず、製品開発で採用されている実務標準の UIO 割り込み駆動ドライバ（`mmap` ➔ `uio_unmask` ➔ `read` 待機 ➔ INT ACK）を 100% 無修正（透過的）で動作させるため。
 - **2026-08-29: ADR #009 Linux SocketCAN (`AF_CAN`) API の完全透過エミュレーションと車載 ECU 診断環境の導入**
-  - **Decision**: C-Shim に `socket(AF_CAN, SOCK_RAW, CAN_RAW)`, `bind()`, `setsockopt(CAN_RAW_FILTER)`, `ioctl(SIOCGIFINDEX)` のインターセプトを実装。外部ブローカーデーモンを排したサーバレス・マルチキャスト（`/tmp/fbb_can_p{bus_id}/`）とロックフリー共有メモリリングバッファ（`/dev/shm/fbb_can_ring{bus_id}`）によるゼロオーバーヘッド通信、および Web ダッシュボード用 `CanAnalyzerPane`（リアルタイムパケットテーブル & OBD-II パケットインジェクター）を導入した。また、`start_lab.sh` 起動時の対話型 UART コンソールメニュー（`/dev/ttyPS1`）と自動回帰テストモードの切り替え機構を `21_can_socketcan_ecu` に統合した。
+  - **Decision**: C-Shim に `socket(AF_CAN, SOCK_RAW, CAN_RAW)`, `bind()`, `setsockopt(CAN_RAW_FILTER)`, `ioctl(SIOCGIFINDEX)` のインターセプトを実装。外部ブローカーデーモンを排した仲介デーモン不要のマルチキャスト通信（`/tmp/fbb_can_p{bus_id}/`）とロックフリー共有メモリリングバッファ（`/dev/shm/fbb_can_ring{bus_id}`）による低オーバーヘッド通信、および Web ダッシュボード用 `CanAnalyzerPane`（リアルタイムパケットテーブル & OBD-II パケットインジェクター）を導入した。また、`start_lab.sh` 起動時の対話型 UART コンソールメニュー（`/dev/ttyPS1`）と自動回帰テストモードの切り替え機構を `21_can_socketcan_ecu` に統合した。
   - **Rationale**: 物理 CAN トランシーバやカーネル `vcan` モジュールを必要とせず、実機の車載 ECU ファームウェアや診断ツール（OBD-II / UDS）をホスト PC 上で 100% 透過的に開発・検証できるようにするため。
 - **2026-08-30: ADR #010 トランザクション・ロガー＆プロトコル・アサーション・エンジンの導入**
   - **Decision**: DTS レジスタ定義に `: RO`, `: WO`, `: RW` 属性を拡張し、C-Shim にて不正な Read/Write 試行をリアルタイム検知してログ記録するプロトコル・アサーション機構と Web ダッシュボード `TransactionLoggerPane` を導入した。
   - **Rationale**: ハードウェアでの無言の書き込み無視（Silent Failure）によるバグ調査コストを排除し、ファームウェア開発者がテキスト・UI レベルで違反を即座に切り分けられるようにするため。
 - **2026-09-06: ADR #011 決定論的シード再現型カオス・障害注入エンジンと Web ダッシュボード統合マルチコア・ライフサイクル管理の導入**
-  - **Decision**: C-Shim に `xorshift128+` PRNG と SplitMix64 によるシード初期化を組み込み、I2C（NACK/タイムアウト）、SPI（データ化け）、UIO（タイムアウト）、SocketCAN（パケット喪失）、CDMA（DecErr）を確率的に注入するカオスエンジンを導入。無効時は完全ゼロオーバーヘッド（条件分岐1回）を保証。さらに Web ダッシュボードに `ChaosPanel` を追加し、シード指定（Off/Random/Fixed）、CLI 再現コマンドコピー、障害率スライダー、およびマルチコア（Aコア/各Mコア）の個別選択的ライフサイクル再起動（`/api/scenario/restart`）を統合した。
-  - **Rationale**: 宇宙線、ノイズ、断線などの現実世界のハードウェア障害に対するファームウェアの再試行・フォールトトレラント耐性を、同一シードによる 100% の決定論的再現性をもってホスト環境で検証可能にするため。
+  - **Decision**: C-Shim に `xorshift128+` PRNG と SplitMix64 によるシード初期化を組み込み、I2C（NACK/タイムアウト）、SPI（データ化け）、UIO（タイムアウト）、SocketCAN（パケット喪失）、CDMA（DecErr）を確率的に注入するカオスエンジンを導入。無効時は実質ゼロオーバーヘッド（条件分岐1回）を保証。さらに Web ダッシュボードに `ChaosPanel` を追加し、シード指定（Off/Random/Fixed）、CLI 再現コマンドコピー、障害率スライダー、およびマルチコア（Aコア/各Mコア）のコア単位での選択的再起動（`/api/scenario/restart`）を統合した。
+  - **Rationale**: 宇宙線、ノイズ、断線などの現実世界のハードウェア障害に対するファームウェアのリトライ処理および耐障害性（フォールトトレランス）を、同一シードによる 100% の決定論的再現性をもってホスト環境で検証可能にするため。
 - **2026-09-19: ADR #012 ros2_control ハードウェア境界の最小セット検証 (Scenario 22) とゼロインストール互換レイヤーの導入**
   - **Decision**: ROS 2 実践プロジェクト (`P02_robot_amr_ros2`) に先立ち、巨大な ROS 2 ディストリビューション (Humble/Jazzy等) のインストールを一切要求せず、純粋な C++17 と Linux 標準ツールのみで動作する「基盤技術の最小セット検証シナリオ」として `22_ros2_control_minimal` を新設した。`hardware_interface::SystemInterface` の主要 API (`on_init`, `on_activate`, `read`, `write`, `export_state_interfaces`, `export_command_interfaces`) を完全互換でヘッダー内提供し、UIO MMIO / 1kHz リアルタイム制御ループ / 双輪エンコーダ / ハードウェア E-STOP / プロトコル・アサーション / 32-bit カウンタ折り返し（Wrap-around）耐性を検証する。
-  - **Rationale**: F-BB の基本理念である「ゼロヘビーインストール」「Learner-Centric Purity」「高い可搬性と高速なCI実行」を維持しつつ、ROS 2 連携における最も重要かつ障害の多発するハードウェア/ソフトウェア接合境界（UIO MMIO と 1kHz 決定論的ジッター）を隔離して確実に事前保証するため。
+  - **Rationale**: F-BB の基本理念である「大型SDKインストール不要」「Learner-Centric Purity」「高い可搬性と高速なCI実行」を維持しつつ、ROS 2 連携における最も重要かつ障害の多発するハードウェア/ソフトウェア境界（UIO MMIO と 1kHz 決定論的ジッター）を隔離して確実に事前保証するため。
 - **2026-09-20: ADR #013 自律移動ロボット (AMR) 向け `ros2_control` 実践シナリオ (`P02_robot_amr_ros2`) と 2-Tier DPPA/PPA コックピットの導入**
   - **Decision**: `22_ros2_control_minimal` の基盤技術を受け継ぎ、実製品相当の差動2輪 AMR スタックを統合した `P02_robot_amr_ros2` を導入した。また Web ダッシュボードには、単一巨大ペインへの押し込みを排除し、DPPA（Dashboard Pane Plugin Architecture）のマルチモニター Pop-out（`createPortal`）および Dockview グリッド機能を最大限に活かせる「4つの特化型ペイン構成」を採用した。さらに汎用性とロボット特化 UX を両立するため、Tier 1（汎用コア: Lifecycle, Multi-joint Waveform, Teleop/E-STOP）と Tier 2（PPA データ駆動アドオン: `amr_manifest.json` に基づく 2D Pose & Map）の 2-Tier アーキテクチャを確立した。
-  - **Rationale**: 巨大な ROS 2 インストールを要求せず、純粋な C++20 / Verilog / Linux UIO のみで数秒でビルド・実行可能な「ゼロヘビーインストール」を貫徹しつつ、実機 ROS 2 エコシステム（`DiffDriveController`, `/cmd_vel`, `/odom`）と 100% 透過的に相互運用可能とし、かつダッシュボード側の拡張性と可搬性を担保するため。
+  - **Rationale**: 巨大な ROS 2 インストールを要求せず、純粋な C++20 / Verilog / Linux UIO のみで数秒でビルド・実行可能な軽量設計を貫徹しつつ、実機 ROS 2 エコシステム（`DiffDriveController`, `/cmd_vel`, `/odom`）と 100% 透過的に相互運用可能とし、かつダッシュボード側の拡張性と可搬性を担保するため。
 - **2026-10-17: ADR #014 シナリオ別 UI レイアウト契約 (`fbb_layout.json`) と DTS 整合性の標準化**
-  - **Decision**: 各テストシナリオに配置される `fbb_layout.json`（およびマルチスクリーン用 `fbb_layout_${screen}.json`）について、DTS ノード名との完全一致（SSoT 拘束）、必須メタデータ `params._componentName` の付与、およびダッシュボード本体側での対症療法的名前リマップの禁止を定めた。
+  - **Decision**: 各テストシナリオに配置される `fbb_layout.json`（およびマルチスクリーン用 `fbb_layout_${screen}.json`）について、DTS を唯一の仕様（SSoT）とする厳格なノード名一致、必須メタデータ `params._componentName` の付与、およびダッシュボード本体側での対症療法的名前リマップの禁止を定めた。
   - **Rationale**: `S01_cpp_lfsr_sequencer` 等でレガシーな `vfpga_uart_1` 命名や `_componentName` 欠落が残り、ダッシュボード側のリファクタリング時に Dockview の `Loading ...` ハングや波形描画消失を引き起こした。シナリオごとに異なる非標準実装が放置される構造的要因を断ち、DTS と UI レイアウトの厳格な結合契約を明文化するため。
 
 ### 5. シナリオ別 UI レイアウト規約 (fbb_layout.json Specification & Invariants)
@@ -225,7 +225,7 @@ F-BB のテストシナリオは、将来の拡張性と責務分離（SoC/ベ�
 
 #### 5.1 DTS を唯一の真実とするペリフェラル紐付け (DTS SSoT Binding)
 - **ノード名の完全一致**:
-  - `fbb_layout.json` 内でペリフェラルペイン（UART, GPIO, I2C, SPI 等）を指定する際、`id` および `params.id` / `params.name` に指定するデバイス名は、シナリオの `config.dts` に定義されたノード名（`vfpga_uart`, `vfpga_gpio` 等）と一字一句違わず完全に一致しなければならない。
+  - `fbb_layout.json` 内でペリフェラルペイン（UART, GPIO, I2C, SPI 等）を指定する際、`id` および `params.id` / `params.name` に指定するデバイス名は、シナリオの `config.dts` に定義されたノード名（`vfpga_uart`, `vfpga_gpio` 等）と文字列として完全に一致しなければならない。
   - 根拠のない連番サフィックス（例: `vfpga_uart_1`）やハードコードされた別名の使用は厳禁とする。
 - **複数同一ペリフェラルが存在する場合の規則**:
   - `config.dts` 側で `vfpga_uart0`, `vfpga_uart1` のように正式なノード名として命名されている場合のみ、その名称をそのまま使用する。
@@ -243,7 +243,7 @@ F-BB のテストシナリオは、将来の拡張性と責務分離（SoC/ベ�
 組み込み検証シナリオにおける標準レイアウトは、以下の 4 分割構成を基本とする：
 1. **左ペイン (Left)**: `registerMonitor`（レジスタ R/W および Trace チェックボックス操作）
 2. **中央上ペイン (Center Top)**: `tracerPanel`（レジスタ値の時系列波形グラフ、微小変化トラッキング）
-3. **中央下ペイン (Center Bottom)**: `dtsPanel`（32-bit メモリマップ俯瞰ダイアグラム & AI Smart DTS Check）
+3. **中央下ペイン (Center Bottom)**: `dtsPanel`（32-bit メモリマップ図 & AI Smart DTS Check）
 4. **右ペイン (Right)**: `uart_<node_name>`（シリアル対話コンソール）
 ※ シナリオの特性に応じて `chaosPanel`、`canPanel`、または DPPA アドオンペインを適宜追加・配置する。
 
@@ -254,4 +254,4 @@ F-BB のテストシナリオは、将来の拡張性と責務分離（SoC/ベ�
 ### 6. AIとの協調に関する指針 (AI Collaboration Policy)
 - **マニフェスト優先の維持**: テストシナリオの構成を変更するようなタスクがある場合、必ずこのマニフェストの更新が人間に承認される前にコード修正に着手してはならない。
 - **インテント・コメントの付与**: テストコード（`main.c`等）に機能追加する際は、ポインタの所有権や前提条件、意図を記述した `@intent` コメントを必ず付与する。
-- **テスト自動検証の義務**: シナリオの変更時、AIは自律的に `scenario_runner.sh` または `run_tests.sh` に加え、必要に応じて全体デグレーション確認のために `tests/regression_test.py` を実行し、変更後の動作確認と、他のシナリオへの影響がないことを自己検証しなければならない。
+- **テスト自動検証の義務**: シナリオの変更時、AIは自律的に `scenario_runner.sh` または `run_tests.sh` に加え、必要に応じて全体のリグレッション確認のために `tests/regression_test.py` を実行し、変更後の動作確認と、他のシナリオへの影響がないことを自己検証しなければならない。

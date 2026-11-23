@@ -1,6 +1,6 @@
 # Adafruit 0.56" 4-Digit 7-Segment HT16K33 I2C Display Plugin
 
-本プラグインは、業界で広く普及している **Adafruit 0.56" 4桁7セグメントLEDモジュール (Holtek HT16K33 I2C コントローラ内蔵 Backpack)** の PPA 2.0 仮想ペリフェラルエミュレータおよび 1:1 ベクター基板アセットです。
+本プラグインは、業界で広く普及している **Adafruit 0.56" 4桁7セグメントLEDモジュール (Holtek HT16K33 I2C コントローラ内蔵 Backpack)** の PPA 仮想ペリフェラルエミュレータおよび 1:1 ベクター基板アセットです。
 
 ---
 

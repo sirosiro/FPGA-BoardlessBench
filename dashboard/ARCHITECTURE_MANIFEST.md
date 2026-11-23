@@ -5,7 +5,7 @@
 
 ## 2. 設計原則 (Design Principles)
 
-### 2.1 Decoupled Observability (非侵襲的な観測)
+### 2.1 Decoupled Observability (非侵襲・疎結合な観測)
 - シミュレーションの実行ループ（Python/RTL）と可視化ループ（Node.js）をプロセスレベルで分離し、UI の描画負荷がハードウェアの論理動作に影響を与えないようにする。
 - 観測は主に共有メモリ (SHM) のポーリングを通じて行い、ターゲットの実行を停止させない。定期ポーリングループ（`updateShm`）は完全な Read-Only を徹底し、共有メモリファイルへの定期書き戻しは厳禁とする。
 
@@ -46,7 +46,7 @@
     - **GTR / DTS Visualizer & AI Diagnostics**: 32-bit物理アドレス空間全体を一括俯瞰する「一体型メモリマップダイアグラム」を表示。マップ上の各デバイスブロックをクリックで直下にインライン展開し、アラインメント・レジスタ・プロパティを詳細確認可能。デバイス間の未割り当て空間（Unmapped Space Gap）をシックなグレーのパターン領域として可視化し、新規IP用空き容量バッファを提示。さらに Ollama LLM / CIP プロンプトと連動した「AI Smart GTR/DTS Check」により、コンパイルエラーの自然言語解説と推奨Fix Diffを提示。
     - **Register State Tracer**: レジスタの変化履歴を正規化表示し、微小な変化も可視化。Zero-Center（ゼロ中央50%基準）、Signed（2の補数符号付き自動レンジ）、Unsigned（絶対値0〜4.29G）のモード切替をサポート。波形上のクリック／なぞりドラッグによるタイムトラベル静止シーク、オシロスコープ式時間軸スパン切替（50pt / 100pt / 250pt / All）、キーボード左右キー（◄/►）コマ送り/コマ戻し、および別ウィンドウを含む 3D Orbit Viewer / 全計器との連動に対応。
     - **IDE-style Docking Layout (Dockview)**: VS Code互換のドッキングレイアウトを採用。パネルのドラッグ＆ドロップによる分割・結合・タブ化・フローティング化をネイティブサポートし、UI全体の配置リセット機能（Reset Layout）も完備。レガシーな手動リサイズコードを撤去し、高精度なリサイズ体験を提供。
-    - **Generic Peripheral View (PPA 2.0 Equalization)**: 公式・サードパーティを問わず全ペリフェラルプラグインを 100% 均一に扱う汎用ビューペイン。`fbb-plugin.json` 内で指定されたベクターグラフィック `board.svg` を解像度低下ゼロ（500%+ 拡大耐性）でレンダリングし、その上にリアルタイムフレームバッファ（Canvas Stream）やセンサー制御スライダー等を自動オーバーレイ描画。ペリフェラル非接続時は特定機器に偏らないスタイリッシュな **`NO ACTIVE PERIPHERAL CONNECTED` (スタンバイ画面)** を表示。
+    - **Generic Peripheral View (PPA 共通レンダリング対応)**: 公式・サードパーティを問わず全ペリフェラルプラグインを 100% 均一に扱う汎用ビューペイン。`fbb-plugin.json` 内で指定されたベクターグラフィック `board.svg` を解像度低下ゼロ（500%+ 拡大耐性）でレンダリングし、その上にリアルタイムフレームバッファ（Canvas Stream）やセンサー制御スライダー等を自動オーバーレイ描画。ペリフェラル非接続時は特定機器に偏らないスタイリッシュな **`NO ACTIVE PERIPHERAL CONNECTED` (スタンバイ画面)** を表示。
     - **レイアウト状態の保存・復元と個別ペイン追加機能**: 起動時に自動でサーバーからシナリオ別レイアウトを読み込み復元し、ヘッダーの「Save Layout」ボタンから現在の配置状態を保存可能。さらに **`+ Add Pane`** ドロップダウンメニューから、閉じた任意のペイン（または動的発見された複数ペリフェラルペイン）を選択して単体動的復元・フォーカス移動が可能。
 
 ## 3.3 UIレイアウトライブラリ選定意思決定ログ (UI Layout Library Decision Log)
@@ -83,7 +83,7 @@ F-BBは個人開発および教育的意義（お勉強）を持つプロダク�
      - *デメリット*: Node.jsサーバーがデータ中継のオーバーヘッドを背負う。
 
 ### 採用理由と将来へのトレードオフ:
-F-BBの設計原則である **「Decoupled Observability (非侵襲的な観測)」** を守るため、通信の多重化や画面同期といった「プレゼンテーション層に近い複雑さ」はシミュレーションエンジン（Python/RTL）に持ち込まず、ミドルウェアである Node.js（`server.js`）にすべて引き受けさせるべきであると判断しました。
+F-BBの設計原則である **「Decoupled Observability (非侵襲・疎結合な観測)」** を守るため、通信の多重化や画面同期といった「プレゼンテーション層に近い複雑さ」はシミュレーションエンジン（Python/RTL）に持ち込まず、ミドルウェアである Node.js（`server.js`）にすべて引き受けさせるべきであると判断しました。
 Node.js 側のメモリやCPUのオーバーヘッドは、組み込みデバッグ用途のシリアルデータ通信（数Kbps〜数十Kbps程度）においては無視できるほど軽微であり、アーキテクチャのクリーンさとデバッグ機能の柔軟性というメリットが大幅に勝るため、案Bを採用としました。
 
 ## 3.5 GPIO レジスタマッピングと入出力分離アーキテクチャ防護規約 (GPIO Critical Section Guard Protocol)
@@ -93,7 +93,7 @@ GPIO の方向判定およびデータレジスタ特定ロジック（`GpioPane
 ### 過去 3 回のエンバグの教訓 (Historical Context)
 1. **第 1 世代 (SoC 固有ハードコード)**: NXP 専用のレジスタ名 `PDIR` / `PDOR` を UI に直書きしていたため、Zynq 以外の多様な SoC への拡張性を損なっていた。
 2. **第 2 世代 (不完全なパターンマッチング)**: 汎用化を狙って `r.name.includes('IN')` に書き換えたが、NXP の `PDIR`（Port Data **I**nput **R**egister）には連続した `"IN"` が含まれないためマッチ失敗。`dataInReg` が常に出力レジスタ `PDOR` にフォールバックする潜在バグが発生。
-3. **第 3 世代 (粗暴な上書きバグによるマスキングと局所化での顕在化)**: 旧 `server.js` が共有メモリ全体をファイルへ定期強制上書きしていたため、`forEach` で `PDIR` にも偶然ビットが書き込まれて動いていた。DMA 破壊防止のため 4 バイト局所アトミック書き込み（`pwrite`）へ改善した際、UI が誤要求していた `PDOR` にのみ書き込まれ、FW（`imx_hal.cpp`）が監視する `PDIR` に値が届かなくなる問題として顕在化した。
+3. **第 3 世代 (無差別な全体上書きバグによるマスキングと局所化での顕在化)**: 旧 `server.js` が共有メモリ全体をファイルへ定期強制上書きしていたため、`forEach` で `PDIR` にも偶然ビットが書き込まれて動いていた。DMA 破壊防止のため 4 バイト局所アトミック書き込み（`pwrite`）へ改善した際、UI が誤要求していた `PDOR` にのみ書き込まれ、FW（`imx_hal.cpp`）が監視する `PDIR` に値が届かなくなる問題として顕在化した。
 
 ### アーキテクチャ不変条件 (Invariants & Protocols)
 - **Single Source of Truth (DTS 駆動)**:
@@ -125,7 +125,7 @@ GPIO の方向判定およびデータレジスタ特定ロジック（`GpioPane
 
 ### 3. マルチスクリーン構成の比較と選定
 1. **案A: Electron / Tauri 等のネイティブデスクトップアプリ化 (評価: C - 不採用)**:
-   - *理由*: Docker コンテナ開発および「Web標準・ブラウザだけで即動く」という F-BB の根本設計原則（Decoupled Observability & Zero Heavy Install）を破壊する。クロスプラットフォームのビルドやインストールの手間を学習者に強要する。
+   - *理由*: Docker コンテナ開発および「Web標準・ブラウザだけで即動く」という F-BB の根本設計原則（Decoupled Observability & Zero-Install）を破壊する。クロスプラットフォームのビルドやインストールの手間を学習者に強要する。
 2. **案B: 単純な複数タブ/独立URLルーティング方式 (評価: B - 不採用)**:
    - *理由*: 各タブが独立したSocket.io接続とReactステートを持つため、状態同期が取れず、メインウィンドウからの「ワンクリック切り離し（Pop-out）」や「再格納（Re-dock）」というシームレスなDXが実現できない。
 3. **案C: Web標準ハイブリッド・マルチスクリーン（React 19 `createPortal` + `BroadcastChannel` / 評価: A+ - 採用）**:
@@ -133,7 +133,7 @@ GPIO の方向判定およびデータレジスタ特定ロジック（`GpioPane
      - **動的 Pop-out (子ウィンドウ化)**: Dockview の各タブ右上に配置された「Pop-out」ボタンをクリックすると、`window.open` で新規ウィンドウを生成し、React 19 の `createPortal` を介して親ウィンドウのコンポーネントツリーから透過的に子ウィンドウのDOMへ描画。親のスタイル（CSS/ダークテーマ）を自動複製し、子ウィンドウを閉じれば親Dockviewの元位置へ自動リドック。
      - **URL クエリパラメータによるモニタ別コックピット化 (`?screen=<id>`)**: サブモニタ専用のブラウザウィンドウで `http://localhost:8080/?screen=monitor2` を開くことで、モニタごとに独立したレイアウトファイル（`fbb_layout_monitor2.json`）を永続化・ロード可能。
      - **単体ペイン全画面ビュー (`?pane=<id>`)**: プロジェクター投影や専用モニタ全画面化向けに、Dockview ヘッダーのない単一ペイン全画面モード（例: `?pane=peripheral_ssd1306`）を提供。
-     - **ゼロ・オーバーヘッド画面間同期 (`BroadcastChannel`)**: 複数画面間でUI設定（Tracerの非表示キー等）を共有するため、サーバーを介さずブラウザ標準の `BroadcastChannel('fbb_dashboard_sync')` を使用。
+     - **サーバーレス画面間同期 (`BroadcastChannel`)**: 複数画面間でUI設定（Tracerの非表示キー等）を共有するため、サーバーを介さずブラウザ標準の `BroadcastChannel('fbb_dashboard_sync')` を使用。
 
 ### 4. 各ソースコードの役割と責務 (Source File Roles & Responsibilities)
 - **`dashboard/client/src/panes/paneRegistry.jsx`**:
@@ -153,9 +153,9 @@ GPIO の方向判定およびデータレジスタ特定ロジック（`GpioPane
   - `GET /api/layout` および `POST /api/layout` で `?screen=<id>` クエリパラメータを受け付け、`fbb_layout_${screen}.json` の永続化をサポート（デフォルト時は従来の `fbb_layout.json` を維持し完全な下位互換性を担保）。
 
 ### 5. 狙いと効用 (Benefits & Impact)
-- **開閉原則 (OCP) の完全遵守**: 新規ペイン（P02のROS 2 AMR Nav2 Map等）を追加する際、`App.jsx` の修正は一切不要。`paneRegistry.jsx` に1エントリ追加するだけで、メニュー・Dockview・ポップアウト・個別URLの全機能が自動的に有効化される。
+- **開放閉鎖原則 (OCP) の完全遵守**: 新規ペイン（P02のROS 2 AMR Nav2 Map等）を追加する際、`App.jsx` の修正は一切不要。`paneRegistry.jsx` に1エントリ追加するだけで、メニュー・Dockview・ポップアウト・個別URLの全機能が自動的に有効化される。
 - **マルチモニタ作業効率の大幅向上**: シリアルコンソールや波形トレーサー、ペリフェラルモニタを物理的な別モニタへ切り離し、メイン画面のドッキングレイアウトと並行して広々とデバッグ可能。
-- **ゼロ・オーバーヘッド・ゼロ・インストール**: 外部ネイティブアプリのインストールが不要で、Dockerコンテナ環境およびブラウザのWeb標準機能のみで完結。
+- **軽量・追加インストール不要**: 外部ネイティブアプリのインストールが不要で、Dockerコンテナ環境およびブラウザのWeb標準機能のみで完結。
 
 ## 3.7 WebSocket ネイティブ接続固定とテレメトリ同期選定意思決定ログ (WebSocket Native Transport & Telemetry Sync Decision Log)
 
@@ -172,7 +172,7 @@ GPIO の方向判定およびデータレジスタ特定ロジック（`GpioPane
    - macOS (Safari/Chrome)、Windows (Edge/Chrome)、Linux いずれのモダンブラウザでも 100% ネイティブサポートされており、Polling アップグレードに伴う 5秒遅延を根本排除。
 2. **初期接続時のテレメトリ即時配信 (In-Memory Telemetry Replay)**:
    - `server.js` 側で最新の AMR テレメトリ（`/tmp/fbb_amr_telemetry.json`）をメモリキャッシュし、新規ソケット接続イベント（`io.on('connection')`）内で即座にクライアントへプッシュ配信。
-   - 後からブラウザを開いた場合や、ページリロード時でも、即座に最新のロボット姿勢・波形が初期表示される透過性を担保。
+   - 後からブラウザを開いた場合や、ページリロード時でも、即座に最新のロボット姿勢・波形が初期表示される一貫性を担保。
 3. **コア探索 (`execSync`) の非同期キャッシュ化**:
    - `getDiscoveredCores()` 内で同期的に `pgrep` を実行していた処理を、500ms 周期の非同期ポーリング（`exec`）＋インメモリキャッシュへと移行し、Node.js イベントループの健全性と低ジッター性を保証。
 
@@ -183,21 +183,21 @@ DPPA（Dashboard Pane Plugin Architecture）における動的外部 ESM ペイ�
 ### 過去のエンバグの教訓 (Historical Context: 2026-10-13)
 1. **ビルド検証のすり抜け**: Python 側の `py_compile` や本体の `npm run build` は正常終了していたが、外部 ESM ペインは Vite のバンドル対象外（`/* @vite-ignore */`）であるため、JavaScript 構文エラー（SyntaxError）が CI・ビルドを完全に素通りして出荷された。
 2. **文字列パッチによる構文破壊**: スクリプトによる自動置換時、テンプレートリテラル内の角括弧（`[`）に誤マッチし、文字列の内部に React 要素コードが混入して SyntaxError を引き起こした。
-3. **無言の破綻（Silent Failure）の隠蔽**: `paneRegistry.jsx` の Proxy フォールバックが、動的インポート失敗時にも単に `Loading {title}...` を表示し続けたため、エラーが「読み込み中」として隠蔽され、障害原因の早期特定が阻害された。
+3. **サイレントフェイラー（エラー通知なしの異常終了）の隠蔽**: `paneRegistry.jsx` の Proxy フォールバックが、動的インポート失敗時にも単に `Loading {title}...` を表示し続けたため、エラーが「読み込み中」として隠蔽され、障害原因の早期特定が阻害された。
 
 ### アーキテクチャ不変条件 (Invariants & Protocols)
 - **1. 動的外部ペインの独立静的検証義務 (Validation Invariant)**:
   - 外部ペインコード（`panes/*/index.js`）を新規作成・修正・マイグレーションする際は、コミットおよびスクリプト適用前に、必ず Node.js の構文チェッカー（`node --input-type=module --check < file.js`）等による静的検証をパスすることを必須とする。未検証コードの配置は厳禁とする。
 - **2. Fail-Fast UI エラーバウンダリ契約 (Error Boundary Contract)**:
   - プラグインの動的ロード失敗時（SyntaxError, ネットワークエラー, APIバージョン不整合等）、`paneRegistry.jsx` は決して `Loading...` を返し続けてはならない。
-  - 必ず失敗状態（`failedPanes`）を保持し、UI 上に即座に `[DPPA Plugin Error]` とエラー詳細メッセージ、および修正ヒントを赤字で明示すること（原則5: フェイルファースト、マニフェスト 8.3: 無言の破綻の完全排除）。
+  - 必ず失敗状態（`failedPanes`）を保持し、UI 上に即座に `[DPPA Plugin Error]` とエラー詳細メッセージ、および修正ヒントを赤字で明示すること（原則5: フェイルファースト、マニフェスト 8.3: サイレントフェイラーの完全排除）。
 - **3. 構造的安全規約 (No Unchecked String Patching)**:
-  - UI コンポーネントをスクリプトから自動更新する際、AST（構文木）を介さない粗暴な正規表現や文字列 `find`/`replace` によるパッチ適用を禁止する。修正時はコンポーネント全体の再生成、または構文検証パイプラインとの結合を義務付ける。
+  - UI コンポーネントをスクリプトから自動更新する際、AST（構文木）を介さない安易な正規表現や文字列 `find`/`replace` によるパッチ適用を禁止する。修正時はコンポーネント全体の再生成、または構文検証パイプラインとの結合を義務付ける。
 
 ## 3.9 統合シナリオ・テレメトリバス（Unified Scenario Telemetry Bus Protocol）
 
 ### 1. 背景と課題 (Why)
-- **多重 HTTP ポーリングによる通信詰まりとジッター**:
+- **多重 HTTP ポーリングによる通信の輻輳とジッター**:
   - 外部プラグインや自律走行シナリオを含む各ペインが、独立して毎秒 50〜60 回の頻度で HTTP GET（`/api/file?path=/tmp/*.json`）を連打していた。
   - 外部 PC（MacBook M4 等）からポートフォワーディングや Wi-Fi 経由で接続した場合、ブラウザの同一ドメイン同時接続上限（最大 6 本）を圧迫し、パケット到着のバースト化（無音 $\to$ 一括到着）によるマイクロスタッター（表示の停止・カクつき）を構造的に引き起こしていた。
 - **シナリオ間でのテレメトリ伝送方式の分断**:
@@ -213,14 +213,14 @@ DPPA（Dashboard Pane Plugin Architecture）における動的外部 ESM ペイ�
 3. **最新テレメトリのインメモリ即時エコーバック**:
    - `server.js` は最新の `scenario:telemetry` ペイロードをメモリキャッシュし、新規クライアント接続時（`io.on('connection')`）や画面リロード時に即座にエコーバック配信する。
 4. **高頻度テレメトリとダッシュボード状態の Context レベル分離 (Telemetry Context Decoupling)**:
-   - 秒間 30〜50 回の頻度で到着する `scenario:telemetry` が `DashboardContext` 全体の再評価を引き起こし、関係のない `RegisterMonitor` や `RegisterTracer` に再レンダリングカスケードを伝播させるのを防止するため、`TelemetryProvider`（`TelemetryContext`）としてコンテキストを物理的に分離。
+   - 秒間 30〜50 回の頻度で到着する `scenario:telemetry` が `DashboardContext` 全体の再評価を引き起こし、関係のない `RegisterMonitor` や `RegisterTracer` に連鎖的な再レンダリングを波及させるのを防止するため、`TelemetryProvider`（`TelemetryContext`）としてコンテキストを物理的に分離。
    - `useScenarioTelemetry()` を購読するペインのみに再描画スコープを限定し、レジスタ表示やトレーサー側のメインスレッド負荷を最小化する。
 
 ## 3.10 ペインレジストリ・エイリアス対称性と対症療法禁止規約 (Pane Registry Alias Symmetry & Anti-Patch Protocol)
 
 ### 1. エイリアス対称性の不変条件 (Alias Symmetry Invariant)
 - `dashboard/client/src/panes/paneRegistry.jsx` において、`getPaneDefinition(id)` で認識されるペイン識別子・エイリアス（例: `tracer` $\leftrightarrow$ `tracerPanel`, `chaos` $\leftrightarrow$ `chaosPanel`, `can` $\leftrightarrow$ `canPanel`, `dts` $\leftrightarrow$ `dtsPanel`）は、**必ず `getDockviewComponentsMap()` においても同一のコンポーネント実体へマッピングされなければならない**。
-- 一方のみでエイリアスを解決し、他方で解決しない場合、Dockview がシリアライズされたレイアウト（`fbb_layout.json`）を復元する際にコンポーネント未登録と判定され、「`Loading {title}...`」のまま無言でハングする（無言の破綻）。これを構造的に防ぐため、エイリアスの定義は常に両メソッド間で対称（Symmetric）でなければならない。
+- 一方のみでエイリアスを解決し、他方で解決しない場合、Dockview がシリアライズされたレイアウト（`fbb_layout.json`）を復元する際にコンポーネント未登録と判定され、「`Loading {title}...`」のまま無言でハングする（サイレントフェイラー）。これを構造的に防ぐため、エイリアスの定義は常に両メソッド間で対称（Symmetric）でなければならない。
 
 ### 2. 対症療法的名前リマップの絶対禁止 (Strict Ban on Ad-Hoc Name-Remapping)
 - `App.jsx` や `server.js` 内において、特定のシナリオ（例: S01 等）で発生した古い命名やタイポ（例: `vfpga_uart_1`）を救済するための `if` 文や置換コード（`remapping`）を記述してはならない。
@@ -230,14 +230,14 @@ DPPA（Dashboard Pane Plugin Architecture）における動的外部 ESM ペイ�
 - `RegisterTracer.jsx` などの時系列グラフ描画コンポーネントでは、WebSocket から受信したレジスタ値に `NaN`、`undefined`、または非数値が含まれる場合を考慮し、必ず `Number.isFinite()` による除外およびデフォルト値（0）への正規化を行うこと。
 - データ点が 1 件のみ（初期状態など）の場合、Recharts の `<Line>` は線（ストローク）を描画できずグラフが不可視となる。そのため、`dot={historyData.length <= 1 ? { r: 3 } : false}` のように単一データ点でも確実に点が描画されるフォールバックを維持すること。
 
-## 3.11 DPPA 3D レンダリング・Three.js ランタイムブリッジ仕様 (DPPA 3D WebGL Bridge & Zero-Host Protocol)
+## 3.11 DPPA 3D レンダリング・Three.js ランタイムブリッジ仕様 (DPPA 3D WebGL Bridge & Zero-External-Dependency Protocol)
 
 ### 1. 背景と設計意図 (Why)
 - **CPU 2D Canvas によるレンダリング限界の克服**:
   - `SpaceGuidance` 等の 3D 軌道ビューアにおいて、Canvas 2D API（`project3D` による手動座標変換、ループ毎の線分描画、および `ctx.shadowBlur` による発光表現）は CPU 描画負荷が高く、120 FPS / 高解像度ディスプレイ環境においてフレームドロップ（ジッター）の原因となっていた。
   - GPU ネイティブな WebGL（Three.js）エンジンへ移行することで、120 FPS 以上の安定したハードウェア描画と、`THREE.AdditiveBlending` による超低負荷なエンジン噴煙・爆発パーティクル発光を実現する。
-- **Zero-Host 依存規約とオフライン性の死守 (Zero-Host Dependency & Offline Invariant)**:
-  - 外部プラグインペイン（`SpaceGuidance-FBB/panes/sg-orbit-viewer` 等）が個別に npm パッケージを持ったり、外部 CDN（unpkg/cdnjs 等）から Three.js をロードすることは、完全なオフライン閉域環境（Zero-Host 依存）での動作を破綻させる。
+- **外部ネットワーク非依存規約とオフライン動作の保証 (Zero-External-Dependency & Offline Invariant)**:
+  - 外部プラグインペイン（`SpaceGuidance-FBB/panes/sg-orbit-viewer` 等）が個別に npm パッケージを持ったり、外部 CDN（unpkg/cdnjs 等）から Three.js をロードすることは、完全なオフライン閉域環境での動作を破綻させる。
   - そこで、ホストダッシュボード本体（`dashboard/client`）が `three` を内包・バンドルし、グローバルランタイムブリッジ（`window.FBB.THREE` および `window.THREE`）として外部ペインへ透過的に提供するアーキテクチャを採用する。
 
 ### 2. アーキテクチャ決定事項 (Decisions)
@@ -247,14 +247,14 @@ DPPA（Dashboard Pane Plugin Architecture）における動的外部 ESM ペイ�
 2. **2層ハイブリッドレンダリング（Layered WebGL + HUD Canvas）**:
    - レイヤー 1（背面）: `THREE.WebGLRenderer` による 120 FPS 3D シーン、メッシュ、パーティクル、アディティブ噴煙描画。
    - レイヤー 2（前面）: ポインタ透過（`pointer-events: none`）の 2D オーバーレイ Canvas。Three.js の `vector.project(camera)` で 3D 空間位置を 2D 投影し、ターゲットレティクルやゲート名称等のテキスト HUD を鮮明に描画。
-3. **推測航法（Dead-Reckoning）と 120 FPS 自律補間の融合**:
-   - 受信した物理速度ベクトル（`vel_x, vel_y, vel_z`）および角速度（`omega_x, wy, wz`）による慣性順伝播と、受信パケット位置へのスプリング収束ブレンドを実装し、WebSocket テレメトリの到着ジッターに依存しない滑らかな 120 FPS 描画を保証。
+3. **推測航法（Dead-Reckoning）と 120 FPS 線形外挿補間の融合**:
+   - 受信した物理速度ベクトル（`vel_x, vel_y, vel_z`）および角速度（`omega_x, wy, wz`）を用いた外挿（線形予測）と、受信パケット位置へのスプリング収束ブレンドを実装し、WebSocket テレメトリの到着ジッターに依存しない滑らかな 120 FPS 描画を保証。
 
-## 3.12 プラグイン完全隔離・具象名漏洩絶対禁止規約 (Plugin Isolation & Zero-Leaked-Identity Protocol)
+## 3.12 プラグイン完全隔離・ハードコード禁止規約 (Plugin Isolation & No-Hardcoded-Identifiers Protocol)
 
 ### 1. 背景と規約の意義 (Why)
 F-BB は、世界中のサードパーティ製ハードウェア・ゲーム・制御シミュレーションが自律的に参入可能な「ボードレス FPGA プラットフォーム」を目指すオープンアーキテクチャである。
-ホストコード（`dashboard/server.js`、`start_lab.sh`、`vlogic_controller.py` 等）の内部に、特定のサードパーティ・プラグインや外部シナリオの具象名（プロセス名、バイナリ名、ファイルパス、固有共有メモリ構造体のオフセット等）を直接ハードコードすることは、**F-BB を特定プラグイン専用の私物化システムに堕落させ、他のすべてのプラグインに対するポータビリティを永久に損なう重大なアーキテクチャ破壊行為**である。
+ホストコード（`dashboard/server.js`、`start_lab.sh`、`vlogic_controller.py` 等）の内部に、特定のサードパーティ・プラグインや外部シナリオの具象名（プロセス名、バイナリ名、ファイルパス、固有共有メモリ構造体のオフセット等）を直接ハードコードすることは、**F-BB を特定プラグイン専用の実装へ密結合化させ、他のすべてのプラグインに対するポータビリティを永久に損なう重大なアーキテクチャ破壊行為**である。
 
 ### 2. 厳格な不変条件 (Invariants)
 1. **F-BB コアにおける特定プラグイン具象名の完全禁止 (Strict Ban on Concrete Plugin Identifiers)**:
@@ -266,13 +266,13 @@ F-BB は、世界中のサードパーティ製ハードウェア・ゲーム・
 3. **プラグイン固有 SHM の自己責任カプセル化 (Self-Contained Plugin SHM Protocol)**:
    - プラグインが独自に高速な POSIX 共有メモリを使用する場合、その定義と解釈はプラグイン自身（C++ デーモンおよびプラグイン側 ESM ペイン `panes/*/index.js`）の内部に 100% カプセル化されなければならない。ホストダッシュボード本体にプラグイン専用の SHM パーサーを混入させてはならない。
 
-## 3.13 時間跳躍型可逆デバッグ・オシロスコープ波形シークアーキテクチャ規約 (Time-Travel Scrubbing & Oscilloscope Waveform Architecture Protocol)
+## 3.13 タイムトラベル型可逆デバッグ・オシロスコープ波形シークアーキテクチャ規約 (Time-Travel Scrubbing & Oscilloscope Waveform Architecture Protocol)
 
 ### 1. 背景と設計意図 (Why)
-- **非侵襲的な時間跳躍型デバッグ体験の実現**:
-  物理オシロスコープや実機ハードウェアでは、異常スパイクが発生した瞬間に時間を巻き戻して内部レジスタやロボット/宇宙船の姿勢・GPIOをじっくり観察することは不可能である。F-BB は仮想化された共有メモリと時系列スナップショット配列（`traceHistory`）を活用し、シミュレーション実行中に過去の任意ポイントへ UI 全体をタイムスリップさせる「時間跳躍型デバッグ（Time-Travel Debugging）」を提供する。
+- **非侵襲的なタイムトラベルデバッグ体験の実現**:
+  物理オシロスコープや実機ハードウェアでは、異常スパイクが発生した瞬間に時間を巻き戻して内部レジスタやロボット/宇宙船の姿勢・GPIOをじっくり観察することは不可能である。F-BB は仮想化された共有メモリと時系列スナップショット配列（`traceHistory`）を活用し、シミュレーション実行中に過去の任意ポイントへ UI 全体を巻き戻して観測できる「タイムトラベルデバッグ（Time-Travel Debugging）」を提供する。
 - **軽量・低負荷なオシロスコープ操作系の確立**:
-  アニメーションループや SVG 矩形選択ドラッグに伴う過大な再描画負荷（60FPS再描画による CPU スパイクやブラウザハング）を完全に排除し、実機オシロスコープの `TIME/DIV` と同一の「時間軸スパン切替（Timebase Span）」、直感的なクリック/なぞりシーク、およびキーボード左右キー（◄/►）によるコマ送り/コマ戻し操作を採用することで、ノート PC 環境でも極小負荷・ゼロ遅延で軽快に動作する波形解析 UX を実現する。
+  アニメーションループや SVG 矩形選択ドラッグに伴う過大な再描画負荷（60FPS再描画による CPU スパイクやブラウザハング）を完全に排除し、実機オシロスコープの `TIME/DIV` と同一の「時間軸スパン切替（Timebase Span）」、直感的なクリック/なぞりシーク、およびキーボード左右キー（◄/►）によるコマ送り/コマ戻し操作を採用することで、ノート PC 環境でも低負荷・低遅延で軽快に動作する波形解析 UX を実現する。
 
 ### 2. 厳格な不変条件とアーキテクチャ契約 (Invariants & Protocols)
 1. **抽象テレメトリの履歴自動カプセル化 (Generic Telemetry in Trace Snapshot)**:
@@ -295,7 +295,7 @@ F-BB は、世界中のサードパーティ製ハードウェア・ゲーム・
    - `Esc`: 即座に `● LIVE` 復帰。
    - ターミナルや入力フォーム（`input`, `textarea`, `isContentEditable`）へのフォーカス時はキーイベントを透過させ、通常入力を阻害しない。
 6. **マルチウィンドウ・別画面同期 (BroadcastChannel Time-Travel Sync)**:
-   - ポップアウトされた子ウィンドウ（マルチモニタ環境の 3D ビューアや Register Monitor）に対しても、`BroadcastChannel('fbb_dashboard_sync')` を介して `SYNC_TIME_TRAVEL` メッセージをブロードキャストし、全画面間で完全ゼロ遅延のシーク連動を維持する。
+   - ポップアウトされた子ウィンドウ（マルチモニタ環境の 3D ビューアや Register Monitor）に対しても、`BroadcastChannel('fbb_dashboard_sync')` を介して `SYNC_TIME_TRAVEL` メッセージをブロードキャストし、全画面間で低遅延のシーク連動を維持する。
 
 ## 4. 既知の未解決課題 (Known Open Issues)
 - **多重接続時の競合**: 同一の UART に対して複数のブラウザタブから入力を試みた際の排他制御。

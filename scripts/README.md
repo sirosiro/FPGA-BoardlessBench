@@ -1,4 +1,4 @@
-# /scripts - FPGA-BoardlessBench (F-BB) 司令塔（オートメーション層）
+# /scripts - FPGA-BoardlessBench (F-BB) 自動生成・支援スクリプト群（オートメーション層）
 
 このディレクトリには、Device Tree (DTS) からシミュレーション環境を自動構築するためのコア・スクリプトが収められています。
 
@@ -8,7 +8,7 @@ FPGA-BoardlessBench (F-BB) の中心的なエンジンです。**DTSファイル
 
 ### 特徴
 - **モジュール設計**: パーサー、データモデル、言語別ジェネレータが分離されており、容易に拡張可能です。
-- **シナリオ非依存**: 特定のテスト回路（`pattern_engine` 等）に依存しない純粋なスケルトンを生成し、回路実装とジェネレータの責務を完全に分離しています。
+- **シナリオ非依存**: 特定のテスト回路（`pattern_engine` 等）に依存しない汎用スケルトンを生成し、回路実装とジェネレータの責務を完全に分離しています。
 - **118ピン標準インターフェース**: RTL トップの IO を 118 ピン (`l_pins_i/o/t`) に標準化。SoC 規模の複雑なデザインまで透過的にサポートします。
 - **ステートフル同期**: ソフトウェアと RTL 間のレジスタ通信において、不整合（レースコンディション）を発生させない高度な同期プロトコルを実装しています。
 - **環境適応性**: `/tmp` ベースの共有メモリ通信を採用しており、Docker/DevContainer などの隔離された名前空間内でも安定して動作します。
@@ -37,7 +37,7 @@ scripts/
         ├── generator_rtl.py          # RTL関連コードのジェネレータ群 (Rtl, Sim, Manifest, PAC)
         ├── generator_shim.py         # C Shimコードのジェネレータ (ShimGenerator)
         └── templates/                # コード生成用の各種テンプレート
-              └── libfpgashim.c.template # C Shim の長大なC言語コード・テンプレート
+              └── libfpgashim.c.template # C Shim 用の C 言語テンプレート本体
 ```
 
 #### 各モジュールの詳細説明
@@ -54,7 +54,7 @@ scripts/
   * **`SimulatorGenerator`**: Verilator モデルを実行し、共有メモリとRTLレジスタ間で双方向同期を行うC++シミュレータメインコード（`sim_main.cpp`）を生成します。118 ピン標準インターフェースに対しては C++17 SFINAE トレイト `has_l_pins_i<T>` を介して型安全な 4 ワード一括代入コードを出力します。
   * **`ManifestGenerator`**: ダッシュボード UI が動的にデバイス構成やレジスタ情報をリロードして描画するために必要な JSON マニフェスト（`board_manifest.json`）を生成します。
   * **`RustPACGenerator`**: Embedded Rust で検証を行うシナリオ向けに、DTS定義と同期した安全なアクセスライブラリ（`fbb_pac.rs`）を自動生成します。
-* **`vfpga/generator_shim.py` & `templates/libfpgashim.c.template`**: Aコアアプリケーション（ファームウェア）のシステムコール（`open`, `mmap`, `ioctl` 等）をインターセプトし、仮想的なデバイスファイルへのアクセスを共有メモリや UNIX ソケットへ安全にルーティングする C Shim（`libfpgashim.c`）の生成を行います。C言語としての複雑なロジック記述は、`templates/libfpgashim.c.template` として外出しされているため、**C言語のシンタックスハイライト、コード補完、フォーマッタが有効な状態で安全に Shim の開発や拡張が行える**設計になっています。さらに、本テンプレートには **決定論的カオス・障害注入エンジン**（`FBB_CHAOS_MODE`, `FBB_CHAOS_SEED`, `FBB_CHAOS_RATE`, `FBB_CHAOS_TARGETS`）が組み込まれており、無効時は条件分岐1回の完全ゼロオーバーヘッドを保証しつつ、有効時は `xorshift128+`（SplitMix64 初期化）PRNG による決定論的シード再現性をもって I2C, SPI, UIO, CDMA, SocketCAN へリアルタイムに障害（NACK、ビット反転、タイムアウト、パケット欠落、DecErr）を注入します。
+* **`vfpga/generator_shim.py` & `templates/libfpgashim.c.template`**: Aコアアプリケーション（ファームウェア）のシステムコール（`open`, `mmap`, `ioctl` 等）をインターセプトし、仮想的なデバイスファイルへのアクセスを共有メモリや UNIX ソケットへ安全にルーティングする C Shim（`libfpgashim.c`）の生成を行います。C言語としての複雑なロジック記述は、`templates/libfpgashim.c.template` として外出しされているため、**C言語のシンタックスハイライト、コード補完、フォーマッタが有効な状態で安全に Shim の開発や拡張が行える**設計になっています。さらに、本テンプレートには **決定論的カオス・障害注入エンジン**（`FBB_CHAOS_MODE`, `FBB_CHAOS_SEED`, `FBB_CHAOS_RATE`, `FBB_CHAOS_TARGETS`）が組み込まれており、無効時は条件分岐1回のみの極小オーバーヘッドに抑えつつ、有効時は `xorshift128+`（SplitMix64 初期化）PRNG による決定論的シード再現性をもって I2C, SPI, UIO, CDMA, SocketCAN へリアルタイムに障害（NACK、ビット反転、タイムアウト、パケット欠落、DecErr）を注入します。
 
 ### データフロー図
 ```mermaid
@@ -82,10 +82,10 @@ graph TD
 
 ## 2. v2gtr.py / fbb import (Hardware Importer & Reverse Engineering)
 
-Verilog HDL (`.v`) ソースコードを静的解析し、Linux Device Tree (`config.dts`) および仮想ハードウェア契約 (`config.gtr`) を二層分離形式で一発自動生成するツールです。
+Verilog HDL (`.v`) ソースコードを静的解析し、Linux Device Tree (`config.dts`) および仮想ハードウェア定義 (`config.gtr`) の 2 ファイルに分離して自動生成するツールです。
 
 ### 特徴
-- **交差解析によるアクセス権限自動判定**: 書込み回路（`w_en`, `w_data`）と読出し回路（`r_data`）の双方に現れるレジスタを `RW`、読出し側のみを `RO`、書込み側のみを `WO` と自動識別。
+- **読み書き双方の照合によるアクセス権限自動判定**: 書込み回路（`w_en`, `w_data`）と読出し回路（`r_data`）の双方に現れるレジスタを `RW`、読出し側のみを `RO`、書込み側のみを `WO` と自動識別。
 - **ベースアドレスとオフセットのクラスタリング**: 4KB 境界でアドレス空間を自動クラスタリングし、複数ペリフェラルが存在する場合も個別の Device ノードとして分離。
 - **統合 CLI 連携**: `fbb import <file.v>` でワンコマンド実行可能（`v2gtr.py` スタンドアロン実行にも対応）。
 

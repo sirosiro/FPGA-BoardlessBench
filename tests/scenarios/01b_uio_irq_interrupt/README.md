@@ -69,7 +69,7 @@ flowchart LR
 [FW IRQ Handler] INT_ACK written. IRQ successfully handled.
 === Scenario 01b Test Result: SUCCESS ===
 ```
-`read()` の行で待機し、FPGAのタイマーが満了した瞬間に即座に応答していることが確認できます！
+`read()` の行で待機し、FPGAのタイマーが設定値に達した瞬間に即座に応答していることが確認できます！
 
 ---
 

@@ -1,6 +1,6 @@
 # PL側 AXI SPI Bridge 検証シナリオ (`02c_pl_spi`)
 
-本シナリオは、PL (FPGA) 側に実装された **自作 AXI-Lite SPI マスタコントローラ (Verilog)** の入出力ピンの物理的動作を Verilator シミュレータ上でキャプチャし、F-BB の外部ペリフェラルエミュレータ (**仮想 12-bit ADC MCP3208**) と UNIX ドメインソケットを介して相互ブリッジ同期させる、高度な総合検証テストケースです。
+本シナリオは、PL (FPGA) 側に実装された **自作 AXI-Lite SPI マスタコントローラ (Verilog)** の入出力ピンの物理的動作を Verilator シミュレータ上でキャプチャし、F-BB の外部ペリフェラルエミュレータ (**仮想 12-bit ADC MCP3208**) と UNIX ドメインソケットを介して相互に連携・同期させる、高度な総合検証テストケースです。
 
 ![FPGA-BoardlessBench (F-BB) AroundView Dashboard](assets/dashboard.png)
 

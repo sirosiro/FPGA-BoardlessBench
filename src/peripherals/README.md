@@ -2,7 +2,7 @@
 
 本ディレクトリは、FPGA-BoardlessBench (F-BB) において、仮想システム（Aコア/Mコアなど）と連動する仮想周辺デバイス（I2Cスレーブデバイス、SPIスレーブデバイス、HUB75マトリクスLED、UART対向デバイス等）のエミュレーションプログラムを配置する共通ディレクトリです。
 
-C++17 オブジェクト指向による抽象設計を導入し、ボイラープレートな通信コードを基底クラスに隠蔽することで、新しい仮想デバイスの追加やメンテナンスが容易に行えるようになっています。
+C++17 オブジェクト指向による抽象設計を導入し、定型的な通信コードを基底クラスに隠蔽することで、新しい仮想デバイスの追加やメンテナンスが容易に行えるようになっています。
 
 ---
 
@@ -185,9 +185,9 @@ src/peripherals/official_plugins/<vendor_model>/
 
 ---
 
-### 3.3. Zero-Touch CMake 自動発見 ＆ 画面自動連動
+### 3.3. Zero-Touch CMake 自動検出 ＆ 画面自動連動
 
-* [CMakeLists.txt](file:///workspaces/FPGA-BoardlessBench/src/peripherals/CMakeLists.txt) に PPA 4.0 動的自動発見エンジンが統合されているため、プラグインフォルダを配置するだけで、CMake がターゲットバイナリと基底クラス (`common/i2c_slave.cpp`, `common/spi_slave.cpp` 等) を自動検知・ビルドし、ダッシュボード UI も宣言的スキーマに従って自動マウント・レンダリングします。（手動での CMakeLists.txt や server.js 追記は一切不要です）。
+* [CMakeLists.txt](file:///workspaces/FPGA-BoardlessBench/src/peripherals/CMakeLists.txt) に PPA 動的プラグイン検出機能が統合されているため、プラグインフォルダを配置するだけで、CMake がターゲットバイナリと基底クラス (`common/i2c_slave.cpp`, `common/spi_slave.cpp` 等) を自動検知・ビルドし、ダッシュボード UI も宣言的スキーマに従って自動マウント・レンダリングします。（手動での CMakeLists.txt や server.js 追記は一切不要です）。
 
 ---
 
@@ -201,14 +201,14 @@ F-BB では、ペリフェラルモデル側やシミュレーション基盤側
    ペリフェラル側がピン番号を特定値（例：GPIO 14）に固執しないため、シナリオごとに異なる GPIO ピンへのアサインや複数ペリフェラルの組み合わせ時のピン衝突を C++ コードの再コンパイルなしで柔軟に回避・再利用できます。
 2. **物理割り込み (IRQ) シグナルの因果関係再現 (Event-Driven Interrupt Routing)**
    ペリフェラルモデル側から発火した「データ受領・状態変化イベント」が、DTS の `interrupts = <15 1>` 等の記述に基づいて CPU 側の GPIO ピンへリアルタイムにエッジ信号として注入されます。これにより、Linux の `request_irq` や Sysfs `edge` 監視が実機と全く同じ因果関係で正しくトリガーされます。
-3. **100% のソースコード透過性の維持 (Zero-Hardcoding Transparency)**
+3. **ハードコード排除による高い移植性 (Platform-Independent Code)**
    ファームウェア（C言語）側にもペリフェラルモデル側にも `#ifdef SIMULATION` 等のハードコード分岐を一切持たせずに済みます。評価ボードの SoC や基板アサインが変更されても、DTS の配線情報を変更するだけでシミュレーションが完結します。
 4. **ダッシュボード上でのトポロジー自動ラベル表示 (Auto-Topology Visualization)**
    ダッシュボードは DTS の結線情報を解析し、ピンパネル上に `GPIO 14 [Reset -> BME280]` や `GPIO 15 [INT <- BME280]` といった動的配線ラベルを自動生成・可視化し、デバッグ性を飛躍的に向上させます。
 
 ---
 
-## 5. プラグインの自動発見・検索パスと各ロード場所の目的 (Plugin Discovery Paths & Purpose)
+## 5. プラグインの自動検出・検索パスと各ロード場所の目的 (Plugin Discovery Paths & Purpose)
 
 F-BB コントローラは起動時、DTS 内の `compatible` 名に一致するペリフェラル・プラグインを以下の優先順位に従って自動検索・動的ロードします。複数のロード場所を設けている理由は、**「開発時」「チーム共有時」「個人共通利用時」「CI/CDシステム時」の運用ニーズを明確に分離するため**です。
 
@@ -224,14 +224,14 @@ F-BB コントローラは起動時、DTS 内の `compatible` 名に一致する
 
 ## 6. PPA/DPPA プロトコル仕様 v1.0 (IPC通信・バージョニング規約)
 
-外部プラグインのエコシステム拡大に伴い、F-BB 本体とサードパーティ製プラグインとの間の契約を厳格化し、将来のバージョン不整合による無言の破綻（Silent Failure）を防止するためのプロトコル規格です。
+外部プラグインのエコシステム拡大に伴い、F-BB 本体とサードパーティ製プラグインとの間の仕様を厳格化し、将来のバージョン不整合によるサイレントフェイラー（エラー通知なしの異常終了）を防止するためのプロトコル規格です。
 
 ### 6.1. PPA マニフェスト・バージョニング (`fbb-plugin.json`)
 マニフェストには以下のスキーマバージョンを明記します：
 * **`schema_version` (必須・整数)**: 現在の仕様は `1`。`vlogic_controller.py` はプラグイン探索時にこの値を検査し、未定義の場合は後方互換モード（Legacy v1）として警告ログを出力した上で読み込みます。サポート外のバージョン番号が指定された場合は即座に読み込みをスキップ（フェイルファースト）します。
 * **`min_fbb_version` (任意・文字列)**: 当該プラグインが要求する F-BB 本体の最小バージョン（例: `"0.5.0"`）。
 
-### 6.2. DPPA (Dashboard Dynamic Pane Architecture) API バージョニング
+### 6.2. DPPA (Dashboard Pane Plugin Architecture) API バージョニング
 動的 ESM インポート（`window.FBB`）経由でロードされるダッシュボード UI ペインは、以下の API 規約に準拠します：
 * **`window.FBB.apiVersion`**: 現在の API バージョンは `1`。
 * **ペイン側の互換性宣言**: 外部 ESM モジュールは `export const minApiVersion = 1;` または `export const apiVersion = 1;` をエクスポート可能。

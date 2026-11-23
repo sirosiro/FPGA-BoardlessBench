@@ -52,7 +52,7 @@ apt update && apt install -y libegl1-mesa-dev libgles2-mesa-dev
 
 2. **評価ボード名のエミュレーションとダッシュボード表示 (`model` エミュレーション)**:
    - Linux標準の `/sys/firmware/devicetree/base/model` から評価ボードモデル名（例: `"NXP i.MX95 15X15 FRDM board"`) を読み出すエミュレーションを行います。
-   - ジェネレータは、DTSの最上位ノードから `model` プロパティを抽出し、`/tmp/fbb_model` に書き込みます。また、`board_manifest.json` の `"model"` フィールドを介して React ダッシュボードに引き渡し、最上部ヘッダー（`[Reset Layout]` ボタンの右隣）に詳細な評価ボードモデル名を綺麗に表示します。
+   - ジェネレータは、DTSの最上位ノードから `model` プロパティを抽出し、`/tmp/fbb_model` に書き込みます。また、`board_manifest.json` の `"model"` フィールドを介して React ダッシュボードに引き渡し、最上部ヘッダー（`[Reset Layout]` ボタンの右隣）に詳細な評価ボードモデル名を表示します。
 
 ---
 
@@ -76,14 +76,12 @@ i.MX95（NXP）とZynq（Xilinx / F-BBデフォルト）では、GPIOピンの�
 F-BBの設計哲学である**「シミュレーションと実機で完全に同一のバイナリを動かす（透過性）」**を維持するため、ソフトウェア側には一切の変更（`#ifdef SIMULATION`等のマクロ分岐含む）を加えずに解決する必要があります。
 
 ### 3. ダッシュボードでの極性反転対応（INV_TRI）による解決
-F-BBの設計哲学である**「シミュレーションと実機で完全に同一のバイナリを動かす（透過性）」**を維持するため、ソフトウェア側には一切の変更（`#ifdef SIMULATION`等のマクロ分岐含む）を加えずに解決する必要があります。
-
 本環境では、実機レジスタ構成のみで極性の違いを吸収するため、DTSでの論理マッピング機能とダッシュボードの汎用反転ロジックを組み合わせて解決します。
 
 * **DTSでの論理マッピングの定義:**  
   [imx95_config.dts](imx95_config.dts) では `PDOR(DATA_OUT) @ 0x00`, `PDIR(DATA_IN) @ 0x04`, `PDDR(INV_TRI) @ 0x08`、[imx8mp_config.dts](imx8mp_config.dts) では `DR(DATA) @ 0x00`, `GDIR(INV_TRI) @ 0x04` のように、入出力が分離したデータレジスタの論理名（`DATA_OUT`/`DATA_IN`）および方向レジスタの論理名（**`INV_TRI`**：Inverted TRI / 反転方向レジスタ）としてマッピングします。
 * **ダッシュボード側の自動極性反転:**  
-  Webダッシュボード（`GpioPanel.jsx`）は、方向レジスタの論理名が `INV`（Inverted）を含む場合、SoC依存コードを一切持たずに汎用的な「アクティブロー入力方向レジスタ」として扱い、極性を反転（`0` = 出力/LED、`1` = 入力/スイッチ）して判定します。
+  Webダッシュボード（`GpioPanel.jsx`）は、方向レジスタの論理名が `INV`（Inverted）を含む場合、SoC依存コードを一切持たずに汎用的な極性反転型の方向レジスタ（`INV_TRI`）として扱い、極性を反転（`0` = 出力/LED、`1` = 入力/スイッチ）して判定します。
 * **RTLとHALの整合性:**  
   [vfpga_top.v](vfpga_top.v) などのRTL層では、シミュレーション専用の仮想アドレスや極性反転の追加処理は不要になり、単に実機の方向レジスタ（`GDIR`/`PDDR`）に設定された元の状態をそのまま返します。これにより、C++ HAL側のレジスタ読み戻し検証（Read-Modify-Write）の整合性も完全に維持されます。
 

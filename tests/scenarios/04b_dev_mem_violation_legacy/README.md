@@ -1,8 +1,8 @@
 # シナリオ 04b: /dev/mem レガシー領域外アクセス検知テスト (dev_mem_violation_legacy)
 
-このシナリオは、レガシーな `/dev/mem` マッピングを用いた物理ポインタ直接操作において、仮想FPGAのレジスタ空間の範囲外（境界外）へアクセス（メモリオーバーフロー）してしまった場合に、F-BB（FPGA-BoardlessBench）の保護機構である**ガードページ（[Guard Page](../../../docs/architecture/AddInfo_GuardPage.md)）**、およびコンパイラレベルの検出機構である**AddressSanitizer（[ASan](../../../docs/architecture/AddInfo_ASan.md)）** がそれぞれどのように違反を検知するかを検証・比較するためのテストケースです。
+このシナリオは、レガシーな `/dev/mem` マッピングを用いた物理アドレスへの直接ポインタ操作において、仮想FPGAのレジスタ空間の範囲外（境界外）へアクセス（メモリオーバーフロー）してしまった場合に、F-BB（FPGA-BoardlessBench）の保護機構である**ガードページ（[Guard Page](../../../docs/architecture/AddInfo_GuardPage.md)）**、およびコンパイラレベルの検出機構である**AddressSanitizer（[ASan](../../../docs/architecture/AddInfo_ASan.md)）** がそれぞれどのように違反を検知するかを検証・比較するためのテストケースです。
 
-特にレガシーなC言語コードで直接レジスタ操作を行う組み込み開発エンジニア向けに、実機やシミュレータ側を変更することなく安全にメモリ安全性を担保するデバッグアプローチを明示します。
+特にレガシーなC言語コードで直接レジスタ操作を行う組み込み開発エンジニア向けに、実機やシミュレータ側を変更することなく確実にメモリ安全性を検証するデバッグアプローチを明示します。
 
 ![Fpga-BoardlessBench (F-BB) AroundView Dashboard](assets/dashboard.gif)
 
@@ -14,7 +14,7 @@
 
 ### 1. メモリガードページ（Memory Guard Page）による保護
 * **概要**: メモリマップされた仮想FPGAレジスタ領域（サイズ：4096バイト）の直後に、OSの機能を用いてアクセス権限のない領域（`PROT_NONE`）を隣接させて配置します。
-* **仕組み**: ファームウェアが領域サイズを超えた番地（`virt_base + 4096`）へ直接書き込みを試みると、CPUのMMU（Memory Management Unit）が物理ページ違反を検知し、OSを介して `SIGSEGV`（セグメンテーションフォールト）を発生させます。これを C-Shim レイヤが安全にインターセプトします。
+* **仕組み**: ファームウェアが領域サイズを超えた番地（`virt_base + 4096`）へ直接書き込みを試みると、CPUのMMU（Memory Management Unit）がアクセス保護違反（ページ保護違反）を検知し、OSを介して `SIGSEGV`（セグメンテーションフォールト）を発生させます。これを C-Shim レイヤが安全にインターセプトします。
 * **特徴**: **ファームウェアソースコードのコンパイルオプション変更が不要**で、レガシーな物理アドレスポインタ直接参照コードを無修正のままトラップできます。
 * **詳細な解説**: [Guard Pageのハードウェア・エミュレーション](file:///workspaces/FPGA-BoardlessBench/docs/architecture/AddInfo_GuardPage.md)
 

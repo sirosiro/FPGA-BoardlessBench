@@ -73,9 +73,9 @@ FPGA開発において、実機検証（Physical Board）やベンダー純正�
 | **ハードウェア観測性**| オシロ/ロジアナ必須 (ピン制限) | ✕ ソフトウェアログのみ (PL信号観測不可) | ◎ 波形観測可能 (ただし動作が重い) | **◎ 瞬時に全信号VCD波形出力 & Webダッシュボード** |
 | **CI/CD自動テスト** | 物理デバイス・治具が必要で困難 | △ PS単体のみ可能 (PL回路連動テストは不可) | ✕ ライセンス・実行時間の壁で困難 | **◎ GitHub Actions 等で完全自動実行可能** |
 
-## FPGA-BoardlessBench (F-BB) の利用例：実機デバッグ前の「ロジック蒸留」
+## FPGA-BoardlessBench (F-BB) の利用例：実機デバッグ前の「事前論理検証」
 
-実機デバッグで頻繁に問題になるのは、「動かない原因がソフトウェアなのか、ハードウェアなのか、あるいは物理的な接続やタイミングなのか」の切り分けです。F-BB は、実機に臨む前に **「論理的な汚れ」をすべて出し切る「蒸留器」** としての利用も考えられます。
+実機デバッグで頻繁に問題になるのは、「動かない原因がソフトウェアなのか、ハードウェアなのか、あるいは物理的な接続やタイミングなのか」の切り分けです。F-BB は、実機に臨む前に論理バグをすべて洗い出して取り除く **「事前検証環境」** としての利用も考えられます。
 
 ### 1. 「論理バグ」と「物理バグ」の切り分け
 
@@ -95,7 +95,7 @@ FWエンジニアは「期待通りの手順でハードが動くこと」を確
 
 | ステージ | ツール | 役割 | 獲得する価値 |
 | :--- | :--- | :--- | :--- |
-| **蒸留期** | **F-BB** | `.c` と `.v` を C++ 環境で爆速デバッグ | **「論理的確証」の獲得**。手戻りの最小化。 |
+| **論理検証期** | **F-BB** | `.c` と `.v` を C++ 環境で高速デバッグ | **「論理的確証」の獲得**。手戻りの最小化。 |
 | **実装期** | **Vivado** | 検証済みの `.v` を配置配線 | **「道具」としての利用**。試行錯誤の排除。 |
 | **答え合わせ** | **実機** | 最終的な動作確認 | **物理層の問題に集中**。不確実性の排除。 |
 
@@ -117,11 +117,11 @@ F-BB上で論理バグ（アドレス指定ミスや状態遷移エラー）を�
 
 ---
 
-## F-BBが提供するコア機能と開発革新 (Core Features & Capabilities)
+## F-BBが提供するコア機能と特徴 (Core Features & Capabilities)
 
 F-BBは、単なる「評価ボードの代用品」に留まらず、ソフトウェア完結型ならではの特性を活かして、実機開発のボトルネックを根本から解消する以下の **4つのコアバリュー** を提供します。
 
-### 1. Linux標準DTSの完全維持と仮想レジスタ契約GTRの分離（実機準拠プロトタイピング）
+### 1. Linux標準DTSの完全維持と仮想レジスタ定義GTRの分離（実機準拠プロトタイピング）
 
 > **「DTSに独自レジスタを直書きして、本番のLinuxカーネルコミュニティで叱責される」──そんな不幸な誤解を、原理から根絶します。**
 
@@ -132,7 +132,7 @@ Linuxカーネルにおける Device Tree (DTS) は、ハードウェアの接�
 1. **`config.dts` (Device Tree Source)**:
    - **完全なLinux標準準拠**: `registers` 等のF-BB独自拡張プロパティを一切含まず、本番カーネル（Yocto / PetaLinux）にそのまま投入できる純粋なDTS。
 2. **`config.gtr` (General Tree Registers)**:
-   - **仮想ハードウェア仕様契約**: `/include/ "config.dts"` で標準DTSを取り込み、ノード参照（`&node_label { registers = ...; };`）によってシミュレーション用のレジスタマップ仕様を結合。
+   - **仮想ハードウェア定義**: `/include/ "config.dts"` で標準DTSを取り込み、ノード参照（`&node_label { registers = ...; };`）によってシミュレーション用のレジスタマップ仕様を結合。
 
 ```mermaid
 graph TD
@@ -205,15 +205,15 @@ my_timer: timer@40001000 {
 
 ---
 
-### 2. 実機コード100%透過のホスト開発 (Zero-Modification Transparency)
+### 2. コード無改変でのホスト開発（実機との完全互換性）
 
 ホストPC上で動作するFWアプリケーションは、実機上で動かすコードと **1行も書き換える必要がありません**。
 
 * **Aコア（Linux）アプリケーション**:
-  [LD_PRELOAD](./docs/architecture/AddInfo_LD_PRELOAD.md) により、`/dev/mem` や UIO への `open`/`mmap`/`ioctl`、シリアル通信（`tcsetattr`）、SDカード（`mount`/`umount`）を自動インターセプト。仮想FPGAレジスタやI2C、UART、SPI、CANバスへ透過ルーティングします。型安全な状態管理機構（`FbbDeviceContext`）により、OSのファイル記述子（FD）リサイクル時にも競合を起こさず自律クリーンアップします。
+  [LD_PRELOAD](./docs/architecture/AddInfo_LD_PRELOAD.md) により、`/dev/mem` や UIO への `open`/`mmap`/`ioctl`、シリアル通信（`tcsetattr`）、SDカード（`mount`/`umount`）を自動インターセプト。仮想FPGAレジスタやI2C、UART、SPI、CANバスへ透過的にルーティングします。型安全な状態管理機構（`FbbDeviceContext`）により、OSのファイル記述子（FD）リサイクル時にも競合を起こさず自動クリーンアップします。
 * **Mコア（ベアメタル/RTOS）アプリケーション**:
   起動時に `libfpgashim.so` のコンストラクタが介入し、[MAP_FIXED_NOREPLACE](./docs/architecture/AddInfo_MAP_FIXED_NOREPLACE.md) を使用して共有メモリを **実機と同一の物理アドレス（例: `0x40001000`）へ強制マッピング**。実機コードで多用されるポインタ直叩き（`*(volatile uint32_t*)(0x40001000) = value`）を、ホストPC上でセグフォを起こさず100%透過実行します（詳細は [RTOS/ベアメタルFWエミュレーション](./docs/architecture/AddInfo_RTOS.md) を参照）。
-* **100% の実機可搬性を担保するヘッダー分離設計 (Zero-Host-Dependency Portability)**:
+* **100% の実機可搬性を担保するヘッダー分離設計 (Host-Environment-Independent Portability)**:
   F-BB環境の構成ヘッダーは、シミュレーション内部パラメータを司る `vfpga_system_config.h` (F-BBインフラ用) と、論理デバイスパスを定義する `vfpga_device_config.h` (ファームウェア用) に完全に分離されています。さらに、ビルドマシンの絶対パスなどのホスト環境依存情報はすべてヘッダーから排除され、CMakeのコンパイル定義 `-DPROJECT_ROOT` として動的に注入されます。これにより、F-BB上で開発・デバッグしたファームウェアコードはホスト側の環境汚染から完全に隔離されており、ソースコードを一切変更せずそのまま実機（Yocto/PetaLinux等）のクロスコンパイラに投入し、実機バイナリとして透過的にビルド・動作させることができます。
 
 > [!NOTE]
@@ -249,7 +249,7 @@ my_timer: timer@40001000 {
 1. **PL（FPGA独自回路）の変更に動的追従できない（「#ifdef スタブ」の罠）**
    - QEMUがエミュレートするのはプロセッサ（PS）のみです。FPGA（PL）に実装したカスタムIPのレジスタは存在しないため、ファームウェア側に `#ifdef QEMU_SIM` のようなダミー分岐を書き、偽のステータスを返すスタブを作り込む必要があります。これでは **「実機透過性」が完全に失われ、実機に焼いた瞬間に動かないリスク** を抱え込みます。
    - ※QEMUとVivadoシミュレータを繋ぐ協調シミュレーション（Co-simulation）も存在しますが、環境構築に数日〜1週間を要し、実行速度も実時間の数万分の一に低下するため、日常的なFWデバッグには実用困難です。
-2. **絶望的な環境構築コストとリソース要求**
+2. **過大な環境構築コストとリソース要求**
    - Vivado + PetaLinux はインストーラーだけで100GB超、展開に200〜300GBのSSD容量を消費します。さらに特定バージョン（Ubuntu LTS）の厳格な一致や32bitライブラリ解決、Yocto/BitBakeビルドでのメモリ不足（16GB RAMではOOM多発、32GB推奨）など、**未経験者がネット情報を頼りに独力構築すると現実的に 3〜5日（24〜40時間）** を消費します。
 3. **F-BB によるアーキテクチャ的ブレイクスルー**
    - F-BB は、ターゲットの Verilog 回路を **Verilator** で直接 C++ にコンパイルし、Linux システムコールのフック（`LD_PRELOAD` / `MAP_FIXED`）を介してメモリマップに直結します。
@@ -276,7 +276,7 @@ my_timer: timer@40001000 {
 
 ## 統一 CLI ツールキット (`fbb-cli` / `fbb`)
 
-F-BB では、テスト実行、DTS アドレスマップ検査、新規シナリオスカフォールディング（雛形作成）、サードパーティ製 PPA アドオンペリフェラルのワンコマンドインストールを単一コマンド `fbb` に集約しています。環境起動時にパスおよび Tab キー補完機能が自動有効化されます。
+F-BB では、テスト実行、DTS アドレスマップ検査、新規シナリオの雛形生成、サードパーティ製 PPA アドオンペリフェラルのコマンド1つでのインストールを単一コマンド `fbb` に集約しています。環境起動時にパスおよび Tab キー補完機能が自動有効化されます。
 
 ```bash
 # 1. 全自動テストスイートの実行 (全36シナリオの合否一括判定)
@@ -298,16 +298,16 @@ fbb test 01e_axi_contention_audio --chaos --chaos-targets axi_stall --stall-min 
 fbb lab 01
 fbb lab 10_st7789_spi
 
-# 5. ビルド成果物・共有メモリ・一時ファイルの一括安全破棄
+# 5. ビルド成果物・共有メモリ・一時ファイルの一括削除
 fbb clean                               # プロジェクト全体のクリーンアップ
 fbb clean 01                            # 特定シナリオのクリーンアップ
-fbb clean --cleanall                    # 外部RTOSソースを含む完全ディストクリーン
+fbb clean --cleanall                    # 外部RTOSソースを含む完全クリーンアップ
 
 # 6. シナリオの 32-bit MMIO ベースアドレス・IRQ・レジスタ・I2C/SPIスレーブのツリー視覚化
 fbb inspect 01_standard_uio
 fbb inspect 02b_multi_spi
 
-# 7. 新しいテストシナリオの雛形（DTS / C / Verilog / CMake）を一発自動生成
+# 7. 新しいテストシナリオの雛形（DTS / C / Verilog / CMake）を自動生成
 fbb new my_custom_scenario --target zynq7000
 
 # 8. 発見された PPA/DPPA プラグイン・UIペイン一覧の確認
@@ -321,7 +321,7 @@ fbb plugin man <プラグイン名> --all       # README.md 全文をリッチ�
 # 10. プラグイン仕様 (v1.0) の静的検証
 fbb plugin validate src/peripherals/official_plugins/solomon_ssd1306
 
-# 11. サードパーティ製 PPA プラグインのワンコマンドインストール
+# 11. サードパーティ製 PPA プラグインの1コマンドインストール
 fbb plugin install https://github.com/vendor/fbb-plugin-st7789
 
 # 12. 独自開発・Git管理下のプラグインをローカルリンク（npm link ライクな開発者モード）
@@ -334,10 +334,10 @@ fbb debug 01b --server-only             # IDEデバッグ用シミュレーシ�
 fbb debug --stop-server                 # バックグラウンドデバッグサーバーの停止
 fbb debug --status                      # 起動中のデバッグサーバー状態・PID表示
 
-# 14. 外部ハードウェア仕様（Verilog等）から config.dts / config.gtr を一発自動逆生成
+# 14. 外部ハードウェア仕様（Verilog等）から config.dts / config.gtr を自動抽出・生成
 fbb import my_rtl.v                                 # レジスタ空間を解析しテーブル表示
 fbb import my_rtl.v -o tests/scenarios/my_scenario  # シナリオフォルダに config.dts と config.gtr を一括生成
-fbb import my_rtl.v --base-addr 0x43C00000          # ベースアドレスを指定して逆生成
+fbb import my_rtl.v --base-addr 0x43C00000          # ベースアドレスを指定して抽出・生成
 fbb import my_rtl.v --stdout                        # 生成された DTS/GTR を標準出力へダンプ
 ```
 
@@ -505,7 +505,7 @@ F-BB環境には、基本的なペリフェラル操作から高度なマルチ�
 ### シナリオ命名規則と分類体系 (Scenario Taxonomy & Naming Convention)
 F-BB のテストシナリオは、将来の拡張性と責務分離（SoC/ベンダー非依存、学習の純粋性）を維持するため、以下の規約に基づいて厳格に分類・命名されています：
 - **アルファベットなし連番 (`01`, `02`, ..., `21`)**: **基盤技術の最小セット検証 (Minimal Baseline Verification)**  
-  単機能・最小構成のハードウェア/ドライバ/同期インターフェースのみを分離検証する軽量シナリオ。上位の重厚なスタックを持たず、接合メカニズムそのものの疎通と決定論的挙動をテストします。
+  単機能・最小構成のハードウェア/ドライバ/同期インターフェースのみを分離検証する軽量シナリオ。上位の重厚なスタックを持たず、接続インターフェースそのものの疎通と決定論的挙動をテストします。
 - **`P` プレフィックス (`P01`, `P02`...)**: **本格的な実践プロジェクト構成 (Practical Project Integration)**  
   実製品相当の複合スタック（例: `P01_frdmIMX` = 車載4カメラ/Mesa OpenGL ES、`P02_robot_amr_ros2` = 自律移動ロボット/ROS 2/URDF/DiffDrive 等）を統合し、実務で直面する高度なハードウェア/ソフトウェア協調デバッグを検証します。
 - **`S` プレフィックス (`S01`, `S02`...)**: **統合機能展示ショーケース (Showcase & Interactive Demo)**  
@@ -518,7 +518,7 @@ F-BB のテストシナリオは、将来の拡張性と責務分離（SoC/ベ�
 | シナリオフォルダ | 概要 | 検証対象技術 |
 | :--- | :--- | :--- |
 | [01_standard_uio](tests/scenarios/01_standard_uio/) | 標準 UIO を介した基本レジスタ R/W とシミュレータ同期の検証 | UIO, `mmap`, Verilator 同期 |
-| [01b_uio_irq_interrupt](tests/scenarios/01b_uio_irq_interrupt/) | UIO ドライバの非同期割り込み（IRQ）駆動動作および `eventfd` 透過ブロッキング待機・解凍シーケンスの検証 | UIO, IRQ, `eventfd`, `uio_unmask`, 割り込み駆動 |
+| [01b_uio_irq_interrupt](tests/scenarios/01b_uio_irq_interrupt/) | UIO ドライバの非同期割り込み（IRQ）駆動動作および `eventfd` 透過ブロッキング待機・待機解除（Wakeup）シーケンスの検証 | UIO, IRQ, `eventfd`, `uio_unmask`, 割り込み駆動 |
 | [01c_protocol_assertion](tests/scenarios/01c_protocol_assertion/) | C-Shim アクセストラッカーによる Read-Only レジスタへの誤アクセス検知・アサーションログと Transaction Logger のリアルタイム検証 | プロトコル・アサーション, Transaction Logger, `: RO`/`: WO`/`: RW` 属性 |
 | [01d_chaos_fault_injection](tests/scenarios/01d_chaos_fault_injection/) | 決定論的シード（PRNG）再現型カオス・障害注入エンジンによる I2C NACK/タイムアウト、SPI ビット反転、UIO タイムアウト、CDMA DecErr、SocketCAN パケットドロップの耐障害性・自動復旧検証 | カオス・障害注入, PRNG 決定論的シード再現, ゼロオーバーヘッド, 耐障害性, 自動復旧 |
 | [01e_axi_contention_audio](tests/scenarios/01e_axi_contention_audio/) | AXI バス帯域競合 ＆ PS側 DRAM 可変レイテンシ・カオス注入によるオーディオ FIFO アンダーラン（0.5μs デッドライン違反）の決定論的再現・検証 | AXI4 Master, DRAM ストール, FIFO アンダーラン, デッドライン検証, シード再現 |
@@ -526,14 +526,14 @@ F-BB のテストシナリオは、将来の拡張性と責務分離（SoC/ベ�
 | [02b_multi_spi](tests/scenarios/02b_multi_spi/) | 同一 SPI バス上に NOR Flash と ADC を混在させたマルチデバイス検証。ダッシュボードからのスライダー操作と仮想 FPGA レジスタへの自動流し込みによる Register State Tracer 連携。 | SPI バスエミュレーション, 全二重 `ioctl`, マルチスレーブ, UIOレジスタマップ, Register State Tracer 連動 |
 | [02c_pl_spi](tests/scenarios/02c_pl_spi/) | PL側（RTL）に実装された SPI マスタコントローラピンをシミュレータ経由で仮想 ADC とブリッジ同期させ、ダッシュボードの GPIO (LED) と連動する検証。 | PL-side SPI エミュレーション, UNIXドメインソケット物理ピン変換, GPIO/Pin Array リアルタイム連動 |
 | [02d_oled_i2c](tests/scenarios/02d_oled_i2c/) | I2C バス経由での SSD1306 仮想 OLED ディスプレイ（128x64ドット）の追加、および自作の物理基板風 UI とお天気ダッシュボードパターンによる検証。 | I2C バスエミュレーション, `ioctl`, 仮想 OLED (SSD1306), スケーラブル UI, 簡易ビットマップフォントレンダラー |
-| [02e_ht16k33_7seg_i2c](tests/scenarios/02e_ht16k33_7seg_i2c/) | 同一 I2C バス上に SSD1306 OLED と Adafruit HT16K33 0.56" 4桁7セグメントLEDを混在配置し、独立 Dockview ペイン・実基板ベクター基板での並列リアルタイム制御および LED 表示カラー切り替え（Red/Green/Yellow/Blue/White）の検証。 | 多重 I2C ペリフェラル, PPA 2.0 独立 Dockview ペイン, 7セグメント LED (HT16K33), イタリック傾斜コロン, 動的カラーマッチング |
+| [02e_ht16k33_7seg_i2c](tests/scenarios/02e_ht16k33_7seg_i2c/) | 同一 I2C バス上に SSD1306 OLED と Adafruit HT16K33 0.56" 4桁7セグメントLEDを混在配置し、独立 Dockview ペイン・実基板ベクター基板での並列リアルタイム制御および LED 表示カラー切り替え（Red/Green/Yellow/Blue/White）の検証。 | 多重 I2C ペリフェラル, PPA 独立 Dockview ペイン, 7セグメント LED (HT16K33), イタリック傾斜コロン, 動的カラーマッチング |
 | [03_uart_console](tests/scenarios/03_uart_console/) | `/dev/ttyPS1` を用いた対話型シリアル通信とエコーバック | UART PTY リダイレクト, termios |
 | [04_dev_mem_legacy](tests/scenarios/04_dev_mem_legacy/) | レガシーな `/dev/mem` とマクロ/ポインタを用いた物理メモリ直接アクセス | `/dev/mem` エミュレーション, レガシーコード互換 |
 | [04b_dev_mem_violation_legacy](tests/scenarios/04b_dev_mem_violation_legacy/) | レガシーな物理メモリ直叩きにおける境界外アクセスのトラップ（ガードページ/AddressSanitizer）および対話型UARTメニュー選択機能の検証 | /dev/mem エミュレーション, C-Shim ガードページ (PROT_NONE), AddressSanitizer, UART PTY ブリッジ |
 | [05_multi_v_files](tests/scenarios/05_multi_v_files/) | 複数ファイルの Verilog モジュールを結合した回路シミュレーション | 複数 Verilog リンク, サブモジュール同期 |
 | [06_gpio](tests/scenarios/06_gpio/) | AXI GPIO 互換レジスタによる多チャンネル・双方向の入出力制御 | GPIO エミュレーション, チャンネル切替 |
-| [06b_hub75_matrix_64x64](tests/scenarios/06b_hub75_matrix_64x64/) | HUB75E インターフェース経由での 64x64 RGB LED マトリクスパネル（24-bit 12,288バイト共有メモリ）制御、並びに PPA 4.0 独立ペイン・アスペクト比固定全画面 / 基板一体化表示切替の検証。 | HUB75 インターフェース, PPA 4.0 独立ペイン, 64x64 RGB LED Matrix, 24-bit カラー, シームレスレスポンシブ画面 |
-| [06c_hub75_matrix_daisy_chain](tests/scenarios/06c_hub75_matrix_daisy_chain/) | 2枚の HUB75 パネルを横方向に数珠繋ぎ（デイジーチェーン 128x64 解像度・24,576バイト）接続し、パネル間跨ぎのクロスバウンド物理シミュレーションやウルトラワイド横スクロールテキストの検証。 | HUB75 デイジーチェーン, 128x64 ウルトラワイド LED ビジョン, クロスパネル描画, トポロジー配線表示 |
+| [06b_hub75_matrix_64x64](tests/scenarios/06b_hub75_matrix_64x64/) | HUB75E インターフェース経由での 64x64 RGB LED マトリクスパネル（24-bit 12,288バイト共有メモリ）制御、並びに PPA 独立ペイン・アスペクト比固定全画面 / 基板一体化表示切替の検証。 | HUB75 インターフェース, PPA 独立ペイン, 64x64 RGB LED Matrix, 24-bit カラー, シームレスレスポンシブ画面 |
+| [06c_hub75_matrix_daisy_chain](tests/scenarios/06c_hub75_matrix_daisy_chain/) | 2枚の HUB75 パネルを横方向に数珠繋ぎ（デイジーチェーン 128x64 解像度・24,576バイト）接続し、複数パネルにまたがる物理シミュレーションやウルトラワイド横スクロールテキストの検証。 | HUB75 デイジーチェーン, 128x64 ウルトラワイド LED ビジョン, クロスパネル描画, トポロジー配線表示 |
 | [07_minimum_template](tests/scenarios/07_minimum_template/) | 波形ファイル（vfpga.vcd）出力確認用の最小構成テンプレート | 最軽量シミュレータ設定, VCD 出力 |
 | [08_multi_uart](tests/scenarios/08_multi_uart/) | 同時に複数UARTポートを開く `select()` 制御の対話型デモ | 多重 I/O, UART PTY ブリッジ |
 | [09_remoteproc_amp](tests/scenarios/09_remoteproc_amp/) | Aコア（Linux）からMコアの起動/停止と FW 動的ロード（ホットスワップ） | `remoteproc`, ホットスワップ, 状態同期 |
@@ -575,8 +575,8 @@ F-BB のテストシナリオは、将来の拡張性と責務分離（SoC/ベ�
 
 ## F-BBにおけるデバイスツリー（config.dts）とGTR（config.gtr）の立ち位置と仕様
 
-### Linux標準DTSの完全維持と仮想レジスタ契約GTRの分離
-F-BBでは、ハードウェアトポロジーを定義する `config.dts` と、仮想ハードウェア・シミュレータ契約を定義する `config.gtr` を明確に二層分離（ADR #015）しています。
+### Linux標準DTSの完全維持と仮想レジスタ定義GTRの分離
+F-BBでは、ハードウェアトポロジーを定義する `config.dts` と、仮想ハードウェア・シミュレータ設定を定義する `config.gtr` を明確に二層分離（ADR #015）しています。
 - **`config.dts` は本物の Linux カーネル標準に 100% 準拠**: 独自拡張プロパティを一切含まず、実機（Yocto / PetaLinux / Vivado）へ無改造でそのまま投入・共有できます。
 - **`config.gtr` でシミュレータに必要な仮想レジスタ契約を定義**: `/include/ "config.dts"` およびノード参照構文（`&label { registers = ...; };`）を用いて、DTS と同一の文法（Overlay セマンティクス）のままレジスタマップ仕様を結合します。
 - 独自DTSをやめてGTRを採用したアーキテクチャ上の必然性や、SystemRDL等の既存業界標準規格とのドメイン比較・トレードオフの詳細については、**[なぜ F-BB は GTR を採用したのか (AddInfo_WhyGTR.md)](./docs/architecture/AddInfo_WhyGTR.md)** を参照してください。
@@ -601,7 +601,7 @@ F-BBは、コアとなる透過エミュレーション層に加えて、開発�
 
 ## プラグイン開発ガイド (PPA & DPPA Plugin Guide)
 
-F-BB は、ハードウェア側（ペリフェラルエミュレータ）と UI 側（Web ダッシュボードペイン）の双方において、**既存コードを1行も改変せず、ダッシュボードの再ビルド（`npm run build`）も一切行わずに機能拡張できる「100% 完全なプラグ＆プレイ（Zero-Touch / ゼロリビルド）」** アーキテクチャを標準搭載しています。
+F-BB は、ハードウェア側（ペリフェラルエミュレータ）と UI 側（Web ダッシュボードペイン）の双方において、**既存コードを1行も改変せず、ダッシュボードの再ビルド（`npm run build`）も一切行わずに機能拡張できる「完全なプラグ＆プレイ（Zero-Touch / リビルド不要）」** アーキテクチャを標準搭載しています。
 
 ### 1. PPA (Peripheral Plugin Architecture) の開発手順
 
@@ -724,7 +724,7 @@ fbb plugin man <プラグイン名> --all
 ```
 
 ##### 1. Quick-Run Card（1画面チートシート）の設計思想
-* **スクロールアウトの完全防止**: 長大な `README.md` で重要なコマンドがターミナル画面外へ流れてしまうのを防ぎ、1画面（15〜20行程度）に収まる即時実行カードとして出力します。
+* **画面外スクロールの防止**: 長大な `README.md` で重要なコマンドがターミナル画面外へ流れてしまうのを防ぎ、1画面（15〜20行程度）に収まる即時実行カードとして出力します。
 * **動的パス補正（Path Interpolation）**: コマンド内の `{PLUGIN_DIR}` や相対パスは、現在の実行環境（`/workspaces` や `~/.fbb/plugins`）の物理絶対パスへ自動置換されます。ユーザーは表示されたコマンドをそのままコピー＆ペースト（またはクリック）するだけで実行できます。
 * **ターミナル Markdown ビューアー（`glow`）の優先統合**:
   Docker 環境に統合された `glow` コマンドを最優先で使用し、Markdown の見出し、コードブロックのシンタックスハイライト、表組、引用ブロックを美しく整形して内蔵ページャー（`glow -p`）で表示します。`glow` が未導入の環境では自動的に `less -R` へフォールバックし、端末を乱さず安全に閲覧できます。
@@ -737,7 +737,7 @@ fbb plugin man <プラグイン名> --all
 | **優先度 1**<br>*(推奨規格)* | `fbb-plugin.json` の<br>`"commands"` 配列 | マニフェストに定義されたラベルと実行コマンドを展開します。<br>`{PLUGIN_DIR}` を記述することで、環境に合わせた実パスへ自動展開されます。 |
 | **優先度 2** | `USAGE.md` / `MANUAL.md` | プラグイン直下に軽量マニュアルが存在する場合、その中の ````bash ```` ブロックからコマンドと直前コメント（説明文）を自動抽出します。 |
 | **優先度 3** | `scenario/` フォルダ自動検出 | プラグイン内に `scenario/` または `scenarios/` が存在する場合、含まれる各テストシナリオ用の `fbb test` や `fbb lab` コマンドを自動生成します。 |
-| **優先度 4** | `README.md` スマート抽出 | 上記が存在しない場合、`README.md` 内のコードブロックから `fbb` や `start_lab.sh` コマンドを自動抽出し、環境パスに合わせて整形します。 |
+| **優先度 4** | `README.md` 自動抽出 | 上記が存在しない場合、`README.md` 内のコードブロックから `fbb` や `start_lab.sh` コマンドを自動抽出し、環境パスに合わせて整形します。 |
 | **フォールバック** | ハードウェア・DTS情報 | シナリオを持たない単体ペリフェラル（I2C/SPIセンサ等）の場合は、DTS `compatible` や接続バス規格を表示し、`--all` による詳細閲覧を案内します。 |
 
 ##### 3. `fbb-plugin.json` への `"commands"` の記述フォーマット
@@ -762,13 +762,13 @@ fbb plugin man <プラグイン名> --all
 }
 ```
 
-##### 4. 開発者・学習者向けの死角なきサポート（Light User vs Heavy User）
+##### 4. 開発者・学習者向けの段階別サポート（Light User vs Heavy User）
 
-プラグインの利用形態は、「スクリプトを微調整してアルゴリズム学習や制御を楽しみたいライトユーザー（学習者）」から、「Verilog RTL や Device Tree、C++ デーモンをゴリゴリ魔改造したいヘビーユーザー（組み込み・FPGAエンジニア）」まで多岐にわたります。F-BB ではどちらのユーザー層に対しても死角のない開発体験（DX）を提供します：
+プラグインの利用形態は、「スクリプトを微調整してアルゴリズム学習や制御を楽しみたいライトユーザー（学習者）」から、「Verilog RTL や Device Tree、C++ デーモンを細部までカスタマイズしたいヘビーユーザー（組み込み・FPGAエンジニア）」まで多岐にわたります。F-BB ではどちらのユーザー層に対しても一貫した開発体験（DX）を提供します：
 
 * **ライトユーザー（学習者）向け体験**:
   - `fbb plugin install` で導入したプラグインであっても、`fbb plugin man <名前>` を実行すれば、シナリオ内の制御スクリプト（Python や C 言語）を自動検出し、`$ code <スクリプトの絶対パス>` の形式で直接案内します。
-  - VS Code のターミナルからワンクリック（またはコピペ）するだけで即座にスクリプトがエディタで開き、隠しディレクトリ（`~/.fbb`）を探し回る摩擦が完全にゼロになります。
+  - VS Code のターミナルからワンクリック（またはコピペ）するだけで即座にスクリプトがエディタで開き、隠しディレクトリ（`~/.fbb`）を探し回る手間がなくなります。
 * **ヘビーユーザー（RTL / C++ 開発者）向け体験**:
   - 自身のリポジトリ作業ディレクトリ（例: `/workspaces/my-custom-plugin`）で Git バージョン管理を行いながら開発できるよう、`fbb plugin link <パス>` を提供します（`npm link` ライクなシンボリックリンク登録機構）。
   - リンク時に自動ビルド（PPA Auto-Builder）が走り、すぐに F-BB のエコシステムに組み込まれます。
@@ -826,7 +826,7 @@ export default function CustomMonitorPane() {
 - `src/shim/`: システムコールインターセプト層（自動生成）
 - `src/rtl/`: Verilogソースファイル（スケルトンは自動生成）
 - `src/sim/`: Verilator用C++シミュレーションラッパー
-- `src/controller/`: Pythonバックエンド管理（共有メモリ初期化、RTL同期、UARTブリッジ制御、PPAプラグイン自動発見）
+- `src/controller/`: Pythonバックエンド管理（共有メモリ初期化、RTL同期、UARTブリッジ制御、PPAプラグイン自動検出）
 - `src/peripherals/`: 周辺デバイス共通基底クラス（`common/`）および公式プラグイン群（`official_plugins/`）
 - `dashboard/`: Webダッシュボードサーバー (Node.js)
 - `tests/scenarios/`: 各プロジェクト（シナリオ）ごとのテスト一式
@@ -846,16 +846,16 @@ F-BBは、ハードウェア記述言語（RTL）から、低レイヤーのシ�
 
 ビルド成果物（`build`, `dist`）、外部パッケージ（`node_modules`）、および一時ファイルを除外したリポジトリ全体の静的ソースコードを `cloc` (Count Lines of Code v1.90) にて正確に計測した結果です。
 
-F-BB 独自のプロジェクトコードのみ（`--cleanall` 時）で**純プログラムステップ数（Pure Code） 52,714 行 (約 52.7k LOC)**、総行数 **66,940 行**（全 425 ファイル）で構成されています。また、シナリオ 10〜15 で動的ロードされる外部 RTOS カーネル（FreeRTOS, ThreadX, CMSIS_5）のソース群を含むフル状態では **約 106,100 行 (106.1k+ LOC)** / **全 188,500 行**（全 828 ファイル）の規模となります。
+F-BB 独自のプロジェクトコードのみ（`--cleanall` 時）で**実プログラムステップ数（Pure Code） 52,714 行 (約 52.7k LOC)**、総行数 **66,940 行**（全 425 ファイル）で構成されています。また、シナリオ 10〜15 で動的ロードされる外部 RTOS カーネル（FreeRTOS, ThreadX, CMSIS_5）のソース群を含むフル状態では **約 106,100 行 (106.1k+ LOC)** / **全 188,500 行**（全 828 ファイル）の規模となります。
 
 > **Project Scale Summary (`cloc` 計測値):**
 > - **Pure F-BB Code (F-BB独自コードのみ):** **52,714 Lines of Code** *(総行数 66,940行 / 425ファイル / コメント 4,695行 / 空行 9,531行)*
 > - **Full Environment (外部RTOSカーネル同梱時):** **約 106,100 Lines of Code** *(総行数 約 188,500行 / 828ファイル)*
 > - **主要言語構成:** *(Markdown/Doc: ~14.1k LOC, JSX: ~7.7k LOC, JSON: ~7.5k LOC, C/C++: ~13.0k LOC (全シナリオFW/Shim/PPA), Python: ~4.6k LOC)*
 
-| 言語分類 (cloc) | 拡張子 | ファイル数 | 空行 (Blank) | コメント (Comment) | 純コード (Pure LOC) | 総行数 (Total Lines) | 主な構成要素と役割 |
+| 言語分類 (cloc) | 拡張子 | ファイル数 | 空行 (Blank) | コメント (Comment) | 実コード (Pure LOC) | 総行数 (Total Lines) | 主な構成要素と役割 |
 | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :--- |
-| **Markdown** | `.md` | 135 | 5,150 | 0 | **14,102行** | **19,252行** | システム仕様書、ADR、初学者学習ロードマップ、全37シナリオREADME/ADVANCED仕様書、PPA 5.1 開発ガイド |
+| **Markdown** | `.md` | 135 | 5,150 | 0 | **14,102行** | **19,252行** | システム仕様書、ADR、初学者学習ロードマップ、全37シナリオREADME/ADVANCED仕様書、PPA 開発ガイド |
 | **JSX** | `.jsx` | 22 | 632 | 229 | **7,650行** | **8,511行** | Vite + React 19 UI（Dockview, DPPA `paneRegistry.jsx`, `PopoutWindow.jsx`, `DockHeaderActions.jsx`, Recharts, AMR 4特化型コックピットペイン, 各種診断ペイン） |
 | **JSON / Manifest** | `.json` | 35 | 0 | 0 | **7,510行** | **7,510行** | PPAペリフェラルマニフェスト (`fbb-plugin.json`)、ボード構造メタデータ、AMR ロボット定義 (`amr_manifest.json`)、全シナリオレイアウト契約 |
 | **C++** | `.cpp` | 25 | 995 | 988 | **6,302行** | **8,285行** | Verilator シミュレーションコア、PPA ペリフェラルプラグイン実装、Scenario 22 & P02 AMR ros2_control ハードウェア層・運動学エンジン |
@@ -867,7 +867,7 @@ F-BB 独自のプロジェクトコードのみ（`--cleanall` 時）で**純プ
 | **Bourne Shell** | `.sh` | 42 | 214 | 203 | **1,122行** | **1,539行** | 自動検証ランナー（`run_tests.sh`）、シナリオ単体ランナー（`scenario_runner.sh`）、ラボ起動スクリプト（`start_lab.sh`）、プラグイン隔離検証 |
 | **CMake** | `CMakeLists.txt` / `.cmake` | 25 | 131 | 69 | **852行** | **1,052行** | マルチターゲットビルド設定（シナリオ・PPA・カーネル・ハードウェア抽象化層） |
 | **Other / Rust** | `.rs` / `.css` / 他 | 22 | 164 | 118 | **938行** | **1,220行** | UIスタイルシート (CSS), Mコア Rust FW, SVGアイコン, Dockerfile, 設定メタデータ |
-| **合計 (SUM Total)** | **-** | **425** | **9,531** | **4,695** | **52,714行** | **66,940行** | **F-BB プラットフォーム全体の静的ソースコード総数** |
+| **合計 (SUM Total)** | **-** | **425** | **9,531** | **4,695** | **52,714行** | **66,940行** | **F-BB プラットフォーム全体の静的ソースコード総行数** |
 
 
 > **コード生成エンジンによる動的コード**
@@ -877,7 +877,7 @@ F-BB 独自のプロジェクトコードのみ（`--cleanall` 時）で**純プ
 - **Verilog (RTL)**: テスト対象となるFPGA内の回路ロジック。
 - **C/C++**: `LD_PRELOAD` によるシステムコールの横取り（`open`/`mmap`/`ioctl`等のリダイレクト）、Verilator シミュレーション実行エンジン（`sim_main.cpp`）、および統一 CLI パーサー（`fbb::PluginCLI`）を備えた公式・サードパーティ製 PPA ペリフェラルデーモン群。
 - **Python**: GTR/DTS仕様を読み取ってShimやRTLスケルトンを自動出力するコード生成器、行番号・スニペット・修正Tip付きの親切な構文エラー診断機能（`DTSParserError`）、PPAプラグイン自動起動エンジン、および共有メモリ初期化やシリアル（UART PTY）中継を担うバックエンドコントローラ。
-- **JavaScript (Node.js & React 19)**: 共有メモリのデータをネイティブ WebSocket（HTTP Polling アップグレード遅延を完全排除）でリアルタイム受信・配信するダッシュボードサーバー（`server.js`）、接続時の最新テレメトリ即時リプレイ、開閉原則（OCP）に準拠しペイン定義を完全疎結合化したプラグインレジストリ（DPPA: `paneRegistry.jsx`）、VS Codeライクなドラッグ分割レイアウト（Dockview）、ワンクリックで別ウィンドウへ切り離すマルチモニタPop-out機能、閉じたペインを動的復元する `+ Add Pane` ドロップダウン、および `fbb-plugin.json` の UI スキーマを動的レンダリングする共通ペイン規格 (`GenericPeripheralPane`)。
+- **JavaScript (Node.js & React 19)**: 共有メモリのデータをネイティブ WebSocket（HTTP Polling アップグレード遅延を完全排除）でリアルタイム受信・配信するダッシュボードサーバー（`server.js`）、接続時の最新テレメトリ即時リプレイ、開放閉鎖原則（OCP）に準拠しペイン定義を完全疎結合化したプラグインレジストリ（DPPA: `paneRegistry.jsx`）、VS Codeライクなドラッグ分割レイアウト（Dockview）、ワンクリックで別ウィンドウへ切り離すマルチモニタPop-out機能、閉じたペインを動的復元する `+ Add Pane` ドロップダウン、および `fbb-plugin.json` の UI スキーマを動的レンダリングする共通ペイン規格 (`GenericPeripheralPane`)。
 
 ## Antigravity IDE とローカル Ollama の連携 (任意)
 

@@ -1,18 +1,18 @@
 # scripts/ ARCHITECTURE_MANIFEST.md
 
 ## 1. 存在意義 (Core Value)
-`scripts/` 配下のツール（主に `gen_vfpga.py`）は、抽象的なボード定義（DTS）を、具体的かつ動作可能な「ハードウェア・ソフトウェアの架け橋」へと変換する **信頼の根源（Source of Truth）** である。
+`scripts/` 配下のツール（主に `gen_vfpga.py`）は、抽象的なボード定義（DTS）を、具体的かつ動作可能な「ハードウェア・ソフトウェアの架け橋」へと変換する **唯一の情報源（Single Source of Truth）** である。
 
 ## 2. 設計原則 (Design Principles)
 
-### 2.1 GTR/DTS-Centricity (GTR/DTS契約至上主義)
+### 2.1 GTR/DTS-Centricity (GTR/DTS 中心設計)
 - 全ての生成物は `config.gtr`（またはフォールバックとしての `config.dts`）から一意に定まらなければならない。
 - 生成されたソースコード（RTL, C, C++）に対する手動の修正は禁止であり、必要な変更は常に GTR/DTS または生成エンジン（Python）に対して行う。
 
 ### 2.2 Strict Decoupling (厳格な疎結合)
 - **解析と生成の分離**: `DTSParser` によるパース結果は、`BoardModel` として完全に抽象化され、出力言語の構文から独立している。
 - **言語ジェネレータの独立**: `BaseGenerator` を継承した各言語ジェネレータ（Config, Shim, RTL, Simulator）は、互いに依存せず独立して実装される。
-- **シナリオ非依存**: ジェネレータは特定のテストシナリオ（例: `pattern_engine` 等のカスタム回路）に依存するコードを含まない。特定の回路が必要な場合は、生成された「ピュアなスケルトン」をシナリオ側でオーバライドする運用を徹底する。
+- **シナリオ非依存**: ジェネレータは特定のテストシナリオ（例: `pattern_engine` 等のカスタム回路）に依存するコードを含まない。特定の回路が必要な場合は、生成された「汎用スケルトン」をシナリオ側でオーバライドする運用を徹底する。
 
 ### 2.3 Universal Hardware Interface (118ピン標準化)
 - RTL トップの入出力ポートは、SoC 規模の設計に対応可能な **118ピン標準インターフェース** (`l_pins_i`, `l_pins_o`, `l_pins_t` [117:0]) を採用する。これにより、デバイス数やチャネル数に関わらず一貫した外部接続性を提供する。
@@ -47,10 +47,10 @@ DTS の論理構造を抽象化したデータモデル。
 - **ManifestGenerator**: Webダッシュボード用メタデータ (`board_manifest.json`) を生成
 - **GdbExtensionGenerator**: GDB / LLDB 用 Python デバッガ拡張スクリプト (`fbb_gdb.py` および `.gdbinit`) を生成。DTS 由来のレジスタ名、オフセット、アクセス属性、仮想デバイス情報を埋め込み、デバッグコンソールから直感的なレジスタ監視・書き込み（`fbb-regs`, `fbb-write`, `fbb-fds`, `fbb-info`）を可能にする。
 
-### 3.4 逆アセンブル・仕様インポーター層 (`v2gtr` / `fbb import`)
-外部の既存 Verilog HDL ソースコードや IP コアから、F-BB 標準の `config.dts` および `config.gtr` を自動生成する逆変換パイプライン。
+### 3.4 HDL 静的解析・仕様抽出層 (`v2gtr` / `fbb import`)
+外部の既存 Verilog HDL ソースコードや IP コアから、F-BB 標準の `config.dts` および `config.gtr` を自動生成するリバースエンジニアリングパイプライン。
 - **VerilogImporter (`scripts/vfpga/importer_verilog.py`)**: Verilog ソースを静的構文解析し、`case (addr)` や `if (addr == ...)` によるアドレスデコード、`assign r_data = ... ? ... : ...` による三項演算子読出しマルチプレクサ、パラメータ定数、およびインラインコメント注記からレジスタ名・オフセット・アクセス属性（RW/RO/WO）を抽出して `Device` / `Register` 抽象モデルを構築する。
-- **GtrEmitter (`scripts/vfpga/emitter_gtr.py`)**: 抽出されたモデルから Linux upstream カーネル完全準拠の純粋な `config.dts` と、ノード参照結合（`&node { registers = ...; };`）形式の仮想契約 `config.gtr` を対として出力する。
+- **GtrEmitter (`scripts/vfpga/emitter_gtr.py`)**: 抽出されたモデルから Linux upstream カーネル完全準拠の純粋な `config.dts` と、ノード参照結合（`&node { registers = ...; };`）形式の仮想ハードウェア定義 `config.gtr` を対として出力する。
 
 ## 4. クラス構造概略 (Class Diagram)
 
@@ -132,6 +132,6 @@ classDiagram
 - **テスト駆動の維持**: `gen_vfpga.py` への機能追加やバグ修正を行う際は、必ずそれに対応するユニットテストをセットで提供しなければならない。
 - **警告ゼロの維持**: 生成されるコードだけでなく、エンジン自体の実行時警告もゼロに保たなければならない。
 
-### 5.3 テンプレートの純粋性
-- 生成物は常に「人間が書いたかのような清潔さ（Learner-centric）」を維持しなければならない。
+### 5.3 テンプレートの品質
+- 生成物は常に「人間が書いたように読みやすいコード品質（高い可読性）」を維持しなければならない。
 - エンジンのデバッグログや一時的なコメントを生成コード内に残してはならない。
