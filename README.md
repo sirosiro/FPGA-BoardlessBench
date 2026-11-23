@@ -325,7 +325,7 @@ fbb plugin validate src/peripherals/official_plugins/solomon_ssd1306
 fbb plugin install https://github.com/vendor/fbb-plugin-st7789
 
 # 12. 独自開発・Git管理下のプラグインをローカルリンク（npm link ライクな開発者モード）
-fbb plugin link /workspaces/my-custom-plugin    # ~/.fbb/plugins にシンボリックリンク登録＆自動ビルド
+fbb plugin link /workspaces/my-custom-plugin    # ./plugins/ 配下にシンボリックリンク登録＆自動ビルド
 fbb plugin remove my-custom-plugin              # リンクのみ安全に解除（元作業ディレクトリは保護）
 
 # 13. 対話型 GDB デバッグ起動 (DTS駆動 GDB 拡張 fbb_gdb.py 自動ロード)
@@ -400,8 +400,8 @@ fbb lab S01_cpp_lfsr_sequencer
 # シナリオ固有の追加引数・オプション等を指定して起動（パススルー対応）
 # （第2引数以降は対象シナリオの run.sh へそのまま透過伝達されます）
 # 例: 外部プラグインシナリオのパスと追加オプションを指定する場合
-./start_lab.sh <シナリオディレクトリ> [追加引数...]
-# （例: ./start_lab.sh ~/.fbb/plugins/<プラグイン名>/scenario/ [オプション...]）
+fbb lab ./plugins/<プラグイン名>/scenario/ [オプション...]
+# または: ./start_lab.sh ./plugins/<プラグイン名>/scenario/ [オプション...]
 ```
 
 起動後、以下の方法でシミュレーション環境にアクセスできます：
@@ -689,8 +689,8 @@ fbb plugin install <プラグインのGitリポジトリURL>
 fbb plugin list
 
 # 4. プラグイン同梱のシナリオを起動（シナリオが含まれる場合）
-fbb lab ~/.fbb/plugins/<プラグイン名>/scenario/
-# （例: fbb lab ~/.fbb/plugins/fbb-plugin-my-sensor/scenario/）
+fbb lab ./plugins/<プラグイン名>/scenario/
+# （例: fbb lab ./plugins/fbb-plugin-my-sensor/scenario/）
 ```
 **出力例：**
 ```text

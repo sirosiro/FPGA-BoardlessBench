@@ -39,11 +39,63 @@ if PROJECT_ROOT not in sys.path:
 from vfpga.parser import DTSParser
 
 
+def resolve_plugin_subpath(input_str):
+    """
+    @intent:responsibility
+      ./plugins/<プラグイン名またはリポジトリ名>[/サブパス] の指定を、
+      実体ディレクトリ名・シンボリックリンク名・fbb-plugin.json の name のいずれからでも透過解決する。
+    """
+    if not input_str:
+        return None
+    norm = input_str.replace("\\", "/")
+    if norm.startswith("./"):
+        norm = norm[2:]
+    if not (norm == "plugins" or norm.startswith("plugins/")):
+        return None
+
+    parts = norm.split("/", 2)
+    if len(parts) < 2 or not parts[1]:
+        return None
+    req_name = parts[1].lower()
+    sub_rel = parts[2] if len(parts) > 2 else ""
+
+    search_roots = [
+        os.path.join(PROJECT_ROOT, "plugins"),
+        os.path.expanduser("~/.fbb/plugins"),
+    ]
+    seen_roots = set()
+    for base in search_roots:
+        real_base = os.path.realpath(base)
+        if real_base in seen_roots or not os.path.isdir(base):
+            continue
+        seen_roots.add(real_base)
+        for entry in sorted(os.listdir(base)):
+            ep = os.path.join(base, entry)
+            if not (os.path.isdir(ep) or os.path.islink(ep)):
+                continue
+            real_ep = os.path.realpath(ep)
+            aliases = {entry.lower(), os.path.basename(real_ep).lower()}
+            mf = os.path.join(real_ep, "fbb-plugin.json")
+            if os.path.isfile(mf):
+                try:
+                    with open(mf, "r", encoding="utf-8") as f:
+                        mname = json.load(f).get("name")
+                    if isinstance(mname, str) and mname:
+                        aliases.add(mname.lower())
+                except Exception:
+                    pass
+            if req_name in aliases:
+                cand = os.path.join(ep, sub_rel) if sub_rel else ep
+                if os.path.exists(cand):
+                    return os.path.abspath(cand)
+    return None
+
+
 def resolve_scenario_name_or_path(input_str):
     """
     @intent:responsibility
-      あいまい入力（プレフィックス "01" や相対パス "tests/scenarios/01_standard_uio"）から
-      正確なシナリオディレクトリ絶対パスを解決する。
+      あいまい入力（プレフィックス "01" や相対パス "tests/scenarios/01_standard_uio",
+      "./plugins/<plugin>/scenario/..."）から正確なシナリオディレクトリ絶対パスを解決する。
     @intent:rationale
       ユーザーがフルパスを入力することなく、最小限のタイピング（例: fbb test 01）で目的のシナリオを実行可能にする。
     """
@@ -56,6 +108,11 @@ def resolve_scenario_name_or_path(input_str):
     direct_run = os.path.join(clean_input, "run.sh")
     if os.path.exists(direct_run):
         return os.path.abspath(os.path.dirname(direct_run))
+
+    # Check 1.5: Plugin workspace alias (./plugins/<name>/scenario/... even when linked via manifest name)
+    plugin_resolved = resolve_plugin_subpath(clean_input)
+    if plugin_resolved and os.path.exists(os.path.join(plugin_resolved, "run.sh")):
+        return plugin_resolved
 
     # Check 2: Path or scenario name under PROJECT_ROOT/tests/scenarios
     scenarios_base = os.path.join(PROJECT_ROOT, "tests/scenarios")
@@ -1545,7 +1602,7 @@ def command_plugin_man(args):
                     elif (sline.startswith("fbb lab ") or sline.startswith("fbb test ") or
                           sline.startswith("./start_lab.sh ") or sline.startswith("bin/fbb ")):
                         norm_cmd = sline.replace("bin/fbb", "fbb")
-                        norm_cmd = re.sub(r'~/\.fbb/plugins/[A-Za-z0-9_\-]+', real_p, norm_cmd)
+                        norm_cmd = re.sub(r'(?:~/\.fbb/plugins|\.?/?plugins)/[A-Za-z0-9_\-]+', real_p, norm_cmd)
                         norm_cmd = re.sub(r'\.\./[A-Za-z0-9_\-]+', real_p, norm_cmd)
                         commands.append({"desc": cur_desc, "cmd": norm_cmd})
                         cur_desc = ""
@@ -1691,7 +1748,7 @@ def command_plugin_validate(args):
       PPA マニフェスト (fbb-plugin.json) または DPPA ペイン定義 (pane.json / ESM script)
       が仕様 (v1.0) に準拠しているかを静的検証し、構文・型・必須キー・バイナリ適合性をレポートする。
     """
-    target_path = os.path.abspath(args.path)
+    target_path = resolve_plugin_subpath(args.path) or os.path.abspath(args.path)
     if not os.path.exists(target_path):
         print(f"❌ Error: Path does not exist: {target_path}")
         sys.exit(1)
@@ -2153,7 +2210,7 @@ def main():
     lab_epilog = """Examples:
   fbb lab 01                              Launch interactive lab for scenario matching '01'
   fbb lab 10_st7789_spi                   Launch interactive lab for ST7789 display scenario
-  fbb lab rct-z80/scenario examples/fibonacci.hex Launch with scenario-specific payload files/arguments
+  fbb lab ./plugins/<plugin>/scenario examples/demo.hex Launch with scenario-specific payload files/arguments
   fbb start 01                            Alias for 'fbb lab 01'
 """
     parser_lab = subparsers.add_parser(
