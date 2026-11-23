@@ -53,12 +53,148 @@ function SevenSegColon({ x, y, on, color = '#ff0033' }) {
   );
 }
 
+function decodeBase64Frame(frameData) {
+  const binaryString = atob(frameData);
+  const buffer = new Uint8Array(binaryString.length);
+  for (let i = 0; i < binaryString.length; i++) {
+    buffer[i] = binaryString.charCodeAt(i);
+  }
+  return buffer;
+}
+
+function buildLedMatrixCache(cols, rows, canvasW, canvasH, bgColor) {
+  const pixelCanvas = document.createElement('canvas');
+  pixelCanvas.width = cols;
+  pixelCanvas.height = rows;
+  const pixelCtx = pixelCanvas.getContext('2d');
+  const pixelImgData = pixelCtx.createImageData(cols, rows);
+
+  const cellW = canvasW / cols;
+  const cellH = canvasH / rows;
+  const radius = Math.min(cellW, cellH) * 0.42;
+
+  // Pre-render static background and unlit LED dots once to avoid thousands of arc/shadowBlur calls per frame
+  const bgCanvas = document.createElement('canvas');
+  bgCanvas.width = canvasW;
+  bgCanvas.height = canvasH;
+  const bgCtx = bgCanvas.getContext('2d');
+  bgCtx.fillStyle = bgColor;
+  bgCtx.fillRect(0, 0, canvasW, canvasH);
+  bgCtx.fillStyle = 'rgba(15, 20, 30, 0.4)';
+  bgCtx.beginPath();
+  for (let r = 0; r < rows; r++) {
+    const cy = r * cellH + cellH / 2;
+    for (let c = 0; c < cols; c++) {
+      const cx = c * cellW + cellW / 2;
+      bgCtx.moveTo(cx + radius, cy);
+      bgCtx.arc(cx, cy, radius, 0, Math.PI * 2);
+    }
+  }
+  bgCtx.fill();
+
+  // Pre-render bezel mask with circular cutouts so a single image blit clips all LEDs into circles
+  const maskCanvas = document.createElement('canvas');
+  maskCanvas.width = canvasW;
+  maskCanvas.height = canvasH;
+  const maskCtx = maskCanvas.getContext('2d');
+  maskCtx.fillStyle = bgColor;
+  maskCtx.fillRect(0, 0, canvasW, canvasH);
+  maskCtx.globalCompositeOperation = 'destination-out';
+  maskCtx.beginPath();
+  for (let r = 0; r < rows; r++) {
+    const cy = r * cellH + cellH / 2;
+    for (let c = 0; c < cols; c++) {
+      const cx = c * cellW + cellW / 2;
+      maskCtx.moveTo(cx + radius, cy);
+      maskCtx.arc(cx, cy, radius, 0, Math.PI * 2);
+    }
+  }
+  maskCtx.fill();
+  maskCtx.globalCompositeOperation = 'source-over';
+
+  return {
+    key: `${canvasW}x${canvasH}:${cols}x${rows}:${bgColor}`,
+    pixelCanvas,
+    pixelCtx,
+    pixelImgData,
+    bgCanvas,
+    maskCanvas
+  };
+}
+
+function renderLedMatrixFrame(ctx, canvasW, canvasH, cols, rows, bgColor, glowEnabled, frameData, cacheRef) {
+  const key = `${canvasW}x${canvasH}:${cols}x${rows}:${bgColor}`;
+  if (!cacheRef.current || cacheRef.current.key !== key) {
+    cacheRef.current = buildLedMatrixCache(cols, rows, canvasW, canvasH, bgColor);
+  }
+  const { pixelCanvas, pixelCtx, pixelImgData, bgCanvas, maskCanvas } = cacheRef.current;
+
+  ctx.globalCompositeOperation = 'source-over';
+  ctx.globalAlpha = 1;
+  ctx.drawImage(bgCanvas, 0, 0);
+
+  if (!frameData) return;
+
+  try {
+    const buffer = decodeBase64Frame(frameData);
+    const data = pixelImgData.data;
+    const totalPixels = cols * rows;
+    let hasLitPixels = false;
+
+    for (let i = 0; i < totalPixels; i++) {
+      const srcIdx = i * 3;
+      const dstIdx = i * 4;
+      if (srcIdx + 2 < buffer.length) {
+        const red = buffer[srcIdx];
+        const green = buffer[srcIdx + 1];
+        const blue = buffer[srcIdx + 2];
+        if (red > 0 || green > 0 || blue > 0) {
+          data[dstIdx] = red;
+          data[dstIdx + 1] = green;
+          data[dstIdx + 2] = blue;
+          data[dstIdx + 3] = 255;
+          hasLitPixels = true;
+          continue;
+        }
+      }
+      data[dstIdx] = 0;
+      data[dstIdx + 1] = 0;
+      data[dstIdx + 2] = 0;
+      data[dstIdx + 3] = 0;
+    }
+
+    if (!hasLitPixels) return;
+
+    pixelCtx.putImageData(pixelImgData, 0, 0);
+
+    ctx.imageSmoothingEnabled = false;
+    ctx.drawImage(pixelCanvas, 0, 0, canvasW, canvasH);
+    ctx.drawImage(maskCanvas, 0, 0);
+
+    if (glowEnabled) {
+      // Simulate per-LED bloom with bilinear-smoothed additive composite instead of per-pixel ctx.shadowBlur
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.imageSmoothingEnabled = true;
+      ctx.globalAlpha = 0.28;
+      ctx.drawImage(pixelCanvas, 0, 0, canvasW, canvasH);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = 1;
+    }
+  } catch {
+    // ignore corrupt frame
+  }
+}
+
 // PPA 5.0 Universal Data-Driven Framebuffer Renderer Component
 function FramebufferCanvas({ ctrl, frameData, slaveData, fullHeight = false, fitInside = false }) {
   const canvasRef = React.useRef(null);
+  const ledCacheRef = React.useRef(null);
+  const rafIdRef = React.useRef(null);
+  const latestDrawParamsRef = React.useRef(null);
 
   const format = ctrl?.format || 'rgb24';
   const renderMode = ctrl?.render_mode || (format === 'rgb24' ? 'led_matrix' : 'pixelated');
+  const glowEnabled = ctrl?.glow !== false;
 
   const parseGrid = (val) => {
     if (Array.isArray(val) && val.length >= 2) return [Number(val[0]), Number(val[1])];
@@ -78,126 +214,81 @@ function FramebufferCanvas({ ctrl, frameData, slaveData, fullHeight = false, fit
   const palette = React.useMemo(() => ctrl?.palette || { bg: '#040604', fg: '#00ff50' }, [ctrl?.palette]);
 
   React.useEffect(() => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext('2d');
-    if (!ctx) return;
-
-    const canvasW = renderMode === 'led_matrix' ? cols * 8 : cols;
-    const canvasH = renderMode === 'led_matrix' ? rows * 8 : rows;
-
-    if (canvas.width !== canvasW) canvas.width = canvasW;
-    if (canvas.height !== canvasH) canvas.height = canvasH;
-
-    if (format === 'mono_page_8') {
-      const imgData = ctx.createImageData(cols, rows);
-      const hexToRgb = (hex) => {
-        const c = hex.replace('#', '');
-        return [parseInt(c.substring(0, 2), 16) || 4, parseInt(c.substring(2, 4), 16) || 6, parseInt(c.substring(4, 6), 16) || 4];
-      };
-      const bgRgb = hexToRgb(palette.bg || '#040604');
-      const fgRgb = hexToRgb(palette.fg || '#00ff50');
-
-      for (let i = 0; i < imgData.data.length; i += 4) {
-        imgData.data[i] = bgRgb[0];
-        imgData.data[i + 1] = bgRgb[1];
-        imgData.data[i + 2] = bgRgb[2];
-        imgData.data[i + 3] = 255;
+    return () => {
+      if (rafIdRef.current !== null) {
+        window.cancelAnimationFrame(rafIdRef.current);
+        rafIdRef.current = null;
       }
+    };
+  }, []);
 
-      if (frameData) {
-        try {
-          const binaryString = atob(frameData);
-          const buffer = new Uint8Array(binaryString.length);
-          for (let i = 0; i < binaryString.length; i++) buffer[i] = binaryString.charCodeAt(i);
+  React.useEffect(() => {
+    latestDrawParamsRef.current = { frameData, cols, rows, format, renderMode, palette, glowEnabled };
+    if (rafIdRef.current !== null) return;
 
-          const pages = Math.min(8, Math.floor(rows / 8));
-          for (let page = 0; page < pages; page++) {
-            for (let col = 0; col < cols; col++) {
-              const byteIdx = page * cols + col;
-              if (byteIdx >= buffer.length) break;
+    rafIdRef.current = window.requestAnimationFrame(() => {
+      rafIdRef.current = null;
+      const params = latestDrawParamsRef.current;
+      const canvas = canvasRef.current;
+      if (!params || !canvas) return;
+      const ctx = canvas.getContext('2d');
+      if (!ctx) return;
 
-              const byte = buffer[byteIdx];
-              for (let bit = 0; bit < 8; bit++) {
-                if ((byte & (1 << bit)) !== 0) {
-                  const x = col;
-                  const y = page * 8 + bit;
-                  if (y < rows) {
-                    const pixelIdx = (y * cols + x) * 4;
-                    imgData.data[pixelIdx] = fgRgb[0];
-                    imgData.data[pixelIdx + 1] = fgRgb[1];
-                    imgData.data[pixelIdx + 2] = fgRgb[2];
-                    imgData.data[pixelIdx + 3] = 255;
+      const {
+        frameData: curFrame,
+        cols: curCols,
+        rows: curRows,
+        format: curFormat,
+        renderMode: curRenderMode,
+        palette: curPalette,
+        glowEnabled: curGlow
+      } = params;
+
+      const canvasW = curRenderMode === 'led_matrix' ? curCols * 8 : curCols;
+      const canvasH = curRenderMode === 'led_matrix' ? curRows * 8 : curRows;
+
+      if (canvas.width !== canvasW) canvas.width = canvasW;
+      if (canvas.height !== canvasH) canvas.height = canvasH;
+
+      if (curFormat === 'mono_page_8') {
+        const imgData = ctx.createImageData(curCols, curRows);
+        const hexToRgb = (hex) => {
+          const c = hex.replace('#', '');
+          return [parseInt(c.substring(0, 2), 16) || 4, parseInt(c.substring(2, 4), 16) || 6, parseInt(c.substring(4, 6), 16) || 4];
+        };
+        const bgRgb = hexToRgb(curPalette.bg || '#040604');
+        const fgRgb = hexToRgb(curPalette.fg || '#00ff50');
+
+        for (let i = 0; i < imgData.data.length; i += 4) {
+          imgData.data[i] = bgRgb[0];
+          imgData.data[i + 1] = bgRgb[1];
+          imgData.data[i + 2] = bgRgb[2];
+          imgData.data[i + 3] = 255;
+        }
+
+        if (curFrame) {
+          try {
+            const buffer = decodeBase64Frame(curFrame);
+            const pages = Math.min(8, Math.floor(curRows / 8));
+            for (let page = 0; page < pages; page++) {
+              for (let col = 0; col < curCols; col++) {
+                const byteIdx = page * curCols + col;
+                if (byteIdx >= buffer.length) break;
+
+                const byte = buffer[byteIdx];
+                for (let bit = 0; bit < 8; bit++) {
+                  if ((byte & (1 << bit)) !== 0) {
+                    const x = col;
+                    const y = page * 8 + bit;
+                    if (y < curRows) {
+                      const pixelIdx = (y * curCols + x) * 4;
+                      imgData.data[pixelIdx] = fgRgb[0];
+                      imgData.data[pixelIdx + 1] = fgRgb[1];
+                      imgData.data[pixelIdx + 2] = fgRgb[2];
+                      imgData.data[pixelIdx + 3] = 255;
+                    }
                   }
                 }
-              }
-            }
-          }
-        } catch {
-          // ignore corrupt frame
-        }
-      }
-      ctx.putImageData(imgData, 0, 0);
-    } else if (format === 'rgb24') {
-      if (renderMode === 'led_matrix') {
-        ctx.fillStyle = palette.bg || '#03060c';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-
-        if (frameData) {
-          try {
-            const binaryString = atob(frameData);
-            const buffer = new Uint8Array(binaryString.length);
-            for (let i = 0; i < binaryString.length; i++) buffer[i] = binaryString.charCodeAt(i);
-
-            const cellW = canvas.width / cols;
-            const cellH = canvas.height / rows;
-            const radius = Math.min(cellW, cellH) * 0.42;
-
-            for (let r = 0; r < rows; r++) {
-              for (let c = 0; c < cols; c++) {
-                const idx = (r * cols + c) * 3;
-                if (idx + 2 < buffer.length) {
-                  const red = buffer[idx];
-                  const green = buffer[idx + 1];
-                  const blue = buffer[idx + 2];
-
-                  const cx = c * cellW + cellW / 2;
-                  const cy = r * cellH + cellH / 2;
-
-                  if (red > 0 || green > 0 || blue > 0) {
-                    ctx.fillStyle = `rgb(${red},${green},${blue})`;
-                    ctx.shadowColor = `rgb(${red},${green},${blue})`;
-                    ctx.shadowBlur = Math.min(cellW, cellH) * 0.7;
-                  } else {
-                    ctx.fillStyle = 'rgba(15, 20, 30, 0.4)';
-                    ctx.shadowBlur = 0;
-                  }
-                  ctx.beginPath();
-                  ctx.arc(cx, cy, radius, 0, Math.PI * 2);
-                  ctx.fill();
-                }
-              }
-            }
-          } catch {
-            // ignore corrupt frame
-          }
-        }
-      } else {
-        const imgData = ctx.createImageData(cols, rows);
-        if (frameData) {
-          try {
-            const binaryString = atob(frameData);
-            const buffer = new Uint8Array(binaryString.length);
-            for (let i = 0; i < binaryString.length; i++) buffer[i] = binaryString.charCodeAt(i);
-
-            for (let i = 0; i < cols * rows; i++) {
-              const srcIdx = i * 3;
-              const dstIdx = i * 4;
-              if (srcIdx + 2 < buffer.length) {
-                imgData.data[dstIdx] = buffer[srcIdx];
-                imgData.data[dstIdx + 1] = buffer[srcIdx + 1];
-                imgData.data[dstIdx + 2] = buffer[srcIdx + 2];
-                imgData.data[dstIdx + 3] = 255;
               }
             }
           } catch {
@@ -205,9 +296,43 @@ function FramebufferCanvas({ ctrl, frameData, slaveData, fullHeight = false, fit
           }
         }
         ctx.putImageData(imgData, 0, 0);
+      } else if (curFormat === 'rgb24') {
+        if (curRenderMode === 'led_matrix') {
+          renderLedMatrixFrame(
+            ctx,
+            canvasW,
+            canvasH,
+            curCols,
+            curRows,
+            curPalette.bg || '#03060c',
+            curGlow,
+            curFrame,
+            ledCacheRef
+          );
+        } else {
+          const imgData = ctx.createImageData(curCols, curRows);
+          if (curFrame) {
+            try {
+              const buffer = decodeBase64Frame(curFrame);
+              for (let i = 0; i < curCols * curRows; i++) {
+                const srcIdx = i * 3;
+                const dstIdx = i * 4;
+                if (srcIdx + 2 < buffer.length) {
+                  imgData.data[dstIdx] = buffer[srcIdx];
+                  imgData.data[dstIdx + 1] = buffer[srcIdx + 1];
+                  imgData.data[dstIdx + 2] = buffer[srcIdx + 2];
+                  imgData.data[dstIdx + 3] = 255;
+                }
+              }
+            } catch {
+              // ignore corrupt frame
+            }
+          }
+          ctx.putImageData(imgData, 0, 0);
+        }
       }
-    }
-  }, [frameData, cols, rows, format, renderMode, palette]);
+    });
+  }, [frameData, cols, rows, format, renderMode, palette, glowEnabled]);
 
   if (fitInside) {
     return (
