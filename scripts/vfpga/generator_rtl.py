@@ -564,6 +564,22 @@ void run_sim_loop(T* top, volatile uint32_t* shm, uint32_t* old_shm, VerilatedVc
                     last_irq = 0;
                 }
             }
+            if constexpr (has_mcore_irq_out<T>::value) {
+                static int last_mcore_irq = 0;
+                if (top->mcore_irq_out && !last_mcore_irq) {
+                    FILE* pf = fopen("/tmp/fbb/sys/class/remoteproc/remoteproc0/pid", "r");
+                    if (pf) {
+                        int pid = 0;
+                        if (fscanf(pf, "%%d", &pid) == 1 && pid > 0) {
+                            kill(pid, SIGUSR1);
+                            last_mcore_irq = 1;
+                        }
+                        fclose(pf);
+                    }
+                } else if (!top->mcore_irq_out) {
+                    last_mcore_irq = 0;
+                }
+            }
             m_trace->dump(vtime++);
             bridge.tick(top);
             usleep(100);

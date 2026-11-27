@@ -1,0 +1,30 @@
+/* Auto-generated Device Config from DTS */
+#ifndef VFPGA_DEVICE_CONFIG_H
+#define VFPGA_DEVICE_CONFIG_H
+
+/* Device Paths */
+#ifndef FBB_DEV_PATH_VFPGA_TIMER
+#define FBB_DEV_PATH_VFPGA_TIMER "/dev/uio0"
+#endif
+#ifndef FBB_DEV_PATH_VFPGA_TIMER_0
+#define FBB_DEV_PATH_VFPGA_TIMER_0 FBB_DEV_PATH_VFPGA_TIMER
+#endif
+#ifndef FBB_DEV_PATH_MEMORY
+#define FBB_DEV_PATH_MEMORY "/dev/uio1"
+#endif
+#ifndef FBB_DEV_PATH_MEMORY_0
+#define FBB_DEV_PATH_MEMORY_0 FBB_DEV_PATH_MEMORY
+#endif
+#ifndef FBB_DEV_PATH_VFPGA_UART
+#define FBB_DEV_PATH_VFPGA_UART "/dev/ttyUL0"
+#endif
+#ifndef FBB_DEV_PATH_VFPGA_UART_0
+#define FBB_DEV_PATH_VFPGA_UART_0 FBB_DEV_PATH_VFPGA_UART
+#endif
+#ifndef FBB_DEV_PATH_AMP_SHARED_MEM
+#define FBB_DEV_PATH_AMP_SHARED_MEM "/dev/uio1"
+#endif
+#ifndef FBB_DEV_PATH_AMP_SHARED_MEM_0
+#define FBB_DEV_PATH_AMP_SHARED_MEM_0 FBB_DEV_PATH_AMP_SHARED_MEM
+#endif
+#endif

@@ -116,7 +116,7 @@ if [ "$CLEAN" = true ]; then
     rm -f /tmp/vring0 /tmp/vfpga_* /tmp/fbb_compatible /tmp/fbb_model /tmp/uio* /tmp/fbb_uart_* /tmp/vfpga_uart_* /tmp/fbb_spi_* /tmp/fbb_i2c_* /tmp/fbb_uio_irq_* /tmp/fbb_protocol_violations.log 2>/dev/null
     if [ -n "$SCENARIO_DIR" ]; then
         if [[ " $CLEAN_TARGETS " =~ " distclean " || " $CLEAN_TARGETS " =~ " cleanall " ]]; then
-            rm -rf "${SCENARIO_DIR}/FreeRTOS-Kernel" "${SCENARIO_DIR}/threadx" "${SCENARIO_DIR}/CMSIS-FreeRTOS" "${SCENARIO_DIR}/stm32-mw-cmsis-rtos-tx" "${SCENARIO_DIR}/CMSIS_5" 2>/dev/null
+            rm -rf "${SCENARIO_DIR}/FreeRTOS-Kernel" "${SCENARIO_DIR}/threadx" "${SCENARIO_DIR}/CMSIS-FreeRTOS" "${SCENARIO_DIR}/stm32-mw-cmsis-rtos-tx" "${SCENARIO_DIR}/CMSIS_5" "${SCENARIO_DIR}/simple-functions-scheduler" 2>/dev/null
         fi
         rm -f "${SCENARIO_DIR}/test_bin" "${SCENARIO_DIR}/"*.elf "${SCENARIO_DIR}/"*.bin "${SCENARIO_DIR}/"*.o "${SCENARIO_DIR}/"*.vcd
     fi

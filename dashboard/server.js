@@ -18,7 +18,7 @@ const fs = require('fs');
 const path = require('path');
 const cors = require('cors');
 const chokidar = require('chokidar');
-const { spawn, execSync, execFileSync } = require('child_process');
+const { spawn, exec, execSync, execFileSync } = require('child_process');
 
 
 const app = express();
@@ -147,54 +147,96 @@ function checkChaosLogEvents() {
 }
 setInterval(checkChaosLogEvents, 200);
 
+const PROJECT_ROOT = path.resolve(__dirname, '..');
+const APP_PID_FILE = '/tmp/fbb_app.pid';
+const SIM_PID_FILE = '/tmp/fbb_sim.pid';
+
 function getActiveScenarioDir() {
     const scn = manifest.scenario_dir || process.env.SCENARIO_DIR || '';
     if (!scn) return '';
-    return path.isAbsolute(scn) ? scn : path.join(__dirname, '..', scn);
+    return path.isAbsolute(scn) ? scn : path.join(PROJECT_ROOT, scn);
 }
 
+let activeSimProcess = null;
 let cachedAcorePid = null;
 let cachedAcoreRunning = false;
+let cachedRtlPid = null;
+let cachedRtlRunning = false;
+let lastBroadcastSignature = '';
 
-function refreshAcoreStatus() {
-    if (activeScenarioProcess) {
-        cachedAcoreRunning = true;
-        cachedAcorePid = activeScenarioProcess.pid;
+function isPidAlive(pid) {
+    if (!pid || isNaN(pid) || pid <= 0) return false;
+    try {
+        process.kill(pid, 0);
+        return true;
+    } catch (e) {
+        return false;
+    }
+}
+
+function readPidFile(pidFilePath) {
+    try {
+        if (!fs.existsSync(pidFilePath)) return null;
+        const pidStr = fs.readFileSync(pidFilePath, 'utf8').trim();
+        const pid = parseInt(pidStr, 10);
+        return (!isNaN(pid) && pid > 0) ? pid : null;
+    } catch (e) {
+        return null;
+    }
+}
+
+function checkTrackedOrPgrep(activeProc, pidFilePath, procName, onResult) {
+    if (activeProc && isPidAlive(activeProc.pid)) {
+        onResult(true, activeProc.pid);
         return;
     }
-    if (fs.existsSync('/tmp/fbb_app.pid')) {
-        try {
-            const pidStr = fs.readFileSync('/tmp/fbb_app.pid', 'utf8').trim();
-            const pid = parseInt(pidStr, 10);
-            if (pid && !isNaN(pid)) {
-                try {
-                    process.kill(pid, 0);
-                    cachedAcoreRunning = true;
-                    cachedAcorePid = pid;
-                    return;
-                } catch (e) {
-                    try { fs.unlinkSync('/tmp/fbb_app.pid'); } catch (_) { }
-                }
-            }
-        } catch (e) { }
+    const filePid = readPidFile(pidFilePath);
+    if (filePid !== null) {
+        if (isPidAlive(filePid)) {
+            onResult(true, filePid);
+            return;
+        }
+        try { fs.unlinkSync(pidFilePath); } catch (_) { }
     }
-    const { exec } = require('child_process');
-    exec('pgrep -x "test_bin"', { encoding: 'utf8' }, (err, stdout) => {
+    exec(`pgrep -x "${procName}"`, { encoding: 'utf8' }, (err, stdout) => {
         if (!err && stdout && stdout.trim()) {
-            cachedAcoreRunning = true;
-            cachedAcorePid = parseInt(stdout.trim().split('\n')[0], 10);
+            onResult(true, parseInt(stdout.trim().split('\n')[0], 10));
         } else {
-            cachedAcoreRunning = false;
-            cachedAcorePid = null;
+            onResult(false, null);
         }
     });
 }
-setInterval(refreshAcoreStatus, 500);
-refreshAcoreStatus();
+
+function getCoreStatusSignature(cores) {
+    return `${!!activeScenarioProcess}|${cores.map(c => `${c.id}:${c.running ? 1 : 0}:${c.pid || ''}`).join(',')}`;
+}
+
+function emitStatusIfChanged() {
+    const sig = getCoreStatusSignature(getDiscoveredCores());
+    if (sig !== lastBroadcastSignature) {
+        lastBroadcastSignature = sig;
+        broadcastScenarioStatus();
+    }
+}
+
+function refreshCoreStatuses() {
+    checkTrackedOrPgrep(activeScenarioProcess, APP_PID_FILE, 'test_bin', (running, pid) => {
+        cachedAcoreRunning = running;
+        cachedAcorePid = pid;
+        emitStatusIfChanged();
+    });
+    checkTrackedOrPgrep(activeSimProcess, SIM_PID_FILE, 'vfpga_sim', (running, pid) => {
+        cachedRtlRunning = running;
+        cachedRtlPid = pid;
+        emitStatusIfChanged();
+    });
+}
+setInterval(refreshCoreStatuses, 500);
+refreshCoreStatuses();
 
 function getDiscoveredCores() {
-    const acoreRunning = activeScenarioProcess ? true : cachedAcoreRunning;
-    const acorePid = activeScenarioProcess ? activeScenarioProcess.pid : cachedAcorePid;
+    const acoreRunning = (activeScenarioProcess && isPidAlive(activeScenarioProcess.pid)) ? true : cachedAcoreRunning;
+    const acorePid = (activeScenarioProcess && isPidAlive(activeScenarioProcess.pid)) ? activeScenarioProcess.pid : cachedAcorePid;
 
     const cores = [{ id: 'acore', label: 'A-Core (Linux / test_bin)', pid: acorePid, running: acoreRunning }];
     const remoteprocBase = '/tmp/fbb/sys/class/remoteproc';
@@ -204,33 +246,26 @@ function getDiscoveredCores() {
             for (const entry of entries) {
                 if (entry.startsWith('remoteproc')) {
                     const pidFile = path.join(remoteprocBase, entry, 'pid');
-                    let isRunning = false;
-                    let pid = null;
-                    if (fs.existsSync(pidFile)) {
-                        pid = fs.readFileSync(pidFile, 'utf8').trim();
-                        if (pid) {
-                            try {
-                                process.kill(parseInt(pid, 10), 0);
-                                isRunning = true;
-                            } catch (e) {
-                                isRunning = false;
-                            }
-                        }
-                    }
+                    const pid = readPidFile(pidFile);
+                    const isRunning = pid !== null && isPidAlive(pid);
                     cores.push({
                         id: entry,
                         label: `M-Core (${entry})`,
-                        pid: pid,
+                        pid: pid ? String(pid) : null,
                         running: isRunning
                     });
                 }
             }
         }
     } catch (e) { }
+
+    const rtlRunning = (activeSimProcess && isPidAlive(activeSimProcess.pid)) ? true : cachedRtlRunning;
+    const rtlPid = (activeSimProcess && isPidAlive(activeSimProcess.pid)) ? activeSimProcess.pid : cachedRtlPid;
+    cores.push({ id: 'rtl', label: 'RTL Simulator (vfpga_sim)', pid: rtlPid, running: rtlRunning });
     return cores;
 }
 
-function stopCores(targetCores) {
+function stopCpuCores(targetCores) {
     if (!targetCores || targetCores.acore) {
         if (activeScenarioProcess) {
             try {
@@ -240,17 +275,15 @@ function stopCores(targetCores) {
             }
             activeScenarioProcess = null;
         }
-        if (fs.existsSync('/tmp/fbb_app.pid')) {
-            try {
-                const pid = parseInt(fs.readFileSync('/tmp/fbb_app.pid', 'utf8').trim(), 10);
-                if (pid) {
-                    try { process.kill(-pid, 'SIGKILL'); } catch (e) { }
-                    try { process.kill(pid, 'SIGKILL'); } catch (e) { }
-                }
-            } catch (e) { }
-            try { fs.unlinkSync('/tmp/fbb_app.pid'); } catch (e) { }
+        const appPid = readPidFile(APP_PID_FILE);
+        if (appPid !== null) {
+            try { process.kill(-appPid, 'SIGKILL'); } catch (e) { }
+            try { process.kill(appPid, 'SIGKILL'); } catch (e) { }
         }
+        try { fs.unlinkSync(APP_PID_FILE); } catch (e) { }
         try { execSync('pkill -9 -x test_bin', { stdio: 'ignore' }); } catch (e) { }
+        cachedAcoreRunning = false;
+        cachedAcorePid = null;
     }
 
     const remoteprocBase = '/tmp/fbb/sys/class/remoteproc';
@@ -260,46 +293,114 @@ function stopCores(targetCores) {
             for (const entry of entries) {
                 if (!targetCores || targetCores[entry]) {
                     const pidFile = path.join(remoteprocBase, entry, 'pid');
-                    if (fs.existsSync(pidFile)) {
-                        const pid = fs.readFileSync(pidFile, 'utf8').trim();
-                        if (pid) {
-                            try { process.kill(parseInt(pid, 10), 'SIGKILL'); } catch (e) { }
-                        }
+                    const stateFile = path.join(remoteprocBase, entry, 'state');
+                    const pid = readPidFile(pidFile);
+                    if (pid !== null) {
+                        try { process.kill(pid, 'SIGKILL'); } catch (e) { }
                     }
+                    try { fs.writeFileSync(stateFile, 'offline\n'); } catch (e) { }
+                    try { fs.writeFileSync(pidFile, '\n'); } catch (e) { }
                 }
             }
         } catch (e) { }
     }
-    if (!targetCores || Object.keys(targetCores).some(k => k.startsWith('remoteproc'))) {
+    if (!targetCores || Object.keys(targetCores).some(k => k.startsWith('remoteproc') && targetCores[k])) {
         try { execSync('pkill -9 -f "mcore_.*\\.elf"', { stdio: 'ignore' }); } catch (e) { }
     }
 }
 
-function startScenario(options = {}) {
-    const scnDir = getActiveScenarioDir();
-    if (!scnDir || !fs.existsSync(path.join(scnDir, 'run.sh'))) {
-        return { success: false, error: 'Scenario directory or run.sh not found' };
+function stopRtlSimulator(onDone) {
+    const pids = new Set();
+    if (activeSimProcess && activeSimProcess.pid) pids.add(activeSimProcess.pid);
+    const filePid = readPidFile(SIM_PID_FILE);
+    if (filePid !== null) pids.add(filePid);
+    if (cachedRtlPid) pids.add(cachedRtlPid);
+
+    try {
+        const out = execSync('pgrep -x vfpga_sim', { encoding: 'utf8' }).trim();
+        if (out) {
+            out.split('\n').forEach(line => {
+                const p = parseInt(line.trim(), 10);
+                if (!isNaN(p) && p > 0) pids.add(p);
+            });
+        }
+    } catch (e) { }
+
+    const finishStop = () => {
+        activeSimProcess = null;
+        cachedRtlRunning = false;
+        cachedRtlPid = null;
+        try { fs.unlinkSync(SIM_PID_FILE); } catch (e) { }
+        io.emit('scenario:log', { type: 'info', text: '[Lifecycle] RTL Simulator (vfpga_sim) stopped.\n' });
+        if (onDone) onDone();
+    };
+
+    const pidList = Array.from(pids).filter(isPidAlive);
+    if (pidList.length === 0) {
+        finishStop();
+        return;
     }
 
-    const env = { ...process.env };
-    const chaos = options.chaos || currentChaosConfig;
+    // Send SIGTERM first so sim_main.cpp flushes and closes vfpga.vcd cleanly
+    pidList.forEach(p => {
+        try { process.kill(p, 'SIGTERM'); } catch (e) { }
+    });
 
+    const deadline = Date.now() + 350;
+    const pollStop = () => {
+        const alive = pidList.filter(isPidAlive);
+        if (alive.length === 0) {
+            finishStop();
+            return;
+        }
+        if (Date.now() >= deadline) {
+            alive.forEach(p => {
+                try { process.kill(p, 'SIGKILL'); } catch (e) { }
+            });
+            try { execSync('pkill -9 -x vfpga_sim', { stdio: 'ignore' }); } catch (e) { }
+            finishStop();
+            return;
+        }
+        setTimeout(pollStop, 40);
+    };
+    setTimeout(pollStop, 40);
+}
+
+function stopCores(targetCores, onComplete) {
+    stopCpuCores(targetCores);
+    const shouldStopRtl = !targetCores || !!targetCores.rtl;
+    if (shouldStopRtl) {
+        stopRtlSimulator(onComplete);
+    } else if (onComplete) {
+        onComplete();
+    }
+}
+
+function resolveChaosConfig(chaosOption) {
+    const chaos = chaosOption ? { ...currentChaosConfig, ...chaosOption } : { ...currentChaosConfig };
+    if (chaos && chaos.enabled && chaos.mode !== 'off') {
+        if (chaos.mode === 'random' || !chaos.seed) {
+            chaos.seed = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString();
+        }
+    }
+    currentChaosConfig = chaos;
+    return chaos;
+}
+
+function buildChaosEnv(baseEnv, chaos) {
+    const env = { ...baseEnv };
     if (chaos && chaos.enabled && chaos.mode !== 'off') {
         env.FBB_CHAOS_MODE = '1';
-        let seed = chaos.seed;
-        if (chaos.mode === 'random' || !seed) {
-            seed = Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString();
-            chaos.seed = seed;
-            currentChaosConfig.seed = seed;
-        }
-        env.FBB_CHAOS_SEED = seed;
-        env.FBB_CHAOS_RATE = (chaos.rate || 0.20).toString();
+        env.FBB_CHAOS_SEED = (chaos.seed || '12345').toString();
+        env.FBB_CHAOS_RATE = (chaos.rate !== undefined ? chaos.rate : 0.20).toString();
 
         const activeTargets = Object.entries(chaos.targets || {})
-            .filter(([k, v]) => v)
+            .filter(([, v]) => v)
             .map(([k]) => k);
         if (activeTargets.length > 0) {
             env.FBB_CHAOS_TARGETS = activeTargets.join(',');
+        } else {
+            delete env.FBB_CHAOS_TARGETS;
         }
         if (chaos.stall_min !== undefined) {
             env.FBB_CHAOS_STALL_MIN = chaos.stall_min.toString();
@@ -315,6 +416,117 @@ function startScenario(options = {}) {
         delete env.FBB_CHAOS_STALL_MIN;
         delete env.FBB_CHAOS_STALL_MAX;
     }
+    return env;
+}
+
+function resetShmInPlace() {
+    if (!manifest || !manifest.shm_path) return;
+    try {
+        if (!fs.existsSync(manifest.shm_path)) return;
+        const stats = fs.statSync(manifest.shm_path);
+        if (stats.size <= 0) return;
+        // Overwrite existing file in place to preserve the mmap inode held by vlogic_controller
+        const fd = fs.openSync(manifest.shm_path, 'r+');
+        try {
+            const zeros = Buffer.alloc(stats.size, 0);
+            fs.writeSync(fd, zeros, 0, zeros.length, 0);
+            fs.fsyncSync(fd);
+        } finally {
+            fs.closeSync(fd);
+        }
+        io.emit('scenario:log', { type: 'info', text: `[Lifecycle] Zero-initialized SHM (${manifest.shm_path}) in place.\n` });
+    } catch (e) {
+        console.error('[Lifecycle] Failed to zero-initialize SHM:', e.message);
+    }
+}
+
+function startRtlSimulator(chaos, resetShm) {
+    if (resetShm) {
+        resetShmInPlace();
+    }
+
+    let simBin = path.join(PROJECT_ROOT, 'vfpga_sim');
+    if (!fs.existsSync(simBin)) {
+        simBin = path.join(PROJECT_ROOT, 'build/vfpga_sim');
+    }
+    if (!fs.existsSync(simBin)) {
+        return { success: false, error: 'vfpga_sim binary not found' };
+    }
+
+    const env = buildChaosEnv(process.env, chaos);
+    const logsDir = path.join(PROJECT_ROOT, 'logs');
+    try { fs.mkdirSync(logsDir, { recursive: true }); } catch (e) { }
+    const simLogPath = path.join(logsDir, 'sim.log');
+
+    let logFd = 'ignore';
+    try {
+        logFd = fs.openSync(simLogPath, 'a');
+    } catch (e) { }
+
+    try {
+        activeSimProcess = spawn(simBin, [], {
+            cwd: PROJECT_ROOT,
+            env: env,
+            detached: true,
+            stdio: ['ignore', logFd, logFd]
+        });
+        if (typeof logFd === 'number') {
+            try { fs.closeSync(logFd); } catch (e) { }
+        }
+        try { fs.writeFileSync(SIM_PID_FILE, activeSimProcess.pid.toString()); } catch (e) { }
+        cachedRtlRunning = true;
+        cachedRtlPid = activeSimProcess.pid;
+
+        io.emit('scenario:log', {
+            type: 'info',
+            text: `[Lifecycle] Started RTL Simulator (vfpga_sim) PID ${activeSimProcess.pid} (Chaos: ${chaos.enabled && chaos.mode !== 'off' ? `${chaos.mode}, seed=${chaos.seed}` : 'OFF'})\n`
+        });
+
+        activeSimProcess.on('close', (code) => {
+            io.emit('scenario:log', { type: 'info', text: `[RTL Simulator Exited with code ${code}]\n` });
+            activeSimProcess = null;
+            cachedRtlRunning = false;
+            cachedRtlPid = null;
+            try { fs.unlinkSync(SIM_PID_FILE); } catch (e) { }
+            broadcastScenarioStatus();
+        });
+
+        return { success: true, pid: activeSimProcess.pid };
+    } catch (e) {
+        if (typeof logFd === 'number') {
+            try { fs.closeSync(logFd); } catch (_) { }
+        }
+        return { success: false, error: e.message };
+    }
+}
+
+function startRemoteprocCores(remoteprocIds) {
+    const remoteprocBase = '/tmp/fbb/sys/class/remoteproc';
+    for (const entry of remoteprocIds) {
+        const fwFile = path.join(remoteprocBase, entry, 'firmware');
+        const stateFile = path.join(remoteprocBase, entry, 'state');
+        try {
+            const fw = fs.existsSync(fwFile) ? fs.readFileSync(fwFile, 'utf8').trim() : '';
+            if (!fw || fw === 'none') {
+                io.emit('scenario:log', { type: 'stderr', text: `[Lifecycle] Cannot start ${entry} alone: firmware is not loaded yet.\n` });
+                continue;
+            }
+            fs.writeFileSync(stateFile, 'start\n');
+            io.emit('scenario:log', { type: 'info', text: `[Lifecycle] Requested remoteproc start for ${entry} (FW: ${fw}).\n` });
+        } catch (e) {
+            io.emit('scenario:log', { type: 'stderr', text: `[Lifecycle] Failed to start ${entry}: ${e.message}\n` });
+        }
+    }
+}
+
+function startScenario(options = {}, preResolvedChaos = null) {
+    const scnDir = getActiveScenarioDir();
+    if (!scnDir || !fs.existsSync(path.join(scnDir, 'run.sh'))) {
+        return { success: false, error: 'Scenario directory or run.sh not found' };
+    }
+
+    const chaos = preResolvedChaos || resolveChaosConfig(options.chaos);
+    const env = buildChaosEnv(process.env, chaos);
 
     env.FBB_ACTIVE = '1';
     env.LD_BIND_NOW = '1';
@@ -334,11 +546,13 @@ function startScenario(options = {}) {
             detached: true,
             stdio: ['ignore', 'pipe', 'pipe']
         });
-        try { fs.writeFileSync('/tmp/fbb_app.pid', activeScenarioProcess.pid.toString()); } catch (e) { }
+        try { fs.writeFileSync(APP_PID_FILE, activeScenarioProcess.pid.toString()); } catch (e) { }
+        cachedAcoreRunning = true;
+        cachedAcorePid = activeScenarioProcess.pid;
 
-        io.emit('scenario:log', { type: 'info', text: `\n[Lifecycle] Started scenario PID ${activeScenarioProcess.pid} (Chaos: ${chaos.enabled ? chaos.mode : 'OFF'})\n` });
+        io.emit('scenario:log', { type: 'info', text: `\n[Lifecycle] Started scenario PID ${activeScenarioProcess.pid} (Chaos: ${chaos.enabled && chaos.mode !== 'off' ? chaos.mode : 'OFF'})\n` });
 
-        const restartBanner = `\r\n\x1b[1;36m============================================================\x1b[0m\r\n\x1b[1;36m  [Scenario Restarted] PID ${activeScenarioProcess.pid} | Chaos: ${chaos.enabled ? chaos.mode : 'OFF'}\x1b[0m\r\n\x1b[1;36m============================================================\x1b[0m\r\n`;
+        const restartBanner = `\r\n\x1b[1;36m============================================================\x1b[0m\r\n\x1b[1;36m  [Scenario Restarted] PID ${activeScenarioProcess.pid} | Chaos: ${chaos.enabled && chaos.mode !== 'off' ? chaos.mode : 'OFF'}\x1b[0m\r\n\x1b[1;36m============================================================\x1b[0m\r\n`;
         const targetUarts = new Set([...Object.keys(uartLogs), ...getUartAliases('vfpga_uart_1')]);
         targetUarts.forEach(aName => {
             uartLogs[aName] = ((uartLogs[aName] || "") + restartBanner).slice(-5000);
@@ -356,7 +570,9 @@ function startScenario(options = {}) {
         activeScenarioProcess.on('close', (code) => {
             io.emit('scenario:log', { type: 'info', text: `[Scenario Process Exited with code ${code}]\n` });
             activeScenarioProcess = null;
-            try { fs.unlinkSync('/tmp/fbb_app.pid'); } catch (e) { }
+            cachedAcoreRunning = false;
+            cachedAcorePid = null;
+            try { fs.unlinkSync(APP_PID_FILE); } catch (e) { }
             broadcastScenarioStatus();
         });
 
@@ -367,11 +583,61 @@ function startScenario(options = {}) {
     }
 }
 
+function startSelectedTargets(options = {}, onDone) {
+    const targetCores = options && options.cores ? options.cores : null;
+    const coresNow = getDiscoveredCores();
+    const acoreInfo = coresNow.find(c => c.id === 'acore');
+    const rtlInfo = coresNow.find(c => c.id === 'rtl');
+    const remoteprocList = coresNow.filter(c => c.id.startsWith('remoteproc'));
+
+    const wantRtl = !targetCores || !!targetCores.rtl;
+    const wantAcore = !targetCores || !!targetCores.acore;
+    const wantedRemoteprocs = targetCores
+        ? remoteprocList.filter(c => !!targetCores[c.id] && !c.running).map(c => c.id)
+        : [];
+
+    const rtlRunning = !!(rtlInfo && rtlInfo.running);
+    const acoreRunning = !!(acoreInfo && acoreInfo.running);
+    const anyFwRunning = acoreRunning || remoteprocList.some(c => c.running);
+
+    const chaos = resolveChaosConfig(options ? options.chaos : null);
+    let lastResult = { success: true, chaos };
+
+    const launchFw = () => {
+        if (wantAcore && !acoreRunning) {
+            lastResult = startScenario(options, chaos);
+        } else if (!wantAcore && wantedRemoteprocs.length > 0) {
+            startRemoteprocCores(wantedRemoteprocs);
+        }
+        broadcastScenarioStatus();
+        if (onDone) onDone(lastResult);
+    };
+
+    if (wantRtl && !rtlRunning) {
+        const rtlRes = startRtlSimulator(chaos, !anyFwRunning);
+        if (!rtlRes.success) {
+            io.emit('scenario:log', { type: 'stderr', text: `[Lifecycle] RTL Simulator start failed: ${rtlRes.error}\n` });
+            lastResult = rtlRes;
+        }
+        if ((wantAcore && !acoreRunning) || wantedRemoteprocs.length > 0) {
+            setTimeout(launchFw, 250);
+            return;
+        }
+        broadcastScenarioStatus();
+        if (onDone) onDone(lastResult);
+        return;
+    }
+
+    launchFw();
+}
+
 function broadcastScenarioStatus() {
+    const cores = getDiscoveredCores();
+    lastBroadcastSignature = getCoreStatusSignature(cores);
     io.emit('scenario:status', {
-        running: !!activeScenarioProcess,
+        running: cores.some(c => c.running),
         scenario: path.basename(getActiveScenarioDir()),
-        cores: getDiscoveredCores(),
+        cores: cores,
         chaos: currentChaosConfig
     });
 }
@@ -881,10 +1147,11 @@ io.on('connection', (socket) => {
     socket.emit('uart-init', uartLogs);
     socket.emit('uart-settings', uartSettings);
     socket.emit('trace-history-init', traceHistory);
+    const initialCores = getDiscoveredCores();
     socket.emit('scenario:status', {
-        running: !!activeScenarioProcess,
+        running: initialCores.some(c => c.running),
         scenario: path.basename(getActiveScenarioDir()),
-        cores: getDiscoveredCores(),
+        cores: initialCores,
         chaos: currentChaosConfig
     });
 
@@ -1158,27 +1425,21 @@ io.on('connection', (socket) => {
     });
 
     socket.on('scenario:restart', (payload) => {
-        stopCores(payload ? payload.cores : null);
-        setTimeout(() => {
-            if (payload && payload.chaos) {
-                currentChaosConfig = { ...currentChaosConfig, ...payload.chaos };
-            }
-            startScenario(payload);
-        }, 500);
+        stopCores(payload ? payload.cores : null, () => {
+            setTimeout(() => {
+                startSelectedTargets(payload);
+            }, 150);
+        });
     });
 
     socket.on('scenario:stop', (payload) => {
-        stopCores(payload ? payload.cores : null);
-        broadcastScenarioStatus();
+        stopCores(payload ? payload.cores : null, () => {
+            broadcastScenarioStatus();
+        });
     });
 
     socket.on('scenario:start', (payload) => {
-        if (!activeScenarioProcess) {
-            if (payload && payload.chaos) {
-                currentChaosConfig = { ...currentChaosConfig, ...payload.chaos };
-            }
-            startScenario(payload);
-        }
+        startSelectedTargets(payload);
     });
 
     socket.on('chaos:update_config', (config) => {
@@ -1903,34 +2164,36 @@ app.get('/api/dts/tree', (req, res) => {
 
 // REST APIs for Multi-Core Scenario Lifecycle & Chaos Control
 app.get('/api/scenario/status', (req, res) => {
+    const cores = getDiscoveredCores();
     res.json({
-        running: !!activeScenarioProcess,
+        running: cores.some(c => c.running),
         scenario: path.basename(getActiveScenarioDir()),
-        cores: getDiscoveredCores(),
+        cores: cores,
         chaos: currentChaosConfig
     });
 });
 
 app.post('/api/scenario/start', (req, res) => {
-    const result = startScenario(req.body);
-    res.json(result);
+    startSelectedTargets(req.body || {}, (result) => {
+        res.json(result);
+    });
 });
 
 app.post('/api/scenario/stop', (req, res) => {
-    stopCores(req.body ? req.body.cores : null);
-    broadcastScenarioStatus();
-    res.json({ success: true });
+    stopCores(req.body ? req.body.cores : null, () => {
+        broadcastScenarioStatus();
+        res.json({ success: true });
+    });
 });
 
 app.post('/api/scenario/restart', (req, res) => {
-    stopCores(req.body ? req.body.cores : null);
-    setTimeout(() => {
-        if (req.body && req.body.chaos) {
-            currentChaosConfig = { ...currentChaosConfig, ...req.body.chaos };
-        }
-        const result = startScenario(req.body);
-        res.json(result);
-    }, 500);
+    stopCores(req.body ? req.body.cores : null, () => {
+        setTimeout(() => {
+            startSelectedTargets(req.body || {}, (result) => {
+                res.json(result);
+            });
+        }, 150);
+    });
 });
 
 app.post('/api/chaos/config', (req, res) => {

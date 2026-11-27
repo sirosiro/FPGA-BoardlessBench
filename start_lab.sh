@@ -35,7 +35,17 @@ cleanup() {
     echo ""
     echo "Stopping background processes..."
     [ -n "$CONTROLLER_PID" ] && kill $CONTROLLER_PID 2>/dev/null
-    [ -n "$SIM_PID" ] && kill $SIM_PID 2>/dev/null
+    [ -n "$SIM_PID" ] && kill -TERM "$SIM_PID" 2>/dev/null
+    if [ -f /tmp/fbb_sim.pid ]; then
+        SAVED_SIM_PID=$(cat /tmp/fbb_sim.pid 2>/dev/null | tr -d '[:space:]')
+        if [ -n "$SAVED_SIM_PID" ]; then
+            kill -TERM "$SAVED_SIM_PID" 2>/dev/null || true
+            sleep 0.2
+            kill -9 "$SAVED_SIM_PID" 2>/dev/null || true
+        fi
+        rm -f /tmp/fbb_sim.pid 2>/dev/null
+    fi
+    pkill -9 -x vfpga_sim 2>/dev/null || true
     [ -n "$DASHBOARD_PID" ] && kill $DASHBOARD_PID 2>/dev/null
     if [ -n "$APP_PID" ]; then
         kill -TERM -- -"$APP_PID" 2>/dev/null || kill -TERM "$APP_PID" 2>/dev/null || true
@@ -93,6 +103,7 @@ ps -ef | grep "/tmp/fbb_build/bin/" | grep -v grep | awk '{print $2}' | xargs ki
 ps -ef | grep "test_bin" | grep -v grep | awk '{print $2}' | xargs kill -9 2>/dev/null || true
 pkill -9 -f "vlogic_controller" 2>/dev/null || true
 pkill -9 -f "vfpga_sim" 2>/dev/null || true
+rm -f /tmp/fbb_sim.pid /tmp/fbb_app.pid 2>/dev/null
 rm -f dashboard/data/vfpga_uart_* 2>/dev/null
 rm -f /tmp/gpio /tmp/fbb_uart_* 2>/dev/null
 rm -f /tmp/fbb_memory_violation 2>/dev/null
@@ -155,6 +166,7 @@ CONTROLLER_PID=$!
 # シミュレータの起動（波形出力 vfpga.vcd が有効化されている）
 ./vfpga_sim > ${LOG_DIR}/sim.log 2>&1 &
 SIM_PID=$!
+echo "$SIM_PID" > /tmp/fbb_sim.pid
 
 node dashboard/server.js > ${LOG_DIR}/dashboard.log 2>&1 &
 DASHBOARD_PID=$!

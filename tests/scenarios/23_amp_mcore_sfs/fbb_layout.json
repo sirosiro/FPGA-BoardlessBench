@@ -1,0 +1,157 @@
+{
+    "grid": {
+        "root": {
+            "type": "branch",
+            "data": [
+                {
+                    "type": "branch",
+                    "data": [
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "registerMonitor"
+                                ],
+                                "activeView": "registerMonitor",
+                                "id": "1"
+                            },
+                            "size": 729
+                        },
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "dtsVisualizer"
+                                ],
+                                "activeView": "dtsVisualizer",
+                                "id": "5"
+                            },
+                            "size": 431
+                        }
+                    ],
+                    "size": 421
+                },
+                {
+                    "type": "branch",
+                    "data": [
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "registerTracer"
+                                ],
+                                "activeView": "registerTracer",
+                                "id": "2"
+                            },
+                            "size": 551
+                        },
+                        {
+                            "type": "leaf",
+                            "data": {
+                                "views": [
+                                    "uartTerminal_vfpga_uart"
+                                ],
+                                "activeView": "uartTerminal_vfpga_uart",
+                                "id": "4"
+                            },
+                            "size": 609
+                        }
+                    ],
+                    "size": 774
+                },
+                {
+                    "type": "leaf",
+                    "data": {
+                        "views": [
+                            "chaosEngine"
+                        ],
+                        "activeView": "chaosEngine",
+                        "id": "3"
+                    },
+                    "size": 923
+                }
+            ],
+            "size": 1160
+        },
+        "width": 2118,
+        "height": 1160,
+        "orientation": "HORIZONTAL"
+    },
+    "panels": {
+        "registerMonitor": {
+            "id": "registerMonitor",
+            "contentComponent": "registerMonitor",
+            "params": {
+                "_componentName": "registerMonitor"
+            },
+            "title": "Register Monitor"
+        },
+        "dtsVisualizer": {
+            "id": "dtsVisualizer",
+            "contentComponent": "dtsVisualizer",
+            "params": {
+                "_componentName": "dtsVisualizer"
+            },
+            "title": "DTS Visualizer & AI"
+        },
+        "registerTracer": {
+            "id": "registerTracer",
+            "contentComponent": "registerTracer",
+            "params": {
+                "_componentName": "registerTracer"
+            },
+            "title": "Register State Tracer"
+        },
+        "uartTerminal_vfpga_uart": {
+            "id": "uartTerminal_vfpga_uart",
+            "contentComponent": "uartTerminal",
+            "params": {
+                "deviceName": "vfpga_uart",
+                "_componentName": "uartTerminal"
+            },
+            "title": "UART: vfpga_uart"
+        },
+        "chaosEngine": {
+            "id": "chaosEngine",
+            "contentComponent": "chaosEngine",
+            "params": {
+                "_componentName": "chaosEngine"
+            },
+            "title": "Chaos & Fault Injection"
+        }
+    },
+    "activeGroup": "4",
+    "_fbb_pane_state": {
+        "tracer": {
+            "selectedGroup": "ALL",
+            "mode": "signed",
+            "timebaseSpan": "all"
+        },
+        "monitor": {
+            "expandedDevices": {
+                "vfpga_timer": true
+            },
+            "expandedGroups": {}
+        },
+        "hiddenTraceKeys": {
+            "vfpga_timer_TIMER_CTRL": false,
+            "vfpga_timer_TIMER_PERIOD": false,
+            "vfpga_timer_TIMER_STATUS": false,
+            "vfpga_timer_TIMER_INT_ACK": false,
+            "vfpga_timer_TIMER_HW_CNT": false,
+            "amp_shared_mem_CMD": false,
+            "amp_shared_mem_STATUS": false,
+            "amp_shared_mem_DATA_IN": false,
+            "amp_shared_mem_DATA_OUT": false,
+            "amp_shared_mem_FRCC_TICKS": false,
+            "amp_shared_mem_HEARTBEAT_CNT": false,
+            "amp_shared_mem_SM_MODE": false,
+            "amp_shared_mem_SM_STATE": false,
+            "amp_shared_mem_FIFO_DEPTH": false,
+            "amp_shared_mem_FIFO_PROCESSED": false,
+            "amp_shared_mem_LAST_TRANSITION": false,
+            "amp_shared_mem_RB_USED_BYTES": false,
+            "amp_shared_mem_RB_DRAINED_CNT": false
+        }
+    }
+}

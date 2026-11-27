@@ -11,8 +11,11 @@ const ChaosPanel = () => {
   // Scenario & Core lifecycle state
   const [scenarioName, setScenarioName] = useState('');
   const [isRunning, setIsRunning] = useState(false);
-  const [cores, setCores] = useState([{ id: 'acore', label: 'A-Core (Linux / test_bin)', running: false }]);
-  const [selectedCores, setSelectedCores] = useState({ acore: true });
+  const [cores, setCores] = useState([
+    { id: 'acore', label: 'A-Core (Linux / test_bin)', running: false },
+    { id: 'rtl', label: 'RTL Simulator (vfpga_sim)', running: false }
+  ]);
+  const [selectedCores, setSelectedCores] = useState({ acore: true, rtl: true });
 
   // Chaos engine configuration
   const [chaosMode, setChaosMode] = useState('random'); // 'off', 'random', 'fixed'
@@ -53,9 +56,13 @@ const ChaosPanel = () => {
           setScenarioName(data.scenario || (manifest?.model ? manifest.model.replace('zynq7000-vfpga-', '') : ''));
           if (data.cores && data.cores.length > 0) {
             setCores(data.cores);
-            const sel = {};
-            data.cores.forEach(c => sel[c.id] = true);
-            setSelectedCores(sel);
+            setSelectedCores(prev => {
+              const sel = { ...prev };
+              data.cores.forEach(c => {
+                if (sel[c.id] === undefined) sel[c.id] = true;
+              });
+              return sel;
+            });
           }
           if (data.chaos) {
             setChaosMode(data.chaos.mode || (data.chaos.enabled ? 'random' : 'off'));
@@ -113,32 +120,14 @@ const ChaosPanel = () => {
   }, [socket, manifest]);
 
   // Actions
-  const handleStart = () => {
-    const payload = {
-      chaos: {
-        enabled: chaosMode !== 'off',
-        mode: chaosMode,
-        seed: seed || Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString(),
-        rate: rate / 100.0,
-        stall_min: stallMin,
-        stall_max: stallMax,
-        targets
-      }
-    };
-    socket.emit('scenario:start', payload);
-  };
-
-  const handleStop = () => {
-    socket.emit('scenario:stop', { cores: selectedCores });
-  };
-
-  const handleRestart = () => {
+  const buildLifecyclePayload = () => {
     const activeSeed = chaosMode === 'fixed' && seed
       ? seed
       : Math.floor(Math.random() * Number.MAX_SAFE_INTEGER).toString();
-    if (chaosMode !== 'fixed') setSeed(activeSeed);
-
-    const payload = {
+    if (chaosMode !== 'fixed' && chaosMode !== 'off') {
+      setSeed(activeSeed);
+    }
+    return {
       cores: selectedCores,
       chaos: {
         enabled: chaosMode !== 'off',
@@ -150,7 +139,18 @@ const ChaosPanel = () => {
         targets
       }
     };
-    socket.emit('scenario:restart', payload);
+  };
+
+  const handleStart = () => {
+    socket.emit('scenario:start', buildLifecyclePayload());
+  };
+
+  const handleStop = () => {
+    socket.emit('scenario:stop', { cores: selectedCores });
+  };
+
+  const handleRestart = () => {
+    socket.emit('scenario:restart', buildLifecyclePayload());
   };
 
   const handleRerollSeed = () => {
@@ -192,6 +192,9 @@ const ChaosPanel = () => {
   };
 
   const anyRunning = isRunning || (cores && cores.some(c => c.running));
+  const selectedCoreList = (cores || []).filter(c => !!selectedCores[c.id]);
+  const anySelectedRunning = selectedCoreList.some(c => c.running);
+  const anySelectedStopped = selectedCoreList.some(c => !c.running);
 
   return (
     <div style={{
@@ -261,14 +264,14 @@ const ChaosPanel = () => {
         <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
           <button
             onClick={handleStart}
-            disabled={anyRunning}
+            disabled={!anySelectedStopped}
             style={{
               padding: '6px 12px',
               borderRadius: '6px',
-              backgroundColor: anyRunning ? '#334155' : '#16a34a',
-              color: anyRunning ? '#64748b' : '#fff',
+              backgroundColor: !anySelectedStopped ? '#334155' : '#16a34a',
+              color: !anySelectedStopped ? '#64748b' : '#fff',
               border: 'none',
-              cursor: anyRunning ? 'not-allowed' : 'pointer',
+              cursor: !anySelectedStopped ? 'not-allowed' : 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
@@ -282,14 +285,14 @@ const ChaosPanel = () => {
 
           <button
             onClick={handleStop}
-            disabled={!anyRunning}
+            disabled={!anySelectedRunning}
             style={{
               padding: '6px 12px',
               borderRadius: '6px',
-              backgroundColor: !anyRunning ? '#334155' : '#dc2626',
-              color: !anyRunning ? '#64748b' : '#fff',
+              backgroundColor: !anySelectedRunning ? '#334155' : '#dc2626',
+              color: !anySelectedRunning ? '#64748b' : '#fff',
               border: 'none',
-              cursor: !anyRunning ? 'not-allowed' : 'pointer',
+              cursor: !anySelectedRunning ? 'not-allowed' : 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
@@ -303,19 +306,20 @@ const ChaosPanel = () => {
 
           <button
             onClick={handleRestart}
+            disabled={selectedCoreList.length === 0}
             style={{
               padding: '6px 14px',
               borderRadius: '6px',
-              background: 'linear-gradient(135deg, #7c3aed 0%, #db2777 100%)',
-              color: '#fff',
+              background: selectedCoreList.length === 0 ? '#334155' : 'linear-gradient(135deg, #7c3aed 0%, #db2777 100%)',
+              color: selectedCoreList.length === 0 ? '#64748b' : '#fff',
               border: 'none',
-              cursor: 'pointer',
+              cursor: selectedCoreList.length === 0 ? 'not-allowed' : 'pointer',
               display: 'flex',
               alignItems: 'center',
               gap: '6px',
               fontWeight: '600',
               fontSize: '12px',
-              boxShadow: '0 2px 8px rgba(124, 58, 237, 0.4)',
+              boxShadow: selectedCoreList.length === 0 ? 'none' : '0 2px 8px rgba(124, 58, 237, 0.4)',
               transition: 'transform 0.1s'
             }}
           >
@@ -351,7 +355,7 @@ const ChaosPanel = () => {
             border: '1px solid #374151'
           }}>
             <div style={{ fontWeight: '600', color: '#cbd5e1', marginBottom: '8px', display: 'flex', alignItems: 'center', gap: '6px' }}>
-              <Cpu size={15} color="#38bdf8" /> Target Cores for Restart:
+              <Cpu size={15} color="#38bdf8" /> Target Cores & Simulator Lifecycle:
             </div>
             <div style={{ display: 'flex', flexDirection: 'column', gap: '6px' }}>
               {cores.map(core => (

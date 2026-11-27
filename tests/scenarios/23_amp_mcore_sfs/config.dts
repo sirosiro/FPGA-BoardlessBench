@@ -1,0 +1,31 @@
+/dts-v1/;
+
+/ {
+    model = "F-BB Scenario 23 AMP M-Core SFS Board";
+    compatible = "generic,fbb-vfpga";
+
+    #address-cells = <1>;
+    #size-cells = <1>;
+
+    /* 1. 純粋な FPGA ハードウェアタイマー IP (vfpga_top.v で実装) */
+    vfpga_timer: vfpga_timer@40000000 {
+        compatible = "generic-uio";
+        reg = <0x40000000 0x1000>;
+        label = "/dev/uio0";
+    };
+
+    /* 2. AMP 共有メモリ (Zynq OCM / AXI BRAM 相当: RTL 記述ゼロ) */
+    amp_shared_mem: memory@40001000 {
+        compatible = "generic-uio";
+        reg = <0x40001000 0x1000>;
+        label = "/dev/uio1";
+    };
+
+    /* 3. 対話コンソール用 UART */
+    vfpga_uart: vfpga_uart@40002000 {
+        compatible = "xlnx,xps-uartlite-1.00.a";
+        reg = <0x40002000 0x1000>;
+        label = "/dev/ttyUL0";
+        port = <2000>;
+    };
+};

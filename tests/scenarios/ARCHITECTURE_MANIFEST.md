@@ -158,6 +158,9 @@ F-BB のテストシナリオは、将来の拡張性と責務分離（SoC/ベ�
 * **`22_ros2_control_minimal`**
   - **意図**: ロボット制御フレームワーク `ros2_control` の UIO ハードウェア境界および決定論的制御ループの最小セット検証。
   - **役割**: 上位 ROS 2 スタックを要求しないゼロインストール C++17 互換レイヤーによる `hardware_interface::SystemInterface` 実装、UIO MMIO 経由の 1kHz リアルタイムジッター計測、差動二輪（左右輪）閉ループ速度・位置制御、ハードウェア E-STOP 即時遮断、プロトコル・アサーション検知、および 32-bit カウンタ折り返し（Wrap-around）耐性の網羅的検証。
+* **`23_amp_mcore_sfs`**
+  - **意図**: 単一ループのベアメタル（`09`）とプリエンプティブ RTOS（`10`/`11`）の中間を埋める、Zynq 実務向けの依存ゼロ C89 協調型スケジューラ（`simple-functions-scheduler`）統合およびハードウェアタイマー割り込み駆動の検証。
+  - **役割**: `vfpga_timer@40000000`（純粋な FPGA タイマー IP、`mcore_irq_out` 出力）と `amp_shared_mem@40001000`（OCM/AXI BRAM 相当の AMP 共有メモリ）の 2 ノード分離、リンク時多態 BSP（`sigaction` / `sigprocmask`）による `pthread` 不使用の実機透過タイマー割り込み（`FRCC` 駆動）、SFS 全 5 コンポーネント（SFS / FRCC / FIFO / Matrix 状態機械 / Ring Buffer）の協調動作、および UART 対話コンソール＋ `Register State Tracer` による Time-Travel Debugging 観察の両立検証。
 * **`P01_frdmIMX`**
   - **意図**: 車載画像処理SoC（i.MX95/8MP）を模擬した高度なハードウェア/ソフトウェア協調デバッグ。
   - **役割**: Mesa OpenGL ESを使用した4カメラ歪み補正・バードアイ合成、およびSoCモデル自動検知（compatible/model）、極性反転設計（TRI = ~GDIR）の検証。
@@ -218,6 +221,9 @@ F-BB のテストシナリオは、将来の拡張性と責務分離（SoC/ベ�
 - **2026-10-17: ADR #014 シナリオ別 UI レイアウト契約 (`fbb_layout.json`) と DTS 整合性の標準化**
   - **Decision**: 各テストシナリオに配置される `fbb_layout.json`（およびマルチスクリーン用 `fbb_layout_${screen}.json`）について、DTS を唯一の仕様（SSoT）とする厳格なノード名一致、必須メタデータ `params._componentName` の付与、およびダッシュボード本体側での対症療法的名前リマップの禁止を定めた。
   - **Rationale**: `S01_cpp_lfsr_sequencer` 等でレガシーな `vfpga_uart_1` 命名や `_componentName` 欠落が残り、ダッシュボード側のリファクタリング時に Dockview の `Loading ...` ハングや波形描画消失を引き起こした。シナリオごとに異なる非標準実装が放置される構造的要因を断ち、DTS と UI レイアウトの厳格な結合契約を明文化するため。
+- **2026-11-27: ADR #015 外部スケジューラ SFS 統合と汎用 M コアハードウェア割り込みリレー (`has_mcore_irq_out`) の導入**
+  - **Decision**: `23_amp_mcore_sfs` において、`vfpga_timer@40000000`（純粋な RTL タイマー IP）と `amp_shared_mem@40001000`（RTL 記述ゼロの OCM/AXI BRAM 相当共有メモリ）の 2 ノードに責務分離した。あわせて `sim_traits.h` / `generator_rtl.py` に SFINAE トレイト `has_mcore_irq_out<T>` を追加し、RTL の `mcore_irq_out` 立ち上がりエッジを `remoteproc0/pid` への `SIGUSR1` 通知として中継する仕組みを導入した。また `simple-functions-scheduler` ソースは `10_amp_mcore_freertos` 等と同様にビルド時クローン（最新 `master`、`--depth 1`）＋ `.gitignore` / `--cleanall` 除外対象とした。
+  - **Rationale**: FW 内部状態のレジスタを FPGA RTL に混入させず実機準拠の HW/SW 境界を保つとともに、ホスト疑似タイマースレッド（`pthread`）や FW 内の `/tmp/fbb/...` 依存を排除した 100% 実機透過なタイマー割り込み駆動（リンク時多態 BSP：`sigaction` / `sigprocmask`）を実現するため。
 
 ### 5. シナリオ別 UI レイアウト規約 (fbb_layout.json Specification & Invariants)
 

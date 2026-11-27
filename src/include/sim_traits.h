@@ -38,6 +38,9 @@ template <typename T> struct has_pl_spi_cs_n<T, std::void_t<decltype(std::declva
 template <typename T, typename = void> struct has_irq_out : std::false_type {};
 template <typename T> struct has_irq_out<T, std::void_t<decltype(std::declval<T>().irq_out)>> : std::true_type {};
 
+template <typename T, typename = void> struct has_mcore_irq_out : std::false_type {};
+template <typename T> struct has_mcore_irq_out<T, std::void_t<decltype(std::declval<T>().mcore_irq_out)>> : std::true_type {};
+
 template <typename T, typename = void> struct has_l_pins_i : std::false_type {};
 template <typename T> struct has_l_pins_i<T, std::void_t<decltype(std::declval<T>().l_pins_i)>> : std::true_type {};
 
@@ -97,6 +100,7 @@ template <typename T> struct has_pl_spi_mosi : std::false_type {};
 template <typename T> struct has_pl_spi_miso : std::false_type {};
 template <typename T> struct has_pl_spi_cs_n : std::false_type {};
 template <typename T> struct has_irq_out : std::false_type {};
+template <typename T> struct has_mcore_irq_out : std::false_type {};
 template <typename T> struct has_l_pins_i : std::false_type {};
 template <typename T> struct has_m_axi_araddr : std::false_type {};
 template <typename T> struct has_m_axi_arvalid : std::false_type {};

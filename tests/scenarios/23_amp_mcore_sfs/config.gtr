@@ -1,0 +1,28 @@
+/dts-v1/;
+/include/ "config.dts"
+
+&vfpga_timer {
+    registers =
+        "TIMER_CTRL    @ 0x00 : RW",
+        "TIMER_PERIOD  @ 0x04 : RW",
+        "TIMER_STATUS  @ 0x08 : RO",
+        "TIMER_INT_ACK @ 0x0C : WO",
+        "TIMER_HW_CNT  @ 0x10 : RO";
+};
+
+&amp_shared_mem {
+    registers =
+        "CMD             @ 0x00 : RW",
+        "STATUS          @ 0x04 : RW",
+        "DATA_IN         @ 0x08 : RW",
+        "DATA_OUT        @ 0x0C : RW",
+        "FRCC_TICKS      @ 0x10 : RW",
+        "HEARTBEAT_CNT   @ 0x14 : RW",
+        "SM_MODE         @ 0x18 : RW",
+        "SM_STATE        @ 0x1C : RW",
+        "FIFO_DEPTH      @ 0x20 : RW",
+        "FIFO_PROCESSED  @ 0x24 : RW",
+        "LAST_TRANSITION @ 0x28 : RW",
+        "RB_USED_BYTES   @ 0x2C : RW",
+        "RB_DRAINED_CNT  @ 0x30 : RW";
+};

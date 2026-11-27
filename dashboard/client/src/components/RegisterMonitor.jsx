@@ -302,6 +302,37 @@ function RegisterMonitor() {
     </div>
   );
 
+  const renderTraceToggleButton = (regs, scopeLabel) => {
+    const allTraced = regs.length > 0 && regs.every(r => !hiddenTraceKeys[`${r.deviceName}_${r.name}`]);
+    const handleToggleAll = (e) => {
+      e.stopPropagation();
+      if (!setTraceKeysVisibility || regs.length === 0) return;
+      const updates = {};
+      regs.forEach(r => {
+        updates[`${r.deviceName}_${r.name}`] = allTraced;
+      });
+      setTraceKeysVisibility(updates);
+    };
+    return (
+      <button
+        type="button"
+        onClick={handleToggleAll}
+        style={{
+          fontSize: '0.6rem',
+          background: allTraced ? 'rgba(63, 185, 80, 0.15)' : 'transparent',
+          border: allTraced ? '1px solid #3fb950' : '1px solid #30363d',
+          borderRadius: '4px',
+          color: allTraced ? '#3fb950' : '#8b949e',
+          padding: '1px 5px',
+          cursor: 'pointer'
+        }}
+        title={allTraced ? `Untrace all in this ${scopeLabel}` : `Trace all in this ${scopeLabel}`}
+      >
+        {allTraced ? '✓ Traced' : 'Trace'}
+      </button>
+    );
+  };
+
   return (
     <div className="register-pane" style={{ height: '100%', display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
       {/* Panel Header */}
@@ -541,16 +572,19 @@ function RegisterMonitor() {
                       </span>
                     )}
                   </div>
-                  <span style={{ 
-                    fontSize: '0.65rem', 
-                    backgroundColor: '#161b22', 
-                    padding: '2px 6px', 
-                    borderRadius: '10px',
-                    color: '#8b949e',
-                    border: '1px solid #30363d'
-                  }}>
-                    {devRegs.length} regs
-                  </span>
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
+                    {renderTraceToggleButton(devRegs, 'device')}
+                    <span style={{ 
+                      fontSize: '0.65rem', 
+                      backgroundColor: '#161b22', 
+                      padding: '2px 6px', 
+                      borderRadius: '10px',
+                      color: '#8b949e',
+                      border: '1px solid #30363d'
+                    }}>
+                      {devRegs.length} regs
+                    </span>
+                  </div>
                 </div>
 
                 {/* Device Table / Subgroups Content */}
@@ -580,21 +614,6 @@ function RegisterMonitor() {
                           const grpGhostCount = grpData?.ghostCount || 0;
                           const isDragging = draggedGroupKey === grpName;
                           const isDragOver = dragOverGroupKey === grpName;
-
-                          // Only compute allTraced when expanded to eliminate unnecessary checks on collapsed groups
-                          const allTraced = grpExpanded && grpRegs.length > 0 && grpRegs.every(r => !hiddenTraceKeys[`${r.deviceName}_${r.name}`]);
-
-                          const toggleGroupTraces = (e) => {
-                            e.stopPropagation();
-                            if (setTraceKeysVisibility) {
-                              const isCurrentlyAllTraced = grpRegs.length > 0 && grpRegs.every(r => !hiddenTraceKeys[`${r.deviceName}_${r.name}`]);
-                              const updates = {};
-                              grpRegs.forEach(r => {
-                                updates[`${r.deviceName}_${r.name}`] = isCurrentlyAllTraced;
-                              });
-                              setTraceKeysVisibility(updates);
-                            }
-                          };
 
                           return (
                             <div 
@@ -669,22 +688,7 @@ function RegisterMonitor() {
                                   )}
                                 </div>
                                 <div style={{ display: 'flex', alignItems: 'center', gap: '6px', flexShrink: 0 }}>
-                                  <button
-                                    type="button"
-                                    onClick={toggleGroupTraces}
-                                    style={{
-                                      fontSize: '0.6rem',
-                                      background: allTraced ? 'rgba(63, 185, 80, 0.15)' : 'transparent',
-                                      border: allTraced ? '1px solid #3fb950' : '1px solid #30363d',
-                                      borderRadius: '4px',
-                                      color: allTraced ? '#3fb950' : '#8b949e',
-                                      padding: '1px 5px',
-                                      cursor: 'pointer'
-                                    }}
-                                    title={allTraced ? "Untrace all in this group" : "Trace all in this group"}
-                                  >
-                                    {allTraced ? '✓ Traced' : 'Trace'}
-                                  </button>
+                                  {renderTraceToggleButton(grpRegs, 'group')}
                                   <span style={{
                                     fontSize: '0.62rem',
                                     color: '#8b949e',

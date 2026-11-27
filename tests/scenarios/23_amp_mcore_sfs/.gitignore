@@ -1,0 +1,6 @@
+/simple-functions-scheduler/
+/test_bin
+/mcore_sfs.elf
+/*.o
+/*.log
+*~

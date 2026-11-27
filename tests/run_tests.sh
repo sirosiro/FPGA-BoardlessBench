@@ -100,6 +100,8 @@ if [ "$CLEAN" = true ]; then
         rm -rf tests/scenarios/13_amp_mcore_cmsis-rtos2-threadx/CMSIS_5 2>/dev/null
         rm -rf tests/scenarios/15_amp_mcore_OpenAMP_freertos/FreeRTOS-Kernel 2>/dev/null
         rm -rf tests/scenarios/22_ros2_control_minimal/external 2>/dev/null
+        echo "[Runner] Performing distclean: removing Simple Functions Scheduler source..."
+        rm -rf tests/scenarios/23_amp_mcore_sfs/simple-functions-scheduler 2>/dev/null
     fi
 
     rm -f tests/scenarios/*/*.log

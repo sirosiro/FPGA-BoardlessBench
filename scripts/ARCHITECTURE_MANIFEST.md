@@ -43,7 +43,7 @@ DTS の論理構造を抽象化したデータモデル。
 - **DeviceConfigGenerator**: シナリオ固有のデバイス定義ヘッダー (`vfpga_device_config.h`) を生成。`FBB_DEV_PATH_<NAME>` に加え、互換マクロ `FBB_DEV_PATH_<NAME>_0` を自動出力して既存ファームウェアとの後方互換性を保証する。
 - **ShimGenerator**: Shimライブラリ (`libfpgashim.c`) を生成。通常の UIO/GPIO/UART のラップ、非対称マルチコア（AMP）開発用の **VirtIO/RPMsg 仮想デバイススタック**、および `xorshift128+` / SplitMix64 による**決定論的カオス障害注入エンジン**（I2C, SPI, UIO, CAN, CDMA への確率的障害注入と無効時ゼロオーバーヘッド動作）を自動生成する。
 - **RTLGenerator**: Verilog トップモジュール (`vfpga_top.v`) を生成
-- **SimulatorGenerator**: Verilator 用 C++ ラッパー (`sim_main.cpp`) を生成。共有メモリとRTLレジスタ間の同期を行うとともに、仮想IPI（`TRIG`）レジスタへの書き込み検知時にAコアへシグナル（`SIGUSR2`）を自動中継。また 118 ピン標準インターフェース（`l_pins_i` [117:0]）向けに C++17 SFINAE トレイト `has_l_pins_i<T>` を介した型安全な 4 ワード一括代入を生成する。さらに AXI Master ポート（`m_axi_*`）を検知した場合、`AxiStallEngine` と C++17 SFINAE トレイト（`sim_traits.h`）を連携させ、サイクル精度でのバス競合・ランダムストール注入（Chaos Engine）をゼロオーバーヘッド・バイパス付きで自動生成する。
+- **SimulatorGenerator**: Verilator 用 C++ ラッパー (`sim_main.cpp`) を生成。共有メモリとRTLレジスタ間の同期を行うとともに、仮想IPI（`TRIG`）レジスタへの書き込み検知時にAコアへシグナル（`SIGUSR2`）を自動中継。また `has_mcore_irq_out<T>` SFINAE トレイトを介して RTL 側の `mcore_irq_out` 立ち上がりエッジを検知し、起動中の M コアプロセス（`remoteproc0/pid`）へ実機透過のハードウェア割り込みシグナル（`SIGUSR1`）をリレーする。さらに 118 ピン標準インターフェース（`l_pins_i` [117:0]）向けに C++17 SFINAE トレイト `has_l_pins_i<T>` を介した型安全な 4 ワード一括代入を生成し、AXI Master ポート（`m_axi_*`）を検知した場合、`AxiStallEngine` と C++17 SFINAE トレイト（`sim_traits.h`）を連携させ、サイクル精度でのバス競合・ランダムストール注入（Chaos Engine）をゼロオーバーヘッド・バイパス付きで自動生成する。
 - **ManifestGenerator**: Webダッシュボード用メタデータ (`board_manifest.json`) を生成
 - **GdbExtensionGenerator**: GDB / LLDB 用 Python デバッガ拡張スクリプト (`fbb_gdb.py` および `.gdbinit`) を生成。DTS 由来のレジスタ名、オフセット、アクセス属性、仮想デバイス情報を埋め込み、デバッグコンソールから直感的なレジスタ監視・書き込み（`fbb-regs`, `fbb-write`, `fbb-fds`, `fbb-info`）を可能にする。
 
