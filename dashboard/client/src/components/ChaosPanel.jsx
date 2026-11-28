@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   Zap, Play, Square, RotateCcw, Copy, Check, Dices,
-  Terminal, Cpu, AlertTriangle, Trash2
+  Terminal, Cpu, AlertTriangle, Trash2, PanelRightOpen, PanelRightClose
 } from 'lucide-react';
 import { useDashboard } from './DashboardContext';
 
@@ -32,18 +32,19 @@ const ChaosPanel = () => {
     axi_stall: true
   });
 
-  // Logs & Injected faults
+  // Logs & Injected faults (feed collapsed by default to keep pane compact)
   const [logs, setLogs] = useState([]);
   const [faultEvents, setFaultEvents] = useState([]);
+  const [showFeed, setShowFeed] = useState(false);
   const [copied, setCopied] = useState(false);
   const logEndRef = useRef(null);
 
-  // Auto-scroll logs
+  // Auto-scroll logs when feed is visible
   useEffect(() => {
-    if (logEndRef.current) {
+    if (showFeed && logEndRef.current) {
       logEndRef.current.scrollIntoView({ behavior: 'smooth' });
     }
-  }, [logs, faultEvents]);
+  }, [logs, faultEvents, showFeed]);
 
   // Initial fetch and socket listeners
   useEffect(() => {
@@ -325,10 +326,55 @@ const ChaosPanel = () => {
           >
             <RotateCcw size={14} /> Restart Scenario
           </button>
+
+          <button
+            type="button"
+            onClick={() => setShowFeed(prev => !prev)}
+            aria-expanded={showFeed}
+            title={showFeed ? 'Collapse Scenario Execution & Injected Fault Feed' : 'Expand Scenario Execution & Injected Fault Feed'}
+            style={{
+              padding: '6px 10px',
+              borderRadius: '6px',
+              backgroundColor: showFeed ? '#1e293b' : '#0f172a',
+              color: showFeed ? '#e2e8f0' : '#94a3b8',
+              border: showFeed ? '1px solid #475569' : '1px solid #334155',
+              cursor: 'pointer',
+              display: 'flex',
+              alignItems: 'center',
+              gap: '6px',
+              fontWeight: '500',
+              fontSize: '12px',
+              transition: 'background 0.2s, border-color 0.2s'
+            }}
+          >
+            {showFeed ? <PanelRightClose size={14} /> : <PanelRightOpen size={14} />}
+            <span>Feed</span>
+            {faultEvents.length > 0 ? (
+              <span style={{
+                fontSize: '10px',
+                backgroundColor: 'rgba(239, 68, 68, 0.2)',
+                color: '#f87171',
+                border: '1px solid #ef4444',
+                padding: '0px 5px',
+                borderRadius: '10px',
+                fontWeight: '600',
+                lineHeight: '1.4'
+              }}>
+                {faultEvents.length}
+              </span>
+            ) : logs.length > 0 && !showFeed ? (
+              <span style={{
+                width: '6px',
+                height: '6px',
+                borderRadius: '50%',
+                backgroundColor: '#38bdf8'
+              }} />
+            ) : null}
+          </button>
         </div>
       </div>
 
-      {/* Main Body (Split into Left Config and Right Logs) */}
+      {/* Main Body (Left Config and Collapsible Right Logs) */}
       <div style={{
         display: 'flex',
         flex: 1,
@@ -336,10 +382,11 @@ const ChaosPanel = () => {
       }}>
         {/* Left Column: Settings Panel */}
         <div style={{
-          width: '380px',
-          minWidth: '340px',
-          maxWidth: '420px',
-          borderRight: '1px solid #334155',
+          width: showFeed ? '360px' : '100%',
+          minWidth: showFeed ? '280px' : 0,
+          maxWidth: showFeed ? '420px' : 'none',
+          flexShrink: showFeed ? 0 : 1,
+          borderRight: showFeed ? '1px solid #334155' : 'none',
           backgroundColor: '#111827',
           padding: '16px',
           overflowY: 'auto',
@@ -632,9 +679,11 @@ const ChaosPanel = () => {
           )}
         </div>
 
-        {/* Right Column: Real-time Execution & Fault Injection Logs */}
+        {/* Right Column: Collapsible Real-time Execution & Fault Injection Logs */}
+        {showFeed && (
         <div style={{
           flex: 1,
+          minWidth: 0,
           display: 'flex',
           flexDirection: 'column',
           backgroundColor: '#030712',
@@ -647,11 +696,12 @@ const ChaosPanel = () => {
             borderBottom: '1px solid #1f2937',
             display: 'flex',
             alignItems: 'center',
-            justifyContent: 'space-between'
+            justifyContent: 'space-between',
+            gap: '8px'
           }}>
-            <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-              <Terminal size={14} color="#94a3b8" />
-              <span style={{ fontWeight: '600', fontSize: '12px', color: '#cbd5e1' }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '8px', minWidth: 0 }}>
+              <Terminal size={14} color="#94a3b8" style={{ flexShrink: 0 }} />
+              <span style={{ fontWeight: '600', fontSize: '12px', color: '#cbd5e1', whiteSpace: 'nowrap', overflow: 'hidden', textOverflow: 'ellipsis' }}>
                 Scenario Execution & Injected Fault Feed
               </span>
               {faultEvents.length > 0 && (
@@ -662,29 +712,52 @@ const ChaosPanel = () => {
                   border: '1px solid #ef4444',
                   padding: '1px 6px',
                   borderRadius: '10px',
-                  fontWeight: '600'
+                  fontWeight: '600',
+                  flexShrink: 0
                 }}>
                   {faultEvents.length} Faults Injected
                 </span>
               )}
             </div>
 
-            <button
-              onClick={clearConsole}
-              style={{
-                background: 'none',
-                border: 'none',
-                color: '#64748b',
-                cursor: 'pointer',
-                display: 'flex',
-                alignItems: 'center',
-                gap: '4px',
-                fontSize: '11px'
-              }}
-              title="Clear Output"
-            >
-              <Trash2 size={13} /> Clear
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: '10px', flexShrink: 0 }}>
+              <button
+                type="button"
+                onClick={clearConsole}
+                style={{
+                  background: 'none',
+                  border: 'none',
+                  color: '#64748b',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontSize: '11px'
+                }}
+                title="Clear Output"
+              >
+                <Trash2 size={13} /> Clear
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowFeed(false)}
+                style={{
+                  background: 'none',
+                  border: '1px solid #334155',
+                  borderRadius: '4px',
+                  padding: '2px 6px',
+                  color: '#94a3b8',
+                  cursor: 'pointer',
+                  display: 'flex',
+                  alignItems: 'center',
+                  gap: '4px',
+                  fontSize: '11px'
+                }}
+                title="Collapse Feed"
+              >
+                <PanelRightClose size={13} /> Hide
+              </button>
+            </div>
           </div>
 
           {/* Console Output Area */}
@@ -727,6 +800,7 @@ const ChaosPanel = () => {
             <div ref={logEndRef} />
           </div>
         </div>
+        )}
       </div>
     </div>
   );
