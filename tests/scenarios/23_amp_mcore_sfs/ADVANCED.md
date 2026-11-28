@@ -22,15 +22,16 @@ sequenceDiagram
     Note over RTL: Reset: TIMER_CTRL=0 (Timer Stopped)
     MCore->>BSP: mcore_bsp_register_timer_isr(on_timer_isr)
     MCore->>MCore: FRCInterrupt(mcore_bsp_di, mcore_bsp_ei)
-    MCore->>RTL: REG_TIMER_PERIOD=500; REG_TIMER_CTRL=1
+    MCore->>RTL: REG_TIMER_PERIOD = 500
+    MCore->>RTL: REG_TIMER_CTRL = 1
     loop Every TIMER_PERIOD Clocks
         RTL->>RTL: TIMER_STATUS[0]=1, mcore_irq_out=1
-        RTL->>Sim: mcore_irq_out 立ち上がりエッジ (0 -> 1)
+        RTL->>Sim: mcore_irq_out 立ち上がりエッジ
         Sim->>BSP: kill(remoteproc0_pid, SIGUSR1)
         BSP->>MCore: on_timer_isr() 非同期実行
         MCore->>MCore: gFreeRunCounter++
         MCore->>RTL: REG_TIMER_INT_ACK = 1 (0x4000000C)
-        Sim->>RTL: Write ACK -> TIMER_STATUS[0]=0, mcore_irq_out=0
+        Sim->>RTL: Write ACK 反映 (TIMER_STATUS[0]=0, mcore_irq_out=0)
     end
 ```
 

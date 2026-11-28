@@ -43,7 +43,8 @@ flowchart LR
     Timer -->|"周期到達"| IrqLine
     IrqLine -->|"SIGUSR1 リレー"| ISR
     ISR -->|"MMIO W1C"| IrqLine
-    ISR -.->|"FRCC更新"| T2 & T3
+    ISR -.->|"FRCC更新"| T2
+    ISR -.->|"FRCC更新"| T3
     T1 -->|"FIFO_push"| T2
     T2 -->|"状態遷移ログ"| RB
     RB -->|"1tick/件ドレイン"| T3
@@ -133,6 +134,23 @@ Web ダッシュボードの `Register State Tracer` を使って、タイマー
 | `0x28`〜`0x30` | `LAST_TRANSITION`, `RB_USED_BYTES`, `RB_DRAINED_CNT` | Ring Buffer から回収された最新遷移ログ・使用量・累計回収数 |
 
 **`CMD` コマンドコード**: `0x01` Start / `0x02` Pause / `0x03` Resume / `0x04` Stop / `0x05` Mode 変更 / `0xA1` FIFO データ投入 / `0xB1` タイマー周期変更 / `0xFF` 終了
+
+### Matrix 状態遷移表（2 次元マトリクス：`g_sm_table`）
+
+[mcore_sfs.c](mcore_sfs.c) の 3 次元状態機械テーブル `g_sm_table[mode][state][event]` における状態遷移表（行：現在状態 × 列：受信イベント → 次状態）です。`MODE_NORMAL` と `MODE_DIAGNOSTIC` で共通の遷移規則を持ち、遷移発生時に `on_sm_transition()` が 4 バイト記録 `(mode, old_state, event, new_state)` を Ring Buffer へ書き込みます。
+
+| 現在状態 ＼ イベント | `EVENT_START` (`0x01`) | `EVENT_STOP` (`0x04`) | `EVENT_PAUSE` (`0x02`) | `EVENT_RESUME` (`0x03`) | `SM_WORKER` の振る舞い |
+| :--- | :---: | :---: | :---: | :---: | :--- |
+| **`STATE_IDLE` (`0`)** | **`ACTIVE` (`1`)** | `IDLE` (`0`) | `IDLE` (`0`) | `IDLE` (`0`) | 待機（FIFO を消費しない） |
+| **`STATE_ACTIVE` (`1`)** | `ACTIVE` (`1`) | **`IDLE` (`0`)** | **`SUSPENDED` (`2`)** | `ACTIVE` (`1`) | FIFO から 1 件取得し 2 ティック待機後に `DATA_OUT` 更新 |
+| **`STATE_SUSPENDED` (`2`)** | `SUSPENDED` (`2`) | **`IDLE` (`0`)** | `SUSPENDED` (`2`) | **`ACTIVE` (`1`)** | 一時停止（FIFO への積込は継続、演算処理は停止） |
+
+**動作モード軸（`CMD_SET_MODE` / `0x05`）:**
+
+| モード (`SM_MODE`) | `SM_WORKER` 演算式 | Heartbeat 更新周期 (`TELEM_HB`) |
+| :--- | :--- | :--- |
+| **`MODE_NORMAL` (`0`)** | `DATA_OUT = val * 3 + 1` | 3 ティックごと |
+| **`MODE_DIAGNOSTIC` (`1`)** | `DATA_OUT = val * 10` | 1 ティックごと |
 
 ---
 
